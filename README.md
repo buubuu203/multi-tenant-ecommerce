@@ -1,38 +1,65 @@
 # E-Com Platform
 
-A reusable, multi-tenant, white-label e-commerce platform for physical products.
-See [docs/architecture.md](docs/architecture.md) for the product vision and system
-design, and [docs/decisions.md](docs/decisions.md) for the decision log.
+A multi-tenant e-commerce platform built with Next.js, TypeScript, and Prisma.
 
-**Status**: project scaffolding only. No commerce features implemented yet — see
-[docs/architecture.md#walking-skeleton](docs/architecture.md#walking-skeleton) for
-what's built next.
+> Product vision, architecture, and decision records are maintained in Notion, not
+> in this repository.
 
-## Documentation
+## Prerequisites
 
-- [docs/architecture.md](docs/architecture.md) — vision, scope, stack, architecture
-- [docs/multi-tenancy.md](docs/multi-tenancy.md) — tenant model and identification
-- [docs/security.md](docs/security.md) — tenant isolation and access control
-- [docs/decisions.md](docs/decisions.md) — architecture decision log
+- Node.js 20+
+- npm
+- A PostgreSQL database (local or hosted) — only needed once database features are
+  implemented; not required to run the current scaffold
 
-## Getting Started
+## Installation
 
-1. Copy `.env.example` to `.env.local` and fill in a real `DATABASE_URL`.
-2. Install dependencies: `npm install`
-3. Run the dev server: `npm run dev`
-4. Open [http://localhost:3000](http://localhost:3000)
+```bash
+npm install
+```
 
-## Scripts
+## Environment Variables
+
+1. Copy `.env.example` to `.env.local`
+2. Fill in real values — at minimum, `DATABASE_URL` once you have a database to
+   connect to
+
+```bash
+cp .env.example .env.local
+```
+
+`.env.local` is git-ignored and should never be committed.
+
+## Running Locally
+
+```bash
+npm run dev
+```
+
+Open the URL printed in the terminal (usually [http://localhost:3000](http://localhost:3000)).
+
+## Lint
+
+```bash
+npm run lint
+```
+
+## Build
+
+```bash
+npm run build
+```
+
+## Tests
+
+No test suite exists yet. This section will be updated once tests are added.
+
+## Other Scripts
 
 | Command | Purpose |
 |---|---|
-| `npm run dev` | Start the local dev server |
-| `npm run build` | Production build |
-| `npm run lint` | Run ESLint |
 | `npm run format` | Format code with Prettier |
 | `npm run format:check` | Check formatting without writing |
 | `npm run db:generate` | Regenerate the Prisma client from schema |
 | `npm run db:migrate` | Create/apply a database migration (dev) |
 | `npm run db:studio` | Open Prisma Studio (visual DB browser) |
-
-Built with Next.js, TypeScript, Tailwind CSS, and Prisma.
