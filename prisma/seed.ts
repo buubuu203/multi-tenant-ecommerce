@@ -1,7 +1,8 @@
 /**
  * Local development seed script — NOT for production use.
- * Creates two example tenants (Shop A, Shop B) to verify the schema and
- * tenant isolation manually. Safe to re-run: uses upsert, not fixed inserts.
+ * Creates two example tenants (Shop A, Shop B) with distinct branding, to
+ * manually verify tenant resolution, isolation, and branding rendering.
+ * Safe to re-run: upserts rather than fixed inserts.
  */
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../src/generated/prisma/client";
@@ -15,10 +16,11 @@ async function seedTenant(opts: {
   subdomain: string;
   storeName: string;
   primaryColor: string;
+  secondaryColor: string;
 }) {
   const tenant = await prisma.tenant.upsert({
     where: { slug: opts.slug },
-    update: {},
+    update: { name: opts.name },
     create: {
       slug: opts.slug,
       name: opts.name,
@@ -26,10 +28,14 @@ async function seedTenant(opts: {
     },
   });
 
-  await prisma.domain.upsert({
-    where: { hostname: opts.subdomain },
-    update: {},
-    create: {
+  // Replace this tenant's subdomain (rather than upserting by hostname
+  // directly) so re-running the seed after changing `subdomain` doesn't
+  // leave a stale, orphaned domain row behind.
+  await prisma.domain.deleteMany({
+    where: { tenantId: tenant.id, type: "subdomain" },
+  });
+  await prisma.domain.create({
+    data: {
       tenantId: tenant.id,
       hostname: opts.subdomain,
       type: "subdomain",
@@ -39,11 +45,16 @@ async function seedTenant(opts: {
 
   await prisma.branding.upsert({
     where: { tenantId: tenant.id },
-    update: {},
+    update: {
+      storeName: opts.storeName,
+      primaryColor: opts.primaryColor,
+      secondaryColor: opts.secondaryColor,
+    },
     create: {
       tenantId: tenant.id,
       storeName: opts.storeName,
       primaryColor: opts.primaryColor,
+      secondaryColor: opts.secondaryColor,
     },
   });
 
@@ -54,17 +65,19 @@ async function main() {
   const shopA = await seedTenant({
     slug: "shop-a",
     name: "Shop A Co.",
-    subdomain: "shop-a.yourplatform.com",
-    storeName: "Shop A",
-    primaryColor: "#2563eb",
+    subdomain: "shop-a.localhost",
+    storeName: "Sunrise Goods",
+    primaryColor: "#e0562b",
+    secondaryColor: "#2f1b12",
   });
 
   const shopB = await seedTenant({
     slug: "shop-b",
     name: "Shop B Co.",
-    subdomain: "shop-b.yourplatform.com",
-    storeName: "Shop B",
-    primaryColor: "#16a34a",
+    subdomain: "shop-b.localhost",
+    storeName: "Northwind Supply",
+    primaryColor: "#1d4ed8",
+    secondaryColor: "#0f172a",
   });
 
   console.log("Seeded tenants:", { shopA: shopA.slug, shopB: shopB.slug });
