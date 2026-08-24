@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
+import { clerkMiddleware } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
 
 // V1 trade-off (deliberate, approved): Proxy performs one minimal, indexed
@@ -21,8 +22,18 @@ import { prisma } from "@/lib/prisma";
 // Tenant selection is based ONLY on the request hostname. Query parameters,
 // cookies, request bodies, and client-side state are never consulted here —
 // so `shop-a.localhost:3000?tenantId=shop-b` still resolves to Shop A.
+//
+// CLERK: clerkMiddleware() here only makes the session available to
+// downstream Server Components (via auth() / currentUser()) — it does NOT
+// protect any route. No route is gated yet; Platform Admin authorization
+// will be a separate, explicit check performed in Platform Admin's own
+// layout/pages, not here. This deliberately avoids calling auth.protect()
+// inside the proxy layer (a known Next.js 16 + Clerk issue can redirect a
+// blocked user back to the same page instead of sign-in), and keeps this
+// proxy's job limited to "which tenant is this", per the Thin Proxy
+// principle already established in Step 2.
 
-export async function proxy(request: NextRequest) {
+export default clerkMiddleware(async (_auth, request: NextRequest) => {
   const hostname = request.headers.get("host")?.split(":")[0] ?? "";
 
   const domain = await prisma.domain.findUnique({
@@ -45,7 +56,7 @@ export async function proxy(request: NextRequest) {
   return NextResponse.next({
     request: { headers: requestHeaders },
   });
-}
+});
 
 export const config = {
   matcher: [
