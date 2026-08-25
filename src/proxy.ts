@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { clerkMiddleware } from "@clerk/nextjs/server";
 import { prisma } from "@/lib/prisma";
+import { isPlatformRoute } from "@/lib/platform-routes";
 
 // V1 trade-off (deliberate, approved): Proxy performs one minimal, indexed
 // lookup (Domain.hostname -> Tenant.id/status) to resolve which tenant a
@@ -23,6 +24,15 @@ import { prisma } from "@/lib/prisma";
 // cookies, request bodies, and client-side state are never consulted here —
 // so `shop-a.localhost:3000?tenantId=shop-b` still resolves to Shop A.
 //
+// PLATFORM ROUTES: paths under isPlatformRoute() (e.g. /platform-admin,
+// /sign-in) belong to the platform itself, not any tenant, and bypass
+// tenant hostname resolution entirely below. This is a routing boundary,
+// not an authorization decision — it exists because tenant lookup would
+// otherwise run for every path regardless of hostname, and reject platform
+// routes as "unknown domain" before their own auth logic ever runs (this
+// was found and fixed during Checkpoint 3B). Authentication/authorization
+// for platform routes still lives entirely in their own layout/server code.
+//
 // CLERK: clerkMiddleware() here only makes the session available to
 // downstream Server Components (via auth() / currentUser()) — it does NOT
 // protect any route. No route is gated yet; Platform Admin authorization
@@ -34,6 +44,10 @@ import { prisma } from "@/lib/prisma";
 // principle already established in Step 2.
 
 export default clerkMiddleware(async (_auth, request: NextRequest) => {
+  if (isPlatformRoute(request.nextUrl.pathname)) {
+    return NextResponse.next();
+  }
+
   const hostname = request.headers.get("host")?.split(":")[0] ?? "";
 
   const domain = await prisma.domain.findUnique({
