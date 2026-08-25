@@ -42,35 +42,44 @@ import { isPlatformRoute } from "@/lib/platform-routes";
 // blocked user back to the same page instead of sign-in), and keeps this
 // proxy's job limited to "which tenant is this", per the Thin Proxy
 // principle already established in Step 2.
+//
+// signInUrl: required so that auth().redirectToSignIn() (used by Tenant
+// Admin's requireTenantAdmin(), Checkpoint 4A) sends users to our own
+// /sign-in route instead of Clerk's hosted Account Portal default. This is
+// a config value read by clerkMiddleware itself, not a routing/authz
+// decision — no auth.protect() or role logic is added here.
 
-export default clerkMiddleware(async (_auth, request: NextRequest) => {
-  if (isPlatformRoute(request.nextUrl.pathname)) {
-    return NextResponse.next();
-  }
+export default clerkMiddleware(
+  async (_auth, request: NextRequest) => {
+    if (isPlatformRoute(request.nextUrl.pathname)) {
+      return NextResponse.next();
+    }
 
-  const hostname = request.headers.get("host")?.split(":")[0] ?? "";
+    const hostname = request.headers.get("host")?.split(":")[0] ?? "";
 
-  const domain = await prisma.domain.findUnique({
-    where: { hostname },
-    select: {
-      tenant: {
-        select: { id: true, status: true },
+    const domain = await prisma.domain.findUnique({
+      where: { hostname },
+      select: {
+        tenant: {
+          select: { id: true, status: true },
+        },
       },
-    },
-  });
+    });
 
-  if (!domain) {
-    return NextResponse.rewrite(new URL("/store-not-found", request.url));
-  }
+    if (!domain) {
+      return NextResponse.rewrite(new URL("/store-not-found", request.url));
+    }
 
-  const requestHeaders = new Headers(request.headers);
-  requestHeaders.set("x-tenant-id", domain.tenant.id);
-  requestHeaders.set("x-tenant-status", domain.tenant.status);
+    const requestHeaders = new Headers(request.headers);
+    requestHeaders.set("x-tenant-id", domain.tenant.id);
+    requestHeaders.set("x-tenant-status", domain.tenant.status);
 
-  return NextResponse.next({
-    request: { headers: requestHeaders },
-  });
-});
+    return NextResponse.next({
+      request: { headers: requestHeaders },
+    });
+  },
+  { signInUrl: "/sign-in" },
+);
 
 export const config = {
   matcher: [
