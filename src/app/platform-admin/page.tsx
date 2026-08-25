@@ -1,6 +1,6 @@
 import { platformDb } from "@/lib/db/platform-db";
 import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } from "./actions";
-import { ActionForm } from "./ActionForm";
+import { ActionForm } from "@/components/ActionForm";
 
 export const dynamic = "force-dynamic";
 

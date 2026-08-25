@@ -1,8 +1,11 @@
 "use client";
 
 import { useActionState } from "react";
-import type { ActionResult } from "@/lib/tenant-mutations";
+import type { ActionResult } from "@/lib/action-result";
 
+// Generic form + Server Action wrapper shared by Platform Admin and Tenant
+// Admin — contains no area-specific behavior, just useActionState wiring
+// and typed inline error display.
 export function ActionForm<T>({
   action,
   children,

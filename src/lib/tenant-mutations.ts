@@ -2,9 +2,8 @@ import { platformDb } from "./db/platform-db";
 import { normalizeSlug } from "./validation/slug";
 import { Prisma } from "@/generated/prisma/client";
 
-export type ActionResult<T = undefined> =
-  | { success: true; data: T }
-  | { success: false; error: string };
+export type { ActionResult } from "./action-result";
+import type { ActionResult } from "./action-result";
 
 const VALID_STATUSES = ["pending", "active", "suspended", "archived"] as const;
 type TenantStatusInput = (typeof VALID_STATUSES)[number];
