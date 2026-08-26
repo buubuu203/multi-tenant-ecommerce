@@ -17,6 +17,10 @@ import { prisma } from "../prisma";
  * update/updateMany/upsert/delete/deleteMany. aggregate/groupBy are not
  * covered yet — not used anywhere in V1 today; add them here first if that
  * changes, rather than assuming they're already scoped.
+ *
+ * Scoped models: domain, branding, product (Checkpoint 4C). Future
+ * tenant-owned models must be added here explicitly — they are not
+ * automatically covered just by having a tenantId column.
  */
 
 type QueryArgs = Record<string, unknown>;
@@ -85,6 +89,11 @@ export function getScopedDb(tenantId: string) {
         },
       },
       branding: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      product: {
         async $allOperations({ operation, args, query }) {
           return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
         },

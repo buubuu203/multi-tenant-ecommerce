@@ -1,7 +1,9 @@
 import { getCurrentTenant } from "./_storefront/get-current-tenant";
+import { getTenantProducts } from "./_storefront/get-tenant-products";
 import { resolveBranding } from "./_storefront/resolve-branding";
 import { StorefrontHeader } from "./_storefront/StorefrontHeader";
 import { StorefrontHero } from "./_storefront/StorefrontHero";
+import { ProductList } from "./_storefront/ProductList";
 import { PlatformMessage } from "./_storefront/PlatformMessage";
 
 // This page's content depends on the request's hostname (resolved by
@@ -44,11 +46,14 @@ export default async function StorefrontHomePage() {
   }
 
   const branding = resolveBranding(tenant, tenant.branding);
+  const comingSoon = tenant.status === "pending";
+  const products = comingSoon ? [] : await getTenantProducts();
 
   return (
     <div className="flex flex-1 flex-col">
       <StorefrontHeader branding={branding} />
-      <StorefrontHero branding={branding} comingSoon={tenant.status === "pending"} />
+      <StorefrontHero branding={branding} comingSoon={comingSoon} />
+      {!comingSoon && <ProductList products={products} />}
     </div>
   );
 }
