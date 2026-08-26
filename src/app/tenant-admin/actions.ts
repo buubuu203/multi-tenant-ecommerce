@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { updateBranding } from "@/lib/branding-mutations";
 import { createProduct, updateProduct } from "@/lib/product-mutations";
+import { importProductsFromCsv, type ImportSummary } from "@/lib/product-csv";
 import type { ActionResult } from "@/lib/action-result";
 
 // Independently re-checks auth + authorization before touching the
@@ -49,6 +50,29 @@ export async function createProductAction(
     price: String(formData.get("price") ?? ""),
     status: String(formData.get("status") ?? ""),
   });
+
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+// Same rule: independently re-checks auth + authorization; tenantId is
+// NEVER read from the CSV file or formData. Each row is imported via the
+// existing createProduct() — no duplicated/conflicting validation.
+export async function importProductsAction(
+  _prevState: ActionResult<ImportSummary> | null,
+  formData: FormData,
+): Promise<ActionResult<ImportSummary>> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { success: false, error: "No file selected." };
+  }
+
+  const csvText = await file.text();
+  const result = await importProductsFromCsv(tenantId, csvText);
 
   if (result.success) {
     revalidatePath("/tenant-admin");
