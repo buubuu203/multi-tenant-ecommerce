@@ -1,7 +1,8 @@
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
-import { updateBrandingAction, createProductAction, updateProductAction } from "./actions";
+import { updateBrandingAction, createProductAction, updateProductAction, importProductsAction } from "./actions";
+import { ImportProductsForm } from "./ImportProductsForm";
 
 const PRODUCT_STATUSES = ["draft", "active"] as const;
 
@@ -101,6 +102,14 @@ export default async function TenantAdminHomePage() {
 
       <section className="flex flex-col gap-4">
         <h2 className="text-lg font-medium">Products</h2>
+
+        <div className="flex flex-col gap-2">
+          <h3 className="text-sm font-medium">Import Products (CSV)</h3>
+          <p className="text-xs text-black/60 dark:text-white/60">
+            Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
+          </p>
+          <ImportProductsForm action={importProductsAction} />
+        </div>
 
         <ActionForm
           action={createProductAction}
