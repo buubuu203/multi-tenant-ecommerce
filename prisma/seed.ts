@@ -17,6 +17,8 @@ async function seedTenant(opts: {
   storeName: string;
   primaryColor: string;
   secondaryColor: string;
+  productName: string;
+  productPrice: number;
 }) {
   const tenant = await prisma.tenant.upsert({
     where: { slug: opts.slug },
@@ -58,6 +60,20 @@ async function seedTenant(opts: {
     },
   });
 
+  // Verification-only product: exactly one active product per tenant, so
+  // the storefront read path has something real to render end-to-end.
+  // Not a Product management feature — delete-then-create keeps this
+  // idempotent, same pattern already used for the seeded Domain above.
+  await prisma.product.deleteMany({ where: { tenantId: tenant.id } });
+  await prisma.product.create({
+    data: {
+      tenantId: tenant.id,
+      name: opts.productName,
+      price: opts.productPrice,
+      status: "active",
+    },
+  });
+
   return tenant;
 }
 
@@ -69,6 +85,8 @@ async function main() {
     storeName: "Sunrise Goods",
     primaryColor: "#e0562b",
     secondaryColor: "#2f1b12",
+    productName: "Sunrise Tote Bag",
+    productPrice: 250000,
   });
 
   const shopB = await seedTenant({
@@ -78,6 +96,8 @@ async function main() {
     storeName: "Northwind Supply",
     primaryColor: "#1d4ed8",
     secondaryColor: "#0f172a",
+    productName: "Northwind Camp Mug",
+    productPrice: 180000,
   });
 
   console.log("Seeded tenants:", { shopA: shopA.slug, shopB: shopB.slug });

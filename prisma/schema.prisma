@@ -33,6 +33,7 @@ model Tenant {
 
   domains  Domain[]
   branding Branding?
+  products Product[]
 
   @@map("tenants")
 }
@@ -69,4 +70,29 @@ model Branding {
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
   @@map("branding")
+}
+
+// --- Product foundation (Checkpoint 4C) ---------------------------------
+// Foundation only: schema + tenant-scoped access + storefront read path.
+// No CRUD UI yet (Checkpoint 4D). Deliberately minimal — see Notion
+// Development Log, Checkpoint 4C, for what was excluded and why.
+
+enum ProductStatus {
+  draft
+  active
+}
+
+model Product {
+  id        String        @id @default(uuid())
+  tenantId  String
+  name      String
+  price     Int // whole VND, no subunits — V1 market is Vietnam-only, no currency field yet
+  status    ProductStatus @default(draft)
+  createdAt DateTime      @default(now())
+  updatedAt DateTime      @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("products")
 }
