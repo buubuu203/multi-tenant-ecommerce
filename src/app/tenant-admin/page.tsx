@@ -24,7 +24,11 @@ export default async function TenantAdminHomePage() {
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
   const primaryDomain = await db.domain.findFirst({ where: { tenantId, isPrimary: true } });
-  const products = await db.product.findMany({ where: { tenantId }, orderBy: { createdAt: "asc" } });
+  const products = await db.product.findMany({
+    where: { tenantId },
+    orderBy: { createdAt: "asc" },
+    include: { variants: true },
+  });
 
   return (
     <main className="flex flex-1 flex-col gap-8 px-6 py-16">
@@ -137,39 +141,47 @@ export default async function TenantAdminHomePage() {
         </ActionForm>
 
         <div className="flex flex-col gap-3">
-          {products.map((product) => (
-            <ActionForm
-              key={product.id}
-              action={updateProductAction}
-              submitLabel="Save"
-              className="flex flex-wrap items-end gap-2 rounded border p-3 text-sm"
-            >
-              <input type="hidden" name="productId" value={product.id} />
-              <label className="flex flex-col gap-1">
-                Name
-                <input name="name" defaultValue={product.name} className="rounded border px-2 py-1" />
-              </label>
-              <label className="flex flex-col gap-1">
-                Price (VND)
-                <input
-                  name="price"
-                  inputMode="numeric"
-                  defaultValue={String(product.price)}
-                  className="rounded border px-2 py-1"
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                Status
-                <select name="status" defaultValue={product.status} className="rounded border px-2 py-1">
-                  {PRODUCT_STATUSES.map((status) => (
-                    <option key={status} value={status}>
-                      {status}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            </ActionForm>
-          ))}
+          {products.map((product) => {
+            // Simple-product path only (no options yet) — every product
+            // created via createProduct() has exactly one variant with
+            // combinationKey === "", the same sentinel product-mutations.ts
+            // and the v4.1 migration backfill both use to mean "the" variant.
+            const simpleVariant = product.variants.find((v) => v.combinationKey === "");
+
+            return (
+              <ActionForm
+                key={product.id}
+                action={updateProductAction}
+                submitLabel="Save"
+                className="flex flex-wrap items-end gap-2 rounded border p-3 text-sm"
+              >
+                <input type="hidden" name="productId" value={product.id} />
+                <label className="flex flex-col gap-1">
+                  Name
+                  <input name="name" defaultValue={product.name} className="rounded border px-2 py-1" />
+                </label>
+                <label className="flex flex-col gap-1">
+                  Price (VND)
+                  <input
+                    name="price"
+                    inputMode="numeric"
+                    defaultValue={simpleVariant ? String(simpleVariant.price) : ""}
+                    className="rounded border px-2 py-1"
+                  />
+                </label>
+                <label className="flex flex-col gap-1">
+                  Status
+                  <select name="status" defaultValue={product.status} className="rounded border px-2 py-1">
+                    {PRODUCT_STATUSES.map((status) => (
+                      <option key={status} value={status}>
+                        {status}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+              </ActionForm>
+            );
+          })}
           {products.length === 0 && (
             <p className="text-sm text-black/60 dark:text-white/60">No products yet.</p>
           )}

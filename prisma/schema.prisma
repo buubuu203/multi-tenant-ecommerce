@@ -31,9 +31,11 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  domains  Domain[]
-  branding Branding?
-  products Product[]
+  domains        Domain[]
+  branding       Branding?
+  products       Product[]
+  variantOptions VariantOption[]
+  locations      Location[]
 
   @@map("tenants")
 }
@@ -72,10 +74,38 @@ model Branding {
   @@map("branding")
 }
 
-// --- Product foundation (Checkpoint 4C) ---------------------------------
-// Foundation only: schema + tenant-scoped access + storefront read path.
-// No CRUD UI yet (Checkpoint 4D). Deliberately minimal — see Notion
-// Development Log, Checkpoint 4C, for what was excluded and why.
+// --- Product / Variant / Inventory foundation (Checkpoint 4F, architecture v4.1) ---
+//
+// Product = catalog-level identity (name, status).
+// ProductVariant = the sellable unit (price, sku, status). Every Product has
+// >=1 ProductVariant; a simple product gets one invisible default variant
+// with combinationKey = "".
+// Inventory = operational stock, separate from ProductVariant, keyed by
+// (tenant, location, variant). Location is tenant-scoped; V1 uses exactly
+// one default location per tenant (DB-enforced), no warehouse UI yet.
+// VariantOption / VariantOptionValue form a tenant-global, reusable option
+// catalog (e.g. "Color" -> "White"/"Black"), never hard-coded schema fields.
+// ProductOption declares which options a given Product supports — a real
+// domain-integrity table, DB-enforced against ProductVariantOptionValue,
+// not just a UI hint.
+// ProductVariantOptionValue is the join recording which option-values a
+// variant actually has. combinationKey on ProductVariant is a derived,
+// trigger-maintained cache (see the recompute_product_variant_combination_key
+// function + trg_recompute_combination_key trigger, defined in raw SQL in
+// the migration — Prisma has no representation for triggers) used only to
+// enforce "no duplicate option combination per product" via a unique
+// index; the join rows themselves remain the actual source of truth, never
+// the application's own computation.
+//
+// Every tenant-owned table here carries a denormalized tenantId and is
+// wired into composite foreign keys against its immediate parent's
+// (id, tenantId) pair, so a row's tenantId can never drift from its
+// parent's — enforced by Postgres, not application code. See Notion
+// (Development Log, Checkpoint 4F) for the full decision record, including
+// why each of these choices was made and what remains explicitly out of
+// scope (warehouse UI, InventoryReservation, InventoryMovement, stock
+// decrement logic, OrderItem snapshotting, multi-variant admin UI,
+// speculative catalog fields, multi-currency).
 
 enum ProductStatus {
   draft
@@ -86,13 +116,152 @@ model Product {
   id        String        @id @default(uuid())
   tenantId  String
   name      String
-  price     Int // whole VND, no subunits — V1 market is Vietnam-only, no currency field yet
   status    ProductStatus @default(draft)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  variants ProductVariant[]
+  options  ProductOption[]
 
+  @@unique([id, tenantId])
   @@index([tenantId])
   @@map("products")
+}
+
+enum ProductVariantStatus {
+  active
+  archived
+}
+
+model ProductVariant {
+  id             String               @id @default(uuid())
+  tenantId       String
+  productId      String
+  sku            String?
+  price          Int // whole VND, no subunits — V1 market is Vietnam-only, no currency field yet
+  status         ProductVariantStatus @default(active)
+  combinationKey String // trigger-maintained only — see recompute_product_variant_combination_key() in the migration; never written by application code except the initial "" for a zero-option (simple product) variant
+  createdAt      DateTime             @default(now())
+  updatedAt      DateTime             @updatedAt
+
+  product               Product                     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  optionValues          ProductVariantOptionValue[] @relation("PVOV_VariantTenantCheck")
+  optionValuesByProduct ProductVariantOptionValue[] @relation("PVOV_VariantProductCheck")
+  inventory             Inventory[]
+
+  @@unique([tenantId, sku])
+  @@unique([tenantId, productId, combinationKey])
+  @@unique([id, tenantId])
+  @@unique([id, productId])
+  @@index([productId])
+  @@map("product_variants")
+}
+
+model VariantOption {
+  id       String @id @default(uuid())
+  tenantId String
+  name     String // a value ("Color", "Size"), never a schema field
+
+  tenant         Tenant               @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  values         VariantOptionValue[]
+  productOptions ProductOption[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("variant_options")
+}
+
+model VariantOptionValue {
+  id              String @id @default(uuid())
+  tenantId        String
+  variantOptionId String
+  value           String // a value ("White", "36"), never a schema field
+
+  variantOption      VariantOption               @relation(fields: [variantOptionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  variantLinksTenant ProductVariantOptionValue[] @relation("PVOV_TenantCheck")
+  variantLinksOption ProductVariantOptionValue[] @relation("PVOV_OptionCheck")
+
+  @@unique([tenantId, variantOptionId, value])
+  @@unique([id, tenantId])
+  @@unique([id, variantOptionId])
+  @@map("variant_option_values")
+}
+
+model ProductOption {
+  id              String @id @default(uuid())
+  tenantId        String
+  productId       String
+  variantOptionId String
+
+  product       Product                     @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  variantOption VariantOption               @relation(fields: [variantOptionId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  variantLinks  ProductVariantOptionValue[]
+
+  @@unique([productId, variantOptionId])
+  @@index([tenantId])
+  @@map("product_options")
+}
+
+model ProductVariantOptionValue {
+  id                   String @id @default(uuid())
+  tenantId             String
+  productId            String // denormalized from the variant's real product — enables the ProductOption consistency FK below
+  productVariantId     String
+  variantOptionId      String
+  variantOptionValueId String
+
+  productVariant           ProductVariant     @relation("PVOV_VariantTenantCheck", fields: [productVariantId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productVariantProduct    ProductVariant     @relation("PVOV_VariantProductCheck", fields: [productVariantId, productId], references: [id, productId], onDelete: Cascade)
+  productOption            ProductOption      @relation(fields: [productId, variantOptionId], references: [productId, variantOptionId], onDelete: Cascade)
+  variantOptionValueTenant VariantOptionValue @relation("PVOV_TenantCheck", fields: [variantOptionValueId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  variantOptionValueOption VariantOptionValue @relation("PVOV_OptionCheck", fields: [variantOptionValueId, variantOptionId], references: [id, variantOptionId], onDelete: Cascade)
+
+  @@unique([productVariantId, variantOptionId])
+  @@index([tenantId])
+  @@index([variantOptionValueId])
+  @@map("product_variant_option_values")
+}
+
+// Exactly one Location per tenant may have isDefault = true. Prisma's
+// schema DSL cannot express a partial unique constraint, so this is not
+// representable as an @@unique here — it is enforced in the database only
+// via a hand-written partial unique index:
+//   UNIQUE (tenantId) WHERE isDefault = true
+// This index MUST be included in the hand-written migration for this
+// model; it will not be generated by Prisma's schema diffing.
+model Location {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  isDefault Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant    Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  inventory Inventory[]
+
+  @@unique([tenantId, name])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("locations")
+}
+
+model Inventory {
+  id               String   @id @default(uuid())
+  tenantId         String
+  productVariantId String
+  locationId       String
+  onHand           Int      @default(0)
+  reserved         Int      @default(0)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  productVariant ProductVariant @relation(fields: [productVariantId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  location       Location       @relation(fields: [locationId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@unique([tenantId, locationId, productVariantId])
+  @@map("inventory")
 }

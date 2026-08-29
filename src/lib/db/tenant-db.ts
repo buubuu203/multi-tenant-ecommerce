@@ -18,7 +18,9 @@ import { prisma } from "../prisma";
  * covered yet — not used anywhere in V1 today; add them here first if that
  * changes, rather than assuming they're already scoped.
  *
- * Scoped models: domain, branding, product (Checkpoint 4C). Future
+ * Scoped models: domain, branding, product (Checkpoint 4C); productVariant,
+ * variantOption, variantOptionValue, productOption, productVariantOptionValue,
+ * location, inventory (Checkpoint 4F, architecture v4.1). Future
  * tenant-owned models must be added here explicitly — they are not
  * automatically covered just by having a tenantId column.
  */
@@ -94,6 +96,41 @@ export function getScopedDb(tenantId: string) {
         },
       },
       product: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      productVariant: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      variantOption: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      variantOptionValue: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      productOption: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      productVariantOptionValue: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      location: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      inventory: {
         async $allOperations({ operation, args, query }) {
           return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
         },

@@ -64,13 +64,50 @@ async function seedTenant(opts: {
   // the storefront read path has something real to render end-to-end.
   // Not a Product management feature — delete-then-create keeps this
   // idempotent, same pattern already used for the seeded Domain above.
+  // Deleting the Product cascades to its ProductVariant(s) and, in turn,
+  // their Inventory row(s) (both onDelete: Cascade), so no separate
+  // variant/inventory cleanup is needed here.
   await prisma.product.deleteMany({ where: { tenantId: tenant.id } });
-  await prisma.product.create({
+
+  // Architecture v4.1: price now lives on ProductVariant, not Product.
+  // Every product here is a simple/no-options product, so it gets exactly
+  // one variant with combinationKey === "" — same sentinel used by
+  // product-mutations.ts and the v4.1 migration's own backfill.
+  const product = await prisma.product.create({
     data: {
       tenantId: tenant.id,
       name: opts.productName,
+      status: "active",
+    },
+  });
+
+  const variant = await prisma.productVariant.create({
+    data: {
+      tenantId: tenant.id,
+      productId: product.id,
       price: opts.productPrice,
       status: "active",
+      combinationKey: "",
+    },
+  });
+
+  // The default Location is provisioned by the v4.1 migration's own
+  // backfill (one per tenant, enforced unique by the partial index
+  // locations_one_default_per_tenant) — seed.ts does not create one.
+  const defaultLocation = await prisma.location.findFirst({
+    where: { tenantId: tenant.id, isDefault: true },
+  });
+  if (!defaultLocation) {
+    throw new Error(`seed: no default Location found for tenant ${tenant.slug} — has the v4.1 migration been applied?`);
+  }
+
+  await prisma.inventory.create({
+    data: {
+      tenantId: tenant.id,
+      productVariantId: variant.id,
+      locationId: defaultLocation.id,
+      onHand: 0,
+      reserved: 0,
     },
   });
 
