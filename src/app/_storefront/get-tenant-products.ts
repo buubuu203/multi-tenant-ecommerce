@@ -18,5 +18,8 @@ export async function getTenantProducts() {
   return prisma.product.findMany({
     where: { tenantId, status: "active" },
     orderBy: { createdAt: "asc" },
+    include: { variants: true },
   });
 }
+
+export type TenantProduct = Awaited<ReturnType<typeof getTenantProducts>>[number];
