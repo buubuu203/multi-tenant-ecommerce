@@ -5,6 +5,8 @@ import { StorefrontHeader } from "./_storefront/StorefrontHeader";
 import { StorefrontHero } from "./_storefront/StorefrontHero";
 import { ProductList } from "./_storefront/ProductList";
 import { PlatformMessage } from "./_storefront/PlatformMessage";
+import { CartProvider } from "./_storefront/cart-context";
+import { CartWidget } from "./_storefront/CartWidget";
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header). Force dynamic rendering so
@@ -48,12 +50,25 @@ export default async function StorefrontHomePage() {
   const branding = resolveBranding(tenant, tenant.branding);
   const comingSoon = tenant.status === "pending";
   const products = comingSoon ? [] : await getTenantProducts();
+  // Step 39: CartWidget's quantity controls need each variant's current
+  // availability to cap increments (see CartWidget.tsx) — it has no other
+  // access to product data, so this flat id -> available map is passed
+  // down alongside it, built once here from the same `products` ProductList
+  // already receives (no extra fetch).
+  const availabilityByVariant = Object.fromEntries(
+    products.flatMap((product) => product.variants.map((variant) => [variant.id, variant.available])),
+  );
 
   return (
-    <div className="flex flex-1 flex-col">
-      <StorefrontHeader branding={branding} />
-      <StorefrontHero branding={branding} comingSoon={comingSoon} />
-      {!comingSoon && <ProductList products={products} />}
-    </div>
+    <CartProvider>
+      <div className="flex flex-1 flex-col">
+        <div className="flex items-center justify-end gap-2 border-b border-black/10 px-6 py-2 dark:border-white/10">
+          <CartWidget availabilityByVariant={availabilityByVariant} />
+        </div>
+        <StorefrontHeader branding={branding} />
+        <StorefrontHero branding={branding} comingSoon={comingSoon} />
+        {!comingSoon && <ProductList products={products} />}
+      </div>
+    </CartProvider>
   );
 }
