@@ -36,6 +36,9 @@ model Tenant {
   products       Product[]
   variantOptions VariantOption[]
   locations      Location[]
+  orders         Order[]
+  customers      Customer[]
+  payments       Payment[]
 
   @@map("tenants")
 }
@@ -116,6 +119,16 @@ model Product {
   id        String        @id @default(uuid())
   tenantId  String
   name      String
+  // Step 43: optional plain-text description — no Markdown, no HTML, no
+  // rich text, rendered as-is. null means "no description set" (never an
+  // empty string — see product-mutations.ts's validateDescription()).
+  description String?
+  // Step 44: optional externally-hosted image URL — no upload/storage
+  // infrastructure, the merchant supplies a link to an already-hosted
+  // image. null means "no image set" (never an empty string — see
+  // product-mutations.ts's validateImageUrl()). The URL itself is never
+  // fetched/verified server-side.
+  imageUrl  String?
   status    ProductStatus @default(draft)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -149,6 +162,7 @@ model ProductVariant {
   optionValues          ProductVariantOptionValue[] @relation("PVOV_VariantTenantCheck")
   optionValuesByProduct ProductVariantOptionValue[] @relation("PVOV_VariantProductCheck")
   inventory             Inventory[]
+  orderItems            OrderItem[]
 
   @@unique([tenantId, sku])
   @@unique([tenantId, productId, combinationKey])
@@ -264,4 +278,170 @@ model Inventory {
 
   @@unique([tenantId, locationId, productVariantId])
   @@map("inventory")
+}
+
+// --- Order foundation (Checkpoint 4G, Step 28) --------------------------
+//
+// Minimum order-creation model only — no payment, no shipping, no
+// fulfillment lifecycle yet (see Step 29+). Order carries no stored total —
+// always derivable from its OrderItem rows (price * quantity, summed),
+// avoiding a second, independently-mutable copy of data the items already
+// hold.
+//
+// OrderItem.price is a SNAPSHOT of ProductVariant.price at order-creation
+// time, copied once and never updated afterward — a later price change on
+// the variant must never alter a historical order's price. OrderItem
+// references ProductVariant directly (never Product, never a client-side
+// option selection) via a composite FK with onDelete: Restrict — an order
+// item is a historical record; nothing may delete the variant it points
+// to out from under it (same protective reasoning as Inventory->Location).
+
+// Step 36: minimal order status lifecycle. pending -> fulfilled and
+// pending -> cancelled are the only valid transitions (enforced in
+// order-mutations.ts's updateOrderStatus(), not by the database) — both
+// fulfilled and cancelled are terminal, with no transition back to pending
+// and no transition between fulfilled and cancelled. No payment-related or
+// shipping-related status values (paid, shipped, delivered, etc.) exist
+// here — payment state and shipping state are separate concerns, not part
+// of this lifecycle.
+enum OrderStatus {
+  pending
+  fulfilled
+  cancelled
+}
+
+// Step 32: minimal guest-checkout customer identity. NOT an authenticated
+// account — no password, no session, no login. Identity is determined
+// solely by (tenantId, email): the same email checking out again for the
+// same tenant reuses this row (name/phone refreshed to the latest
+// checkout values); email itself is the stable identity key and is never
+// changed by the checkout flow. The same email may belong to different
+// Customer rows across different tenants — this is not a cross-tenant
+// identity, by design.
+model Customer {
+  id        String   @id @default(uuid())
+  tenantId  String
+  email     String
+  name      String
+  phone     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@unique([tenantId, email])
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@map("customers")
+}
+
+// Step 30: the customer's chosen payment method, captured at
+// order-creation time. `cod` is the only functionally complete method —
+// no external call is made, the order simply proceeds as `pending`.
+// `momo` and `bank_transfer` are selectable and recorded now; real gateway
+// integration (API calls, webhooks, payment confirmation) is explicitly
+// out of scope for this step and belongs to a later one. No new
+// OrderStatus values were added for this — payment confirmation, once it
+// exists, is a status-lifecycle concern, not a schema field added here
+// speculatively.
+enum PaymentMethod {
+  cod
+  momo
+  bank_transfer
+}
+
+model Order {
+  id               String        @id @default(uuid())
+  tenantId         String
+  customerId       String
+  status           OrderStatus   @default(pending)
+  paymentMethod    PaymentMethod
+  // Step 34: a delivery-address SNAPSHOT captured at checkout time, the
+  // same convention as OrderItem.price — stored directly on Order (not on
+  // Customer, not a separate Address model, per the approved design), so
+  // a customer's address on file (if ever built later) could change
+  // without altering this order's historical delivery record. No
+  // province/ward IDs, no postal code, no geocoding — plain text fields
+  // only, V1 scope.
+  shippingAddress  String
+  shippingWard     String
+  shippingDistrict String
+  shippingCity     String
+  shippingNote     String?
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
+
+  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items    OrderItem[]
+  // Step 48: at most one Payment per Order (only ever created for
+  // paymentMethod = "momo" — cod/bank_transfer never get a Payment row in
+  // this MVP). Deliberately a separate model/status axis from
+  // OrderStatus — see PaymentStatus below.
+  payment  Payment?
+
+  @@unique([id, tenantId])
+  @@index([tenantId])
+  @@index([customerId])
+  @@map("orders")
+}
+
+model OrderItem {
+  id               String   @id @default(uuid())
+  tenantId         String
+  orderId          String
+  productVariantId String
+  quantity         Int
+  price            Int // snapshot of ProductVariant.price at order-creation time — never live, never re-read
+  createdAt        DateTime @default(now())
+
+  order          Order          @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  productVariant ProductVariant @relation(fields: [productVariantId, tenantId], references: [id, tenantId], onDelete: Restrict)
+
+  @@index([tenantId])
+  @@index([orderId])
+  @@index([productVariantId])
+  @@map("order_items")
+}
+
+// Step 48: MoMo Payment MVP. Deliberately a SEPARATE concept/status axis
+// from OrderStatus (pending/fulfilled/cancelled) — payment succeeding or
+// failing NEVER changes Order.status in this MVP, and OrderStatus
+// transitions (Step 36-37) never read Payment at all. One Payment per
+// Order at most (1:1, enforced by @@unique on orderId), created only when
+// paymentMethod = "momo" — cod/bank_transfer orders never get a Payment
+// row. This is a single-platform-level MoMo merchant account for this
+// MVP (credentials come from environment variables, not per-tenant
+// configuration) — a deliberate scope decision, see momo.ts.
+enum PaymentStatus {
+  pending
+  succeeded
+  failed
+}
+
+model Payment {
+  id       String        @id @default(uuid())
+  tenantId String
+  orderId  String
+  status   PaymentStatus @default(pending)
+  // The exact orderId string sent to MoMo at initiation time (NOT
+  // Order.id directly — a fresh, unguessable per-attempt reference, see
+  // momo.ts) — MoMo's IPN webhook echoes this back, and it is the sole
+  // correlation key used to find this row from a webhook payload. Unique
+  // because each initiation attempt gets its own reference.
+  providerOrderId String     @unique
+  // MoMo's own transaction id, populated once the IPN arrives — null
+  // while status is still pending.
+  providerTransactionId String?
+  amount   Int // VND snapshot of the order total at initiation time
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order  @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([orderId, tenantId])
+  @@index([tenantId])
+  @@map("payments")
 }
