@@ -31,15 +31,25 @@ export type TenantProductVariant = {
   available: number;
 };
 
+export type TenantProductMedia = {
+  id: string;
+  type: "image" | "video";
+  url: string;
+  sortOrder: number;
+};
+
 export type TenantProduct = {
   id: string;
   name: string;
   // Step 43: optional plain-text description, rendered as-is (no
   // Markdown/HTML). null means the merchant hasn't set one.
   description: string | null;
-  // Step 44: optional externally-hosted image URL, rendered as-is. null
-  // means the merchant hasn't set one — never fetched/verified here.
-  imageUrl: string | null;
+  // Step 50: ordered media gallery (replaces Step 44's single imageUrl
+  // field — there is no separate "primary image" field: the first item
+  // (sortOrder 0) IS the primary media everywhere the app needs one, per
+  // the approved design's "don't duplicate the URL into multiple places"
+  // rule. Empty array means no media set.
+  media: TenantProductMedia[];
   variants: TenantProductVariant[];
 };
 
@@ -74,6 +84,7 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
           where: { status: { not: "archived" } },
           include: { optionValues: true },
         },
+        media: { orderBy: { sortOrder: "asc" } },
       },
     }),
     prisma.variantOption.findMany({ where: { tenantId } }),
@@ -104,7 +115,7 @@ type RawTenantProduct = {
   id: string;
   name: string;
   description: string | null;
-  imageUrl: string | null;
+  media: { id: string; type: string; url: string; sortOrder: number }[];
   variants: {
     id: string;
     price: number;
@@ -124,7 +135,7 @@ function mapTenantProduct(
     id: product.id,
     name: product.name,
     description: product.description,
-    imageUrl: product.imageUrl,
+    media: product.media.map((m) => ({ id: m.id, type: m.type as "image" | "video", url: m.url, sortOrder: m.sortOrder })),
     variants: product.variants.map((variant) => ({
       id: variant.id,
       price: variant.price,
@@ -167,6 +178,7 @@ export async function getTenantProduct(productId: string): Promise<TenantProduct
         where: { status: { not: "archived" } },
         include: { optionValues: true },
       },
+      media: { orderBy: { sortOrder: "asc" } },
     },
   });
   if (!product) {

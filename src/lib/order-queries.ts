@@ -255,7 +255,12 @@ export async function getOrderForCustomer(
       items: {
         include: {
           productVariant: {
-            include: { product: true, optionValues: true },
+            include: {
+              // Step 50: only the primary (sortOrder 0) media item — this
+              // is a thumbnail on an order line, not a full gallery.
+              product: { include: { media: { where: { sortOrder: 0 }, take: 1 } } },
+              optionValues: true,
+            },
           },
         },
       },
@@ -287,7 +292,7 @@ export async function getOrderForCustomer(
 
   const items: CustomerOrderItem[] = order.items.map((item) => ({
     productName: item.productVariant.product.name,
-    imageUrl: item.productVariant.product.imageUrl,
+    imageUrl: item.productVariant.product.media[0]?.url ?? null,
     combinationLabel: formatCombination(item.productVariant.optionValues, optionNameById, valueLabelById),
     quantity: item.quantity,
     unitPrice: item.price,

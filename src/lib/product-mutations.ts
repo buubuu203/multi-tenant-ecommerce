@@ -1,6 +1,7 @@
 import { getScopedDb } from "./db/tenant-db";
 import type { ActionResult } from "./action-result";
 import { runVariantGeneration, VariantGenerationError } from "./variant-generation";
+import { MAX_MEDIA_ITEMS, MAX_IMAGES, MAX_VIDEOS, type MediaKind } from "./blob-storage";
 
 const VALID_STATUSES = ["draft", "active"] as const;
 type ProductStatusInput = (typeof VALID_STATUSES)[number];
@@ -13,10 +14,14 @@ export type ProductInput = {
   // whitespace-only becomes `null` (see validateDescription()), never an
   // empty string.
   description?: string;
-  // Step 44: optional externally-hosted image URL — never fetched/
-  // verified server-side. Omitted or whitespace-only becomes `null` (see
-  // validateImageUrl()), never an empty string.
-  imageUrl?: string;
+  // Step 50: already-uploaded media (via uploadProductMediaAction/
+  // uploadProductMediaFile — see blob-storage.ts) to attach at creation
+  // time, in display order. Optional here (the shared foundation used by
+  // BOTH the manual-creation form AND CSV import — CSV products are
+  // explicitly allowed to have zero media, Step 50 §10) — the "at least
+  // one media item required" rule for manual creation is enforced one
+  // layer up, in the Tenant Admin action, not here.
+  media?: { url: string; type: MediaKind }[];
   // Optional: ids of existing, tenant-owned VariantOptions to declare and
   // generate real variants for at creation time. Omitted/empty keeps the
   // existing simple-product path unchanged. Never trusted blindly — each
@@ -37,29 +42,33 @@ function validateDescription(description: string | undefined): string | null {
   return trimmed || null;
 }
 
-// Basic format check only — never fetched/verified. Whitespace-only or
-// omitted becomes `null`, same "no value" discipline as
-// validateDescription(). Requires an http(s) URL; anything else is
-// rejected with a clear error rather than silently stored as garbage.
-function validateImageUrl(imageUrl: string | undefined): { value: string | null } | { error: string } {
-  const trimmed = (imageUrl ?? "").trim();
-  if (!trimmed) {
-    return { value: null };
+// Step 50: authoritative limit check on the media array — this is the
+// real enforcement point (the Tenant Admin UI also checks client-side for
+// immediate feedback, but that is UX only, same "server remains
+// authoritative" rule as everywhere else in this codebase). Does not
+// verify the URLs themselves point at this tenant's blob namespace —
+// they were only ever produced by uploadProductMediaFile() in the same
+// request flow (see tenant-admin/actions.ts), never accepted as arbitrary
+// client-supplied strings.
+function validateMedia(media: { url: string; type: MediaKind }[] | undefined): { error: string } | null {
+  const items = media ?? [];
+  if (items.length > MAX_MEDIA_ITEMS) {
+    return { error: `A product can have at most ${MAX_MEDIA_ITEMS} media items.` };
   }
-  try {
-    const parsed = new URL(trimmed);
-    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
-      return { error: "Image URL must start with http:// or https://." };
-    }
-  } catch {
-    return { error: "Image URL is not a valid URL." };
+  const imageCount = items.filter((m) => m.type === "image").length;
+  const videoCount = items.filter((m) => m.type === "video").length;
+  if (imageCount > MAX_IMAGES) {
+    return { error: `A product can have at most ${MAX_IMAGES} images.` };
   }
-  return { value: trimmed };
+  if (videoCount > MAX_VIDEOS) {
+    return { error: `A product can have at most ${MAX_VIDEOS} videos.` };
+  }
+  return null;
 }
 
 function validateProductInput(
   input: ProductInput,
-): { name: string; price: number; status: ProductStatusInput; description: string | null; imageUrl: string | null } | { error: string } {
+): { name: string; price: number; status: ProductStatusInput; description: string | null } | { error: string } {
   const name = input.name.trim();
   if (!name) {
     return { error: "Name is required." };
@@ -79,12 +88,12 @@ function validateProductInput(
 
   const description = validateDescription(input.description);
 
-  const imageUrlResult = validateImageUrl(input.imageUrl);
-  if ("error" in imageUrlResult) {
-    return { error: imageUrlResult.error };
+  const mediaError = validateMedia(input.media);
+  if (mediaError) {
+    return { error: mediaError.error };
   }
 
-  return { name, price, status: input.status as ProductStatusInput, description, imageUrl: imageUrlResult.value };
+  return { name, price, status: input.status as ProductStatusInput, description };
 }
 
 // Architecture v4.1 (Checkpoint 4F): Product no longer carries price —
@@ -99,6 +108,26 @@ function validateProductInput(
 // this UI yet, so there is nothing else it could correctly map to.
 function toVariantStatus(): "active" {
   return "active";
+}
+
+// Step 50: shared by both createProduct() paths (simple + variant-bearing)
+// so the media-row-creation logic exists exactly once. sortOrder is
+// derived purely from array position — the caller (Tenant Admin UI) is
+// responsible for handing media in the order it should display, sortOrder
+// 0 becoming the primary/first item everywhere the app reads it.
+async function createProductMediaRowsInTx(
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- tx type varies by call site (simple vs variant-bearing transaction), both structurally support productMedia.create
+  tx: any,
+  tenantId: string,
+  productId: string,
+  media: { url: string; type: MediaKind }[] | undefined,
+): Promise<void> {
+  const items = media ?? [];
+  for (let i = 0; i < items.length; i++) {
+    await tx.productMedia.create({
+      data: { tenantId, productId, type: items[i].type, url: items[i].url, sortOrder: i },
+    });
+  }
 }
 
 /**
@@ -152,8 +181,10 @@ export async function createProduct(
     if (variantOptionIds.length === 0) {
       const productId = await db.$transaction(async (tx) => {
         const product = await tx.product.create({
-          data: { name: validated.name, status: validated.status, description: validated.description, imageUrl: validated.imageUrl, tenantId },
+          data: { name: validated.name, status: validated.status, description: validated.description, tenantId },
         });
+
+        await createProductMediaRowsInTx(tx, tenantId, product.id, input.media);
 
         const variant = await tx.productVariant.create({
           data: {
@@ -183,8 +214,10 @@ export async function createProduct(
 
     const productId = await db.$transaction(async (tx) => {
       const product = await tx.product.create({
-        data: { name: validated.name, status: validated.status, description: validated.description, imageUrl: validated.imageUrl, tenantId },
+        data: { name: validated.name, status: validated.status, description: validated.description, tenantId },
       });
+
+      await createProductMediaRowsInTx(tx, tenantId, product.id, input.media);
 
       for (const variantOptionId of variantOptionIds) {
         // Never trust a caller-supplied id directly into a write — verify
@@ -253,7 +286,7 @@ export async function updateProduct(
 
       await tx.product.update({
         where: { id: productId },
-        data: { name: validated.name, status: validated.status, description: validated.description, imageUrl: validated.imageUrl },
+        data: { name: validated.name, status: validated.status, description: validated.description },
       });
 
       const activeVariants = await tx.productVariant.findMany({

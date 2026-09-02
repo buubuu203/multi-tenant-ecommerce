@@ -4,6 +4,7 @@ import { useMemo, useState } from "react";
 import Link from "next/link";
 import type { TenantProduct, TenantProductVariant } from "./get-tenant-products";
 import { useCart } from "./cart-context";
+import { ProductMediaCarousel } from "./ProductMediaCarousel";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
@@ -115,6 +116,24 @@ export function applySelection(
 // second implementation. `linkToDetail` defaults to true (used by the
 // list); the detail page passes false so the product isn't linked to
 // itself.
+// Step 50: a plain thumbnail for the list-card context — the full
+// carousel (ProductMediaCarousel) is reserved for the detail page. A
+// video's thumbnail is the video element itself (muted, no controls,
+// paused) with a play-indicator overlay, matching the same convention
+// used in Tenant Admin's ProductMediaGallery previews.
+export function MediaThumbnail({ media, alt }: { media: { type: "image" | "video"; url: string }; alt: string }) {
+  if (media.type === "image") {
+    // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP
+    return <img src={media.url} alt={alt} className="w-full rounded object-cover" />;
+  }
+  return (
+    <div className="relative">
+      <video src={media.url} muted className="w-full rounded object-cover" />
+      <span className="absolute inset-0 flex items-center justify-center text-2xl text-white">▶</span>
+    </div>
+  );
+}
+
 export function ProductRow({ product, linkToDetail = true }: { product: TenantProduct; linkToDetail?: boolean }) {
   // Simple-product path: unchanged from before this step — a product with
   // exactly one variant carrying the combinationKey === "" sentinel (the
@@ -154,6 +173,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
 
   const resolvedVariant = simpleVariant ?? resolveVariant(product.variants, selection, optionIds);
   const hasCompleteSelection = optionIds.length > 0 && optionIds.every((id) => selection[id]);
+  // Step 50: sortOrder 0 IS the primary media everywhere the app needs
+  // one — media is already returned pre-sorted by get-tenant-products.ts.
+  const primaryMedia = product.media[0];
 
   // Step 39: stock unavailability is a SEPARATE concept from combination
   // unavailability (Step 25) — the variant genuinely exists here
@@ -219,26 +241,26 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       productName: product.name,
       variantLabel,
       price: resolvedVariant.price,
-      imageUrl: product.imageUrl ?? undefined,
+      imageUrl: primaryMedia?.url,
     });
   }
 
   return (
     <li className="flex flex-col gap-2 rounded border px-3 py-2 text-sm">
-      {/* Step 44: externally-hosted image URL, rendered as-is — no upload,
-          no optimization/CDN, no placeholder when absent. Plain <img>
-          (not next/image) is deliberate: next/image requires configuring
-          allowed remote hosts, which is exactly the kind of infrastructure
-          this MVP is not building. */}
-      {product.imageUrl &&
+      {/* Step 50: on the product list card (linkToDetail=true) show only
+          the primary (first) media item as a thumbnail, linked to the
+          detail page — the full carousel belongs on the detail page
+          itself (linkToDetail=false), where every media item is
+          reachable. Deliberately the ONLY inventory-adjacent number never
+          duplicated here: this reads product.media directly, not a
+          separate "primary image" field. */}
+      {primaryMedia &&
         (linkToDetail ? (
           <Link href={`/products/${product.id}`}>
-            {/* eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP, see comment above */}
-            <img src={product.imageUrl} alt={product.name} className="w-full rounded object-cover" />
+            <MediaThumbnail media={primaryMedia} alt={product.name} />
           </Link>
         ) : (
-          // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP, see comment above
-          <img src={product.imageUrl} alt={product.name} className="w-full rounded object-cover" />
+          <ProductMediaCarousel media={product.media} productName={product.name} />
         ))}
 
       <div className="flex items-center justify-between">
