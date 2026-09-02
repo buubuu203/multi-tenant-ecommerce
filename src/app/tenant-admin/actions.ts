@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { updateBranding } from "@/lib/branding-mutations";
 import { createProduct, updateProduct } from "@/lib/product-mutations";
+import { uploadProductMediaFile, deleteProductMediaFile, type MediaKind } from "@/lib/blob-storage";
+import { addProductMedia, removeProductMedia, reorderProductMedia } from "@/lib/product-media-mutations";
 import { importProductsFromCsv, type ImportSummary } from "@/lib/product-csv";
 import { createVariantOption } from "@/lib/variant-option-mutations";
 import { createVariantOptionValue, deleteVariantOptionValue } from "@/lib/variant-option-value-mutations";
@@ -52,14 +54,150 @@ export async function createProductAction(
 ): Promise<ActionResult<{ productId: string }>> {
   const { tenantId } = await requireTenantAdmin();
 
+  // Step 50: at least one media item is required for a manually-created
+  // product (CSV import remains media-optional — see product-csv.ts,
+  // unchanged — createProduct() itself never enforces this, only this
+  // manual-form action does).
+  let media: { url: string; type: MediaKind }[];
+  try {
+    media = JSON.parse(String(formData.get("media") ?? "[]"));
+  } catch {
+    return { success: false, error: "Invalid media payload." };
+  }
+  if (media.length === 0) {
+    return { success: false, error: "At least one product image or video is required." };
+  }
+
   const result = await createProduct(tenantId, {
     name: String(formData.get("name") ?? ""),
     price: String(formData.get("price") ?? ""),
     status: String(formData.get("status") ?? ""),
     description: String(formData.get("description") ?? ""),
-    imageUrl: String(formData.get("imageUrl") ?? ""),
+    media,
   });
 
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  } else {
+    // The media files named in `media` were already uploaded to Blob by
+    // earlier uploadProductMediaAction calls (before this form was ever
+    // submitted) — if the product itself fails to create (validation
+    // error, variant generation failure, etc.), no ProductMedia row ever
+    // gets created to reference them, so they'd otherwise be orphaned
+    // forever. Best-effort: a failed cleanup here must not mask the real
+    // error being returned to the caller.
+    for (const item of media) {
+      try {
+        await deleteProductMediaFile(tenantId, item.url);
+      } catch (e) {
+        console.error("createProductAction: orphaned blob cleanup failed:", e);
+      }
+    }
+  }
+  return result;
+}
+
+// Step 50: uploads exactly one file to this tenant's Vercel Blob
+// namespace. Called imperatively from the client (not via a <form
+// action=...> submit) as soon as a file is selected, so the Tenant Admin
+// UI can show per-file upload progress before the product itself is
+// created. Returns only the resulting public URL + classified type —
+// never any storage credential, which never reaches the browser at all.
+export async function uploadProductMediaAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string; type: MediaKind }>> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const file = formData.get("file");
+  if (!(file instanceof File)) {
+    return { success: false, error: "No file provided." };
+  }
+
+  const result = await uploadProductMediaFile(tenantId, file);
+  if ("error" in result) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result };
+}
+
+// Cleans up a file the admin uploaded but then removed from the gallery
+// before submitting the "Add product" form — otherwise it would be an
+// orphaned blob with no ProductMedia row ever pointing at it. Best-effort:
+// deleteProductMediaFile() already scopes by tenantId in the blob path.
+export async function deleteUploadedProductMediaAction(formData: FormData): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const url = String(formData.get("url") ?? "");
+  if (!url) {
+    return { success: false, error: "No URL provided." };
+  }
+  try {
+    await deleteProductMediaFile(tenantId, url);
+  } catch (e) {
+    console.error("deleteUploadedProductMediaAction: blob delete failed:", e);
+  }
+  return { success: true, data: undefined };
+}
+
+// --- Product media on an EXISTING product (edit-time) -------------------
+// Same rule as every action in this file: tenantId comes exclusively from
+// requireTenantAdmin(); productId/mediaId are the only client-supplied
+// identifiers, and product-media-mutations.ts independently re-verifies
+// tenant ownership of both the product and the media row before writing
+// anything.
+
+export async function addProductMediaAction(formData: FormData): Promise<ActionResult<{ ids: string[] }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const productId = String(formData.get("productId") ?? "");
+  let media: { url: string; type: MediaKind }[];
+  try {
+    media = JSON.parse(String(formData.get("media") ?? "[]"));
+  } catch {
+    return { success: false, error: "Invalid media payload." };
+  }
+  const result = await addProductMedia(tenantId, productId, media);
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  } else {
+    // Same orphaned-blob concern as createProductAction above: `media`
+    // was already uploaded to Blob before this call (imperatively, per
+    // file, from ProductMediaGallery) — if addProductMedia rejects it
+    // (limit exceeded, product not found), no ProductMedia row exists to
+    // reference it, so it must be cleaned up here instead.
+    for (const item of media) {
+      try {
+        await deleteProductMediaFile(tenantId, item.url);
+      } catch (e) {
+        console.error("addProductMediaAction: orphaned blob cleanup failed:", e);
+      }
+    }
+  }
+  return result;
+}
+
+export async function removeProductMediaAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const productId = String(formData.get("productId") ?? "");
+  const mediaId = String(formData.get("mediaId") ?? "");
+  const result = await removeProductMedia(tenantId, productId, mediaId);
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+export async function reorderProductMediaAction(formData: FormData): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const productId = String(formData.get("productId") ?? "");
+  let orderedMediaIds: string[];
+  try {
+    orderedMediaIds = JSON.parse(String(formData.get("orderedMediaIds") ?? "[]"));
+  } catch {
+    return { success: false, error: "Invalid order payload." };
+  }
+  const result = await reorderProductMedia(tenantId, productId, orderedMediaIds);
   if (result.success) {
     revalidatePath("/tenant-admin");
   }
@@ -101,7 +239,6 @@ export async function updateProductAction(
     price: String(formData.get("price") ?? ""),
     status: String(formData.get("status") ?? ""),
     description: String(formData.get("description") ?? ""),
-    imageUrl: String(formData.get("imageUrl") ?? ""),
   });
 
   if (result.success) {

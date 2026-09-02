@@ -17,6 +17,7 @@ import {
   adjustInventoryOnHandAction,
 } from "./actions";
 import { ImportProductsForm } from "./ImportProductsForm";
+import { ProductMediaGallery } from "./ProductMediaGallery";
 import { OrderStatusForm } from "./OrderStatusForm";
 import { listOrders } from "@/lib/order-queries";
 
@@ -112,7 +113,10 @@ export default async function TenantAdminHomePage() {
   const products = await db.product.findMany({
     where: { tenantId },
     orderBy: { createdAt: "asc" },
-    include: { variants: { include: { optionValues: true } } },
+    include: {
+      variants: { include: { optionValues: true } },
+      media: { orderBy: { sortOrder: "asc" } },
+    },
   });
 
   // Variant Options data: fetched once here (not via a UI-side loop of the
@@ -295,7 +299,8 @@ export default async function TenantAdminHomePage() {
         <div className="flex flex-col gap-2">
           <h3 className="text-sm font-medium">Import Products (CSV)</h3>
           <p className="text-xs text-black/60 dark:text-white/60">
-            Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
+            CSV import supports: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
+            Media can be added after import from the product editor below.
           </p>
           <ImportProductsForm action={importProductsAction} />
         </div>
@@ -317,10 +322,7 @@ export default async function TenantAdminHomePage() {
             Description (optional)
             <textarea name="description" rows={3} className="rounded border px-2 py-1" />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Image URL (optional)
-            <input name="imageUrl" placeholder="https://…" className="rounded border px-2 py-1" />
-          </label>
+          <ProductMediaGallery />
           <label className="flex flex-col gap-1 text-sm">
             Status
             <select name="status" defaultValue="draft" className="rounded border px-2 py-1">
@@ -395,16 +397,14 @@ export default async function TenantAdminHomePage() {
                       className="rounded border px-2 py-1"
                     />
                   </label>
-                  <label className="flex w-full flex-col gap-1">
-                    Image URL (optional)
-                    <input
-                      name="imageUrl"
-                      placeholder="https://…"
-                      defaultValue={product.imageUrl ?? ""}
-                      className="rounded border px-2 py-1"
-                    />
-                  </label>
                 </ActionForm>
+
+                <div className="border-t pt-2">
+                  <ProductMediaGallery
+                    productId={product.id}
+                    initialMedia={product.media.map((m) => ({ id: m.id, type: m.type, url: m.url }))}
+                  />
+                </div>
 
                 {simpleVariant && (
                   <div className="border-t pt-2">
