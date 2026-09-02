@@ -39,6 +39,7 @@ model Tenant {
   orders         Order[]
   customers      Customer[]
   payments       Payment[]
+  productMedia   ProductMedia[]
 
   @@map("tenants")
 }
@@ -123,12 +124,6 @@ model Product {
   // rich text, rendered as-is. null means "no description set" (never an
   // empty string — see product-mutations.ts's validateDescription()).
   description String?
-  // Step 44: optional externally-hosted image URL — no upload/storage
-  // infrastructure, the merchant supplies a link to an already-hosted
-  // image. null means "no image set" (never an empty string — see
-  // product-mutations.ts's validateImageUrl()). The URL itself is never
-  // fetched/verified server-side.
-  imageUrl  String?
   status    ProductStatus @default(draft)
   createdAt DateTime      @default(now())
   updatedAt DateTime      @updatedAt
@@ -136,10 +131,45 @@ model Product {
   tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   variants ProductVariant[]
   options  ProductOption[]
+  // Step 50: replaces the old single Product.imageUrl field (Step 44) —
+  // one product can now have many media items (images and/or videos),
+  // ordered by sortOrder. imageUrl is dropped entirely by this migration,
+  // not kept alongside media, to avoid two competing sources of truth for
+  // "the product's picture."
+  media    ProductMedia[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("products")
+}
+
+enum ProductMediaType {
+  image
+  video
+}
+
+// Step 50: uploaded via Vercel Blob (see product-media-mutations.ts) — url
+// is the public Blob URL returned at upload time, never a client-supplied
+// arbitrary string (unlike the old imageUrl field, which trusted a
+// merchant-pasted link; this is now our own storage). sortOrder = 0 is the
+// primary/first media item, used anywhere the app previously read
+// Product.imageUrl (storefront cards, detail hero, cart, order views).
+model ProductMedia {
+  id        String           @id @default(uuid())
+  tenantId  String
+  productId String
+  type      ProductMediaType
+  url       String
+  sortOrder Int
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@index([productId])
+  @@map("product_media")
 }
 
 enum ProductVariantStatus {
