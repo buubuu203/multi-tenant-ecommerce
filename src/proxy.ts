@@ -49,6 +49,35 @@ import { isPlatformRoute } from "@/lib/platform-routes";
 // a config value read by clerkMiddleware itself, not a routing/authz
 // decision — no auth.protect() or role logic is added here.
 
+// PREVIEW-ONLY FALLBACK: Vercel Preview deployments get a randomly generated
+// *.vercel.app hostname each time, which is never registered as a Domain row
+// (and never should be — Domain rows model real merchant storefront domains,
+// not ephemeral deployment URLs). Without this, every Preview deployment's
+// tenant-owned routes are permanently unreachable ("store not found"), even
+// though the real pilot tenant's data is right there in the Preview
+// database. Rather than fake a Domain row (which would misrepresent a real
+// data model as owning a domain it doesn't) or duplicate the tenant, this
+// resolves an explicitly configured tenant slug as the fallback, gated on
+// BOTH:
+//   - process.env.VERCEL_ENV === "preview" — set by the Vercel platform
+//     itself per deployment target, not attacker/request-controlled, so a
+//     spoofed Host header against the Production deployment can never
+//     trigger this (VERCEL_ENV there is always "production").
+//   - PREVIEW_DEFAULT_TENANT_SLUG being explicitly set — only ever added to
+//     the Preview environment in Vercel, never Production. Its absence
+//     (e.g. local dev, where VERCEL_ENV is unset anyway) is a no-op.
+// A real Domain match, when one exists, is always tried first and always
+// wins — this is a fallback for the "no Domain row matched" case only.
+async function resolvePreviewFallbackTenant() {
+  if (process.env.VERCEL_ENV !== "preview" || !process.env.PREVIEW_DEFAULT_TENANT_SLUG) {
+    return null;
+  }
+  return prisma.tenant.findUnique({
+    where: { slug: process.env.PREVIEW_DEFAULT_TENANT_SLUG },
+    select: { id: true, status: true },
+  });
+}
+
 export default clerkMiddleware(
   async (_auth, request: NextRequest) => {
     if (isPlatformRoute(request.nextUrl.pathname)) {
@@ -66,13 +95,15 @@ export default clerkMiddleware(
       },
     });
 
-    if (!domain) {
+    const tenant = domain?.tenant ?? (await resolvePreviewFallbackTenant());
+
+    if (!tenant) {
       return NextResponse.rewrite(new URL("/store-not-found", request.url));
     }
 
     const requestHeaders = new Headers(request.headers);
-    requestHeaders.set("x-tenant-id", domain.tenant.id);
-    requestHeaders.set("x-tenant-status", domain.tenant.status);
+    requestHeaders.set("x-tenant-id", tenant.id);
+    requestHeaders.set("x-tenant-status", tenant.status);
 
     return NextResponse.next({
       request: { headers: requestHeaders },
