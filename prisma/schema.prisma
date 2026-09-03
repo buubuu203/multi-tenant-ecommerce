@@ -71,6 +71,14 @@ model Branding {
   faviconUrl     String?
   primaryColor   String?
   secondaryColor String?
+  // Manual bank transfer details the merchant configures themselves —
+  // displayed to a customer at checkout/order-confirmation time whenever
+  // they chose paymentMethod = "bank_transfer" (see checkout-actions.ts,
+  // order-queries.ts). No gateway integration: this is plain instructional
+  // text, never verified/reconciled against any actual transfer.
+  bankName            String?
+  bankAccountNumber   String?
+  bankAccountHolder   String?
   updatedAt      DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

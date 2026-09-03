@@ -37,6 +37,9 @@ export async function updateBrandingAction(
     faviconUrl: String(formData.get("faviconUrl") ?? ""),
     primaryColor: String(formData.get("primaryColor") ?? ""),
     secondaryColor: String(formData.get("secondaryColor") ?? ""),
+    bankName: String(formData.get("bankName") ?? ""),
+    bankAccountNumber: String(formData.get("bankAccountNumber") ?? ""),
+    bankAccountHolder: String(formData.get("bankAccountHolder") ?? ""),
   });
 
   if (result.success) {

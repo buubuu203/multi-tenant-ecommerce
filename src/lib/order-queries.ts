@@ -1,4 +1,5 @@
 import { getScopedDb } from "./db/tenant-db";
+import { getBankTransferInfo, type BankTransferInfo } from "./bank-transfer-info";
 
 // Purpose-built, read-only shapes — never leak the raw Prisma Order/
 // OrderItem/ProductVariant models into the UI. combinationLabel is built
@@ -206,6 +207,11 @@ export type CustomerOrderView = {
   shippingDistrict: string;
   shippingCity: string;
   shippingNote: string | null;
+  // Non-null only when paymentMethod is "bank_transfer" AND the tenant has
+  // fully configured their bank details (see bank-transfer-info.ts) — a
+  // customer returning to check this order later still sees how to pay,
+  // not just at the moment of checkout.
+  bankTransferInfo: BankTransferInfo | null;
 };
 
 /**
@@ -299,6 +305,8 @@ export async function getOrderForCustomer(
     lineTotal: item.price * item.quantity,
   }));
 
+  const bankTransferInfo = order.paymentMethod === "bank_transfer" ? await getBankTransferInfo(tenantId) : null;
+
   return {
     id: order.id,
     status: order.status,
@@ -312,5 +320,6 @@ export async function getOrderForCustomer(
     shippingDistrict: order.shippingDistrict,
     shippingCity: order.shippingCity,
     shippingNote: order.shippingNote,
+    bankTransferInfo,
   };
 }
