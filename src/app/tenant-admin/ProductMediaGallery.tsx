@@ -185,11 +185,11 @@ export function ProductMediaGallery({
 
   return (
     <div className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Product media</h4>
-      <p className="text-xs text-black/60 dark:text-white/60">
+      <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Product media</h4>
+      <p className="text-xs text-muted-foreground">
         Upload up to {MAX_MEDIA_ITEMS} files — Max {MAX_IMAGES} images · Max {MAX_VIDEOS} videos
       </p>
-      <p className="text-xs text-black/60 dark:text-white/60">
+      <p className="text-xs text-muted-foreground">
         Images: JPG, PNG, WebP (max 10MB) · Videos: MP4, WebM (max 100MB)
       </p>
 
@@ -199,27 +199,27 @@ export function ProductMediaGallery({
       {mode === "create" && <input type="hidden" name="media" value={mediaJson} />}
 
       {items.length === 0 ? (
-        <p className="text-xs text-black/60 dark:text-white/60">No media added yet.</p>
+        <p className="text-xs text-muted-foreground">No media added yet.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {items.map((item, index) => (
-            <div key={item.key} className="relative flex h-20 w-20 flex-col items-center justify-center rounded border">
+            <div key={item.key} className="relative flex h-20 w-20 flex-col items-center justify-center rounded-md border border-border">
               {item.type === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-                <img src={item.url} alt="" className="h-full w-full rounded object-cover" />
+                <img src={item.url} alt="" className="h-full w-full rounded-md object-cover" />
               ) : (
                 <div className="relative h-full w-full">
-                  <video src={item.url} className="h-full w-full rounded object-cover" muted />
+                  <video src={item.url} className="h-full w-full rounded-md object-cover" muted />
                   <span className="absolute inset-0 flex items-center justify-center text-lg text-white">▶</span>
                 </div>
               )}
               {item.uploading && (
-                <span className="absolute inset-0 flex items-center justify-center rounded bg-black/50 text-[10px] text-white">
+                <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50 text-[10px] text-white">
                   Uploading…
                 </span>
               )}
               {item.error && (
-                <span className="absolute inset-0 flex items-center justify-center rounded bg-red-600/80 p-1 text-center text-[9px] text-white">
+                <span className="absolute inset-0 flex items-center justify-center rounded-md bg-red-600/80 p-1 text-center text-[9px] text-white">
                   {item.error}
                 </span>
               )}
@@ -227,12 +227,12 @@ export function ProductMediaGallery({
                 type="button"
                 onClick={() => handleRemove(item)}
                 aria-label="Remove media"
-                className="absolute right-0 top-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/70 text-xs text-white"
+                className="absolute top-0 right-0 flex h-5 w-5 items-center justify-center rounded-bl bg-black/70 text-xs text-white"
               >
                 ×
               </button>
               {!item.error && (
-                <div className="absolute bottom-0 left-0 right-0 flex justify-between bg-black/50 px-1">
+                <div className="absolute right-0 bottom-0 left-0 flex justify-between bg-black/50 px-1">
                   <button
                     type="button"
                     onClick={() => moveItem(index, -1)}
@@ -259,12 +259,12 @@ export function ProductMediaGallery({
       )}
 
       {formError && <p className="text-xs text-red-600">{formError}</p>}
-      {anyUploading && <p className="text-xs text-black/60 dark:text-white/60">Uploading…</p>}
+      {anyUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
 
       <button
         type="button"
         onClick={() => fileInputRef.current?.click()}
-        className="w-fit rounded border px-2 py-1 text-xs"
+        className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-muted"
       >
         + Upload media
       </button>

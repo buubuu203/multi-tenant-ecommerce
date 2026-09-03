@@ -46,7 +46,7 @@ export function OrderStatusForm({
       <button
         type="submit"
         disabled={pending}
-        className="rounded border px-2 py-0.5 text-xs disabled:opacity-50"
+        className="rounded-md border border-border px-2.5 py-1 text-xs transition-colors hover:bg-surface-muted disabled:opacity-50"
       >
         {label}
       </button>

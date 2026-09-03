@@ -21,6 +21,7 @@ import { CreateProductForm } from "./CreateProductForm";
 import { OrderStatusForm } from "./OrderStatusForm";
 import { listOrders } from "@/lib/order-queries";
 import { PRODUCT_STATUSES } from "./product-status";
+import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "./styles";
 
 export const dynamic = "force-dynamic";
 
@@ -82,12 +83,12 @@ function StockControl({
       className="flex flex-wrap items-end gap-2"
     >
       <input type="hidden" name="productVariantId" value={productVariantId} />
-      <span className="pb-1.5 text-xs text-black/60 dark:text-white/60">
+      <span className="pb-1.5 text-xs text-muted-foreground">
         On hand: {inventory.onHand} · Reserved: {inventory.reserved} · Available: {available}
       </span>
-      <label className="flex flex-col gap-1">
+      <label className={adminLabelClassName}>
         Adjust by
-        <input name="adjustment" inputMode="numeric" placeholder="+10 or -3" className="w-24 rounded border px-2 py-1" />
+        <input name="adjustment" inputMode="numeric" placeholder="+10 or -3" className={`w-24 ${adminInputClassName}`} />
       </label>
     </ActionForm>
   );
@@ -158,10 +159,10 @@ export default async function TenantAdminHomePage() {
   const orders = await listOrders(tenantId);
 
   return (
-    <main className="flex flex-1 flex-col gap-8 px-6 py-16">
-      <div>
-        <h1 className="text-2xl font-semibold">Tenant Admin</h1>
-        <p className="text-black/70 dark:text-white/70">
+    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
+        <p className="text-sm text-muted-foreground">
           You are managing {tenant?.name ?? "(unknown tenant)"}.
         </p>
         {primaryDomain && (
@@ -169,82 +170,84 @@ export default async function TenantAdminHomePage() {
             href={`http://${primaryDomain.hostname}:3000/`}
             target="_blank"
             rel="noreferrer"
-            className="text-sm underline"
+            className="w-fit text-sm text-muted-foreground underline transition-colors hover:text-foreground"
           >
             View storefront ↗
           </a>
         )}
       </div>
 
-      <section className="flex flex-col gap-2">
-        <h2 className="text-lg font-medium">Branding</h2>
+      <section className={adminSectionClassName}>
+        <h2 className="text-lg font-medium tracking-tight">Branding</h2>
         <ActionForm
           action={updateBrandingAction}
           submitLabel="Save branding"
-          className="flex max-w-md flex-col gap-2"
+          className="flex max-w-md flex-col gap-3"
         >
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Store name
             <input
               name="storeName"
               defaultValue={branding?.storeName ?? ""}
               placeholder={tenant?.name}
-              className="rounded border px-2 py-1"
+              className={adminInputClassName}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Logo URL
             <input
               name="logoUrl"
               defaultValue={branding?.logoUrl ?? ""}
               placeholder="https://..."
-              className="rounded border px-2 py-1"
+              className={adminInputClassName}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Favicon URL
             <input
               name="faviconUrl"
               defaultValue={branding?.faviconUrl ?? ""}
               placeholder="https://..."
-              className="rounded border px-2 py-1"
+              className={adminInputClassName}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Primary color
             <input
               name="primaryColor"
               defaultValue={branding?.primaryColor ?? ""}
               placeholder="#3b3b3b"
-              className="rounded border px-2 py-1"
+              className={adminInputClassName}
             />
           </label>
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Secondary color
             <input
               name="secondaryColor"
               defaultValue={branding?.secondaryColor ?? ""}
               placeholder="#8a8a8a"
-              className="rounded border px-2 py-1"
+              className={adminInputClassName}
             />
           </label>
         </ActionForm>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Variant Options</h2>
-        <p className="text-xs text-black/60 dark:text-white/60">
-          Reusable option types (e.g. Color, Size) shared across every product for this store.
-        </p>
+      <section className={adminSectionClassName}>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-medium tracking-tight">Variant Options</h2>
+          <p className="text-xs text-muted-foreground">
+            Reusable option types (e.g. Color, Size) shared across every product for this store.
+          </p>
+        </div>
 
         <ActionForm
           action={createVariantOptionAction}
           submitLabel="Add option"
-          className="flex max-w-md flex-col gap-2"
+          className="flex max-w-md flex-col gap-3"
         >
-          <label className="flex flex-col gap-1 text-sm">
+          <label className={adminLabelClassName}>
             Option name
-            <input name="name" placeholder="Color" className="rounded border px-2 py-1" />
+            <input name="name" placeholder="Color" className={adminInputClassName} />
           </label>
         </ActionForm>
 
@@ -252,52 +255,51 @@ export default async function TenantAdminHomePage() {
           {variantOptions.map((option) => {
             const values = valuesByOption.get(option.id) ?? [];
             return (
-              <div key={option.id} className="rounded border p-3 text-sm">
+              <div key={option.id} className={adminCardClassName}>
                 <h3 className="font-medium">{option.name}</h3>
-                <div className="mt-2 flex flex-col gap-1">
+                <div className="flex flex-col gap-1">
                   {values.map((value) => (
-                    <div key={value.id} className="flex items-center justify-between gap-2 rounded border px-2 py-1">
+                    <div
+                      key={value.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
+                    >
                       <span>{value.value}</span>
                       <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete">
                         <input type="hidden" name="variantOptionValueId" value={value.id} />
                       </ActionForm>
                     </div>
                   ))}
-                  {values.length === 0 && (
-                    <p className="text-xs text-black/60 dark:text-white/60">No values yet.</p>
-                  )}
+                  {values.length === 0 && <p className="text-xs text-muted-foreground">No values yet.</p>}
                 </div>
                 {values.length > 0 && (
-                  <p className="mt-2 text-xs text-amber-700 dark:text-amber-500">
+                  <p className="text-xs text-amber-700 dark:text-amber-500">
                     Deleting a value also removes it from any product variants that used it.
                   </p>
                 )}
                 <ActionForm
                   action={createVariantOptionValueAction}
                   submitLabel="Add value"
-                  className="mt-2 flex items-end gap-2"
+                  className="flex items-end gap-2"
                 >
                   <input type="hidden" name="variantOptionId" value={option.id} />
-                  <label className="flex flex-col gap-1">
+                  <label className={adminLabelClassName}>
                     Value
-                    <input name="value" placeholder="White" className="rounded border px-2 py-1" />
+                    <input name="value" placeholder="White" className={adminInputClassName} />
                   </label>
                 </ActionForm>
               </div>
             );
           })}
-          {variantOptions.length === 0 && (
-            <p className="text-sm text-black/60 dark:text-white/60">No variant options yet.</p>
-          )}
+          {variantOptions.length === 0 && <p className="text-sm text-muted-foreground">No variant options yet.</p>}
         </div>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Products</h2>
+      <section className={adminSectionClassName}>
+        <h2 className="text-lg font-medium tracking-tight">Products</h2>
 
-        <div className="flex flex-col gap-2">
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
           <h3 className="text-sm font-medium">Import Products (CSV)</h3>
-          <p className="text-xs text-black/60 dark:text-white/60">
+          <p className="text-xs text-muted-foreground">
             CSV import supports: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
             Media can be added after import from the product editor below.
           </p>
@@ -324,21 +326,21 @@ export default async function TenantAdminHomePage() {
             const availableOptions = variantOptions.filter((o) => !assignedOptionIds.has(o.id));
 
             return (
-              <div key={product.id} className="flex flex-col gap-3 rounded border p-3 text-sm">
+              <div key={product.id} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 text-sm">
                 <ActionForm action={updateProductAction} submitLabel="Save" className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="productId" value={product.id} />
-                  <label className="flex flex-col gap-1">
+                  <label className={adminLabelClassName}>
                     Name
-                    <input name="name" defaultValue={product.name} className="rounded border px-2 py-1" />
+                    <input name="name" defaultValue={product.name} className={adminInputClassName} />
                   </label>
                   {simpleVariant ? (
-                    <label className="flex flex-col gap-1">
+                    <label className={adminLabelClassName}>
                       Price (VND)
                       <input
                         name="price"
                         inputMode="numeric"
                         defaultValue={String(simpleVariant.price)}
-                        className="rounded border px-2 py-1"
+                        className={adminInputClassName}
                       />
                     </label>
                   ) : (
@@ -349,9 +351,9 @@ export default async function TenantAdminHomePage() {
                     // so a harmless placeholder is submitted and ignored.
                     <input type="hidden" name="price" value="0" />
                   )}
-                  <label className="flex flex-col gap-1">
+                  <label className={adminLabelClassName}>
                     Status
-                    <select name="status" defaultValue={product.status} className="rounded border px-2 py-1">
+                    <select name="status" defaultValue={product.status} className={adminInputClassName}>
                       {PRODUCT_STATUSES.map((status) => (
                         <option key={status} value={status}>
                           {status}
@@ -359,18 +361,18 @@ export default async function TenantAdminHomePage() {
                       ))}
                     </select>
                   </label>
-                  <label className="flex w-full flex-col gap-1">
+                  <label className={`w-full ${adminLabelClassName}`}>
                     Description (optional)
                     <textarea
                       name="description"
                       rows={2}
                       defaultValue={product.description ?? ""}
-                      className="rounded border px-2 py-1"
+                      className={adminInputClassName}
                     />
                   </label>
                 </ActionForm>
 
-                <div className="border-t pt-2">
+                <div className="border-t border-border pt-3">
                   <ProductMediaGallery
                     productId={product.id}
                     initialMedia={product.media.map((m) => ({ id: m.id, type: m.type, url: m.url }))}
@@ -378,20 +380,23 @@ export default async function TenantAdminHomePage() {
                 </div>
 
                 {simpleVariant && (
-                  <div className="border-t pt-2">
-                    <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Stock</h4>
+                  <div className="border-t border-border pt-3">
+                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Stock</h4>
                     <StockControl productVariantId={simpleVariant.id} inventory={inventoryByVariant.get(simpleVariant.id)} />
                   </div>
                 )}
 
-                <div className="flex flex-col gap-2 border-t pt-2">
-                  <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Options</h4>
+                <div className="flex flex-col gap-2 border-t border-border pt-3">
+                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Options</h4>
                   {assignedOptions.length === 0 ? (
-                    <p className="text-xs text-black/60 dark:text-white/60">No options assigned — simple product.</p>
+                    <p className="text-xs text-muted-foreground">No options assigned — simple product.</p>
                   ) : (
                     <div className="flex flex-col gap-1">
                       {assignedOptions.map((po) => (
-                        <div key={po.id} className="flex items-center justify-between gap-2 rounded border px-2 py-1">
+                        <div
+                          key={po.id}
+                          className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
+                        >
                           <span>{optionNameById.get(po.variantOptionId) ?? "(unknown option)"}</span>
                           <ActionForm action={removeProductOptionAction} submitLabel="Remove">
                             <input type="hidden" name="productOptionId" value={po.id} />
@@ -410,9 +415,9 @@ export default async function TenantAdminHomePage() {
                       className="flex items-end gap-2"
                     >
                       <input type="hidden" name="productId" value={product.id} />
-                      <label className="flex flex-col gap-1">
+                      <label className={adminLabelClassName}>
                         Option
-                        <select name="variantOptionId" className="rounded border px-2 py-1">
+                        <select name="variantOptionId" className={adminInputClassName}>
                           {availableOptions.map((o) => (
                             <option key={o.id} value={o.id}>
                               {o.name}
@@ -425,97 +430,103 @@ export default async function TenantAdminHomePage() {
                 </div>
 
                 {assignedOptions.length > 0 && (
-                  <div className="flex flex-col gap-2 border-t pt-2">
-                    <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Variants</h4>
+                  <div className="flex flex-col gap-2 border-t border-border pt-3">
+                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Variants</h4>
                     <ActionForm
                       action={generateVariantsAction}
                       submitLabel="Generate variants"
                       className="flex items-end gap-2"
                     >
                       <input type="hidden" name="productId" value={product.id} />
-                      <label className="flex flex-col gap-1">
+                      <label className={adminLabelClassName}>
                         Starting price (VND)
-                        <input name="defaultPrice" inputMode="numeric" placeholder="100000" className="rounded border px-2 py-1" />
+                        <input name="defaultPrice" inputMode="numeric" placeholder="100000" className={adminInputClassName} />
                       </label>
                     </ActionForm>
 
                     {!simpleVariant && activeVariants.length > 0 && (
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="border-b">
-                            <th className="py-1 pr-2 font-medium">Combination</th>
-                            <th className="py-1 pr-2 font-medium">SKU</th>
-                            <th className="py-1 pr-2 font-medium">Price</th>
-                            <th className="py-1 pr-2 font-medium">Status</th>
-                            <th className="py-1 font-medium">Actions</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {activeVariants.map((variant) => (
-                            <tr key={variant.id} className="border-b last:border-0">
-                              <td className="py-1 pr-2 align-top">{formatCombination(variant, optionNameById, valueLabelById)}</td>
-                              <td colSpan={4} className="py-1">
-                                <ActionForm
-                                  action={updateProductVariantAction}
-                                  submitLabel="Save"
-                                  className="flex flex-wrap items-end gap-2"
-                                >
-                                  <input type="hidden" name="productVariantId" value={variant.id} />
-                                  <label className="flex flex-col gap-1">
-                                    SKU
-                                    <input
-                                      name="sku"
-                                      defaultValue={variant.sku ?? ""}
-                                      placeholder="(none)"
-                                      className="w-32 rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <label className="flex flex-col gap-1">
-                                    Price (VND)
-                                    <input
-                                      name="price"
-                                      inputMode="numeric"
-                                      defaultValue={String(variant.price)}
-                                      className="w-28 rounded border px-2 py-1"
-                                    />
-                                  </label>
-                                  <span className="pb-1.5">{variant.status}</span>
-                                </ActionForm>
-                                <div className="mt-1">
-                                  <StockControl productVariantId={variant.id} inventory={inventoryByVariant.get(variant.id)} />
-                                </div>
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    )}
-
-                    {archivedVariantsByProduct.get(product.id)?.length ? (
-                      <details className="mt-2">
-                        <summary className="cursor-pointer text-xs font-medium text-black/60 dark:text-white/60">
-                          Archived variants ({archivedVariantsByProduct.get(product.id)?.length})
-                        </summary>
-                        <table className="mt-1 w-full text-left text-xs">
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-left text-xs">
                           <thead>
-                            <tr className="border-b">
-                              <th className="py-1 pr-2 font-medium">Combination</th>
-                              <th className="py-1 pr-2 font-medium">SKU</th>
-                              <th className="py-1 pr-2 font-medium">Price</th>
-                              <th className="py-1 font-medium">Status</th>
+                            <tr className="border-b border-border">
+                              <th className="py-1.5 pr-2 font-medium">Combination</th>
+                              <th className="py-1.5 pr-2 font-medium">SKU</th>
+                              <th className="py-1.5 pr-2 font-medium">Price</th>
+                              <th className="py-1.5 pr-2 font-medium">Status</th>
+                              <th className="py-1.5 font-medium">Actions</th>
                             </tr>
                           </thead>
                           <tbody>
-                            {archivedVariantsByProduct.get(product.id)?.map((variant) => (
-                              <tr key={variant.id} className="border-b text-black/60 last:border-0 dark:text-white/60">
-                                <td className="py-1 pr-2">{formatCombination(variant, optionNameById, valueLabelById)}</td>
-                                <td className="py-1 pr-2">{variant.sku ?? "(none)"}</td>
-                                <td className="py-1 pr-2">{variant.price.toLocaleString("vi-VN")} ₫</td>
-                                <td className="py-1">Archived</td>
+                            {activeVariants.map((variant) => (
+                              <tr key={variant.id} className="border-b border-border last:border-0">
+                                <td className="py-1.5 pr-2 align-top">
+                                  {formatCombination(variant, optionNameById, valueLabelById)}
+                                </td>
+                                <td colSpan={4} className="py-1.5">
+                                  <ActionForm
+                                    action={updateProductVariantAction}
+                                    submitLabel="Save"
+                                    className="flex flex-wrap items-end gap-2"
+                                  >
+                                    <input type="hidden" name="productVariantId" value={variant.id} />
+                                    <label className={adminLabelClassName}>
+                                      SKU
+                                      <input
+                                        name="sku"
+                                        defaultValue={variant.sku ?? ""}
+                                        placeholder="(none)"
+                                        className={`w-32 ${adminInputClassName}`}
+                                      />
+                                    </label>
+                                    <label className={adminLabelClassName}>
+                                      Price (VND)
+                                      <input
+                                        name="price"
+                                        inputMode="numeric"
+                                        defaultValue={String(variant.price)}
+                                        className={`w-28 ${adminInputClassName}`}
+                                      />
+                                    </label>
+                                    <span className="pb-1.5 text-muted-foreground">{variant.status}</span>
+                                  </ActionForm>
+                                  <div className="mt-1">
+                                    <StockControl productVariantId={variant.id} inventory={inventoryByVariant.get(variant.id)} />
+                                  </div>
+                                </td>
                               </tr>
                             ))}
                           </tbody>
                         </table>
+                      </div>
+                    )}
+
+                    {archivedVariantsByProduct.get(product.id)?.length ? (
+                      <details className="mt-1">
+                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                          Archived variants ({archivedVariantsByProduct.get(product.id)?.length})
+                        </summary>
+                        <div className="mt-1 overflow-x-auto">
+                          <table className="w-full text-left text-xs">
+                            <thead>
+                              <tr className="border-b border-border">
+                                <th className="py-1.5 pr-2 font-medium">Combination</th>
+                                <th className="py-1.5 pr-2 font-medium">SKU</th>
+                                <th className="py-1.5 pr-2 font-medium">Price</th>
+                                <th className="py-1.5 font-medium">Status</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {archivedVariantsByProduct.get(product.id)?.map((variant) => (
+                                <tr key={variant.id} className="border-b border-border text-muted-foreground last:border-0">
+                                  <td className="py-1.5 pr-2">{formatCombination(variant, optionNameById, valueLabelById)}</td>
+                                  <td className="py-1.5 pr-2">{variant.sku ?? "(none)"}</td>
+                                  <td className="py-1.5 pr-2">{variant.price.toLocaleString("vi-VN")} ₫</td>
+                                  <td className="py-1.5">Archived</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       </details>
                     ) : null}
                   </div>
@@ -523,22 +534,20 @@ export default async function TenantAdminHomePage() {
               </div>
             );
           })}
-          {products.length === 0 && (
-            <p className="text-sm text-black/60 dark:text-white/60">No products yet.</p>
-          )}
+          {products.length === 0 && <p className="text-sm text-muted-foreground">No products yet.</p>}
         </div>
       </section>
 
-      <section className="flex flex-col gap-4">
-        <h2 className="text-lg font-medium">Orders</h2>
+      <section className={adminSectionClassName}>
+        <h2 className="text-lg font-medium tracking-tight">Orders</h2>
 
         <div className="flex flex-col gap-3">
           {orders.map((order) => (
-            <div key={order.id} className="rounded border p-3 text-sm">
+            <div key={order.id} className="rounded-lg border border-border bg-surface p-4 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-xs">Order {order.id}</span>
-                <span className="rounded-full border px-2 py-0.5 text-xs capitalize">{order.status}</span>
-                <span className="text-xs text-black/60 dark:text-white/60">
+                <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{order.status}</span>
+                <span className="text-xs text-muted-foreground">
                   {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
                 </span>
                 {/* Step 49: business-level payment state — null for
@@ -549,14 +558,14 @@ export default async function TenantAdminHomePage() {
                   <span
                     className={
                       order.paymentStatus === "failed"
-                        ? "rounded-full border px-2 py-0.5 text-xs capitalize text-red-600"
-                        : "rounded-full border px-2 py-0.5 text-xs capitalize"
+                        ? "rounded-full border border-border px-2 py-0.5 text-xs capitalize text-red-600"
+                        : "rounded-full border border-border px-2 py-0.5 text-xs capitalize"
                     }
                   >
                     Payment: {order.paymentStatus}
                   </span>
                 )}
-                <span className="text-xs text-black/60 dark:text-white/60">
+                <span className="text-xs text-muted-foreground">
                   {order.itemCount} item{order.itemCount === 1 ? "" : "s"}
                 </span>
                 <span className="font-mono text-xs">{formatVnd(order.total)}</span>
@@ -577,58 +586,56 @@ export default async function TenantAdminHomePage() {
                   </div>
                 )}
               </div>
-              <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+              <p className="mt-1 text-xs text-muted-foreground">
                 {order.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
               </p>
 
-              <div className="mt-2 border-t pt-2">
-                <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Customer</h4>
-                <p className="text-xs">{order.customer.name}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">{order.customer.email}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">{order.customer.phone}</p>
+              <div className="mt-3 border-t border-border pt-3">
+                <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Customer</h4>
+                <p className="mt-1 text-xs">{order.customer.name}</p>
+                <p className="text-xs text-muted-foreground">{order.customer.email}</p>
+                <p className="text-xs text-muted-foreground">{order.customer.phone}</p>
               </div>
 
-              <div className="mt-2 border-t pt-2">
-                <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Shipping address</h4>
-                <p className="text-xs">{order.shippingAddress}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">{order.shippingWard}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">{order.shippingDistrict}</p>
-                <p className="text-xs text-black/60 dark:text-white/60">{order.shippingCity}</p>
-                {order.shippingNote && (
-                  <p className="text-xs text-black/60 dark:text-white/60">Note: {order.shippingNote}</p>
-                )}
+              <div className="mt-3 border-t border-border pt-3">
+                <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
+                <p className="mt-1 text-xs">{order.shippingAddress}</p>
+                <p className="text-xs text-muted-foreground">{order.shippingWard}</p>
+                <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
+                <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
+                {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
               </div>
 
-              <table className="mt-3 w-full text-left text-xs">
-                <thead>
-                  <tr className="border-b">
-                    <th className="py-1 pr-2 font-medium">Item</th>
-                    <th className="py-1 pr-2 font-medium">Qty</th>
-                    <th className="py-1 pr-2 font-medium">Unit price</th>
-                    <th className="py-1 font-medium">Line total</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {order.items.map((item) => (
-                    <tr key={item.id} className="border-b last:border-0">
-                      <td className="py-1 pr-2">
-                        {item.productName}
-                        {item.combinationLabel && (
-                          <span className="text-black/60 dark:text-white/60"> — {item.combinationLabel}</span>
-                        )}
-                      </td>
-                      <td className="py-1 pr-2">{item.quantity}</td>
-                      <td className="py-1 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
-                      <td className="py-1 font-mono">{formatVnd(item.lineTotal)}</td>
+              <div className="mt-3 overflow-x-auto border-t border-border pt-3">
+                <table className="w-full text-left text-xs">
+                  <thead>
+                    <tr className="border-b border-border">
+                      <th className="py-1.5 pr-2 font-medium">Item</th>
+                      <th className="py-1.5 pr-2 font-medium">Qty</th>
+                      <th className="py-1.5 pr-2 font-medium">Unit price</th>
+                      <th className="py-1.5 font-medium">Line total</th>
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {order.items.map((item) => (
+                      <tr key={item.id} className="border-b border-border last:border-0">
+                        <td className="py-1.5 pr-2">
+                          {item.productName}
+                          {item.combinationLabel && (
+                            <span className="text-muted-foreground"> — {item.combinationLabel}</span>
+                          )}
+                        </td>
+                        <td className="py-1.5 pr-2">{item.quantity}</td>
+                        <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+                        <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
             </div>
           ))}
-          {orders.length === 0 && (
-            <p className="text-sm text-black/60 dark:text-white/60">No orders yet.</p>
-          )}
+          {orders.length === 0 && <p className="text-sm text-muted-foreground">No orders yet.</p>}
         </div>
       </section>
     </main>
