@@ -20,11 +20,11 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 
 function OrderDetails({ order }: { order: CustomerOrderView }) {
   return (
-    <div className="mt-4 rounded border p-3 text-sm">
+    <div className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">Order {order.id}</span>
-        <span className="rounded-full border px-2 py-0.5 text-xs capitalize">{order.status}</span>
-        <span className="text-xs text-black/60 dark:text-white/60">
+        <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{order.status}</span>
+        <span className="text-xs text-muted-foreground">
           {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
         </span>
         {/* Step 49: lets the customer tell whether they still need to pay
@@ -34,65 +34,65 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
           <span
             className={
               order.paymentStatus === "failed"
-                ? "rounded-full border px-2 py-0.5 text-xs capitalize text-red-600"
-                : "rounded-full border px-2 py-0.5 text-xs capitalize"
+                ? "rounded-full border border-border px-2 py-0.5 text-xs capitalize text-red-600"
+                : "rounded-full border border-border px-2 py-0.5 text-xs capitalize"
             }
           >
             Payment: {order.paymentStatus}
           </span>
         )}
       </div>
-      <p className="mt-1 text-xs text-black/60 dark:text-white/60">
+      <p className="mt-1 text-xs text-muted-foreground">
         {order.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
       </p>
 
-      <div className="mt-2 border-t pt-2">
-        <h4 className="text-xs font-medium uppercase text-black/60 dark:text-white/60">Shipping address</h4>
-        <p className="text-xs">{order.shippingAddress}</p>
-        <p className="text-xs text-black/60 dark:text-white/60">
+      <div className="mt-3 border-t border-border pt-3">
+        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
+        <p className="mt-1 text-xs">{order.shippingAddress}</p>
+        <p className="text-xs text-muted-foreground">
           {order.shippingWard}, {order.shippingDistrict}, {order.shippingCity}
         </p>
-        {order.shippingNote && <p className="text-xs text-black/60 dark:text-white/60">Note: {order.shippingNote}</p>}
+        {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
       </div>
 
       <table className="mt-3 w-full text-left text-xs">
         <thead>
-          <tr className="border-b">
-            <th className="py-1 pr-2 font-medium">Item</th>
-            <th className="py-1 pr-2 font-medium">Qty</th>
-            <th className="py-1 pr-2 font-medium">Unit price</th>
-            <th className="py-1 font-medium">Line total</th>
+          <tr className="border-b border-border">
+            <th className="py-1.5 pr-2 font-medium">Item</th>
+            <th className="py-1.5 pr-2 font-medium">Qty</th>
+            <th className="py-1.5 pr-2 font-medium">Unit price</th>
+            <th className="py-1.5 font-medium">Line total</th>
           </tr>
         </thead>
         <tbody>
           {order.items.map((item, i) => (
-            <tr key={i} className="border-b last:border-0">
-              <td className="py-1 pr-2">
+            <tr key={i} className="border-b border-border last:border-0">
+              <td className="py-1.5 pr-2">
                 <div className="flex items-center gap-2">
                   {/* Step 47: same display-only posture as the rest of this
                       row — the product's current image, not a snapshot. */}
                   {item.imageUrl && (
                     // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-                    <img src={item.imageUrl} alt={item.productName} className="h-8 w-8 rounded object-cover" />
+                    <img src={item.imageUrl} alt={item.productName} className="h-8 w-8 rounded-md object-cover" />
                   )}
                   <span>
                     {item.productName}
                     {item.combinationLabel && (
-                      <span className="text-black/60 dark:text-white/60"> — {item.combinationLabel}</span>
+                      <span className="text-muted-foreground"> — {item.combinationLabel}</span>
                     )}
                   </span>
                 </div>
               </td>
-              <td className="py-1 pr-2">{item.quantity}</td>
-              <td className="py-1 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
-              <td className="py-1 font-mono">{formatVnd(item.lineTotal)}</td>
+              <td className="py-1.5 pr-2">{item.quantity}</td>
+              <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+              <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
             </tr>
           ))}
         </tbody>
       </table>
 
-      <div className="mt-2 flex items-center justify-between border-t pt-2 text-xs">
-        <span className="text-black/60 dark:text-white/60">Total</span>
+      <div className="mt-2 flex items-center justify-between border-t border-border pt-3 text-xs">
+        <span className="text-muted-foreground">Total</span>
         <span className="font-mono">{formatVnd(order.total)}</span>
       </div>
     </div>
@@ -110,23 +110,30 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
 
   return (
     <div>
-      <form action={formAction} className="flex flex-wrap items-end gap-2 text-sm">
+      <form action={formAction} className="flex flex-wrap items-end gap-3 text-sm">
         {fixedOrderId ? (
           <input type="hidden" name="orderId" value={fixedOrderId} />
         ) : (
           <label className="flex flex-col gap-1">
             Order ID
-            <input name="orderId" className="rounded border px-2 py-1" />
+            <input
+              name="orderId"
+              className="rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+            />
           </label>
         )}
         <label className="flex flex-col gap-1">
           Email used at checkout
-          <input type="email" name="email" className="rounded border px-2 py-1" />
+          <input
+            type="email"
+            name="email"
+            className="rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+          />
         </label>
         <button
           type="submit"
           disabled={pending}
-          className="rounded bg-black px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {pending ? "Looking up…" : "View order"}
         </button>

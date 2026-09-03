@@ -62,12 +62,16 @@ export default async function StorefrontHomePage() {
   return (
     <CartProvider>
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-end gap-2 border-b border-black/10 px-6 py-2 dark:border-white/10">
+        <div className="flex items-center justify-end gap-2 border-b border-border bg-surface-muted px-6 py-2">
           <CartWidget availabilityByVariant={availabilityByVariant} />
         </div>
         <StorefrontHeader branding={branding} />
         <StorefrontHero branding={branding} comingSoon={comingSoon} />
-        {!comingSoon && <ProductList products={products} />}
+        {!comingSoon && (
+          <div className="mx-auto w-full max-w-6xl">
+            <ProductList products={products} />
+          </div>
+        )}
       </div>
     </CartProvider>
   );

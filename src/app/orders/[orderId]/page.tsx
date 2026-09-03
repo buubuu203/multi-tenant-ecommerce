@@ -17,10 +17,10 @@ export default async function OrderConfirmationPage({
   const { orderId } = await params;
 
   return (
-    <main className="flex flex-1 flex-col gap-4 px-6 py-16">
-      <div>
-        <h1 className="text-2xl font-semibold">Your order</h1>
-        <p className="text-black/70 dark:text-white/70">
+    <main className="mx-auto flex w-full max-w-xl flex-1 flex-col gap-6 px-6 py-16">
+      <div className="flex flex-col gap-1">
+        <h1 className="text-2xl font-semibold tracking-tight">Your order</h1>
+        <p className="text-sm text-muted-foreground">
           Enter the email you used at checkout to view order <span className="font-mono">{orderId}</span>.
         </p>
       </div>

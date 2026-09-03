@@ -5,7 +5,7 @@ export function StorefrontHeader({ branding }: { branding: ResolvedBranding }) {
 
   return (
     <header
-      className="flex items-center gap-3 px-6 py-4 border-b border-black/10 dark:border-white/10"
+      className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/80 px-6 py-4 backdrop-blur-sm"
       style={{ borderBottomColor: branding.secondaryColor }}
     >
       {branding.logoUrl ? (
@@ -18,13 +18,13 @@ export function StorefrontHeader({ branding }: { branding: ResolvedBranding }) {
       ) : (
         <div
           aria-hidden
-          className="flex h-10 w-10 items-center justify-center rounded-full text-white font-semibold"
+          className="flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold text-white"
           style={{ backgroundColor: branding.primaryColor }}
         >
           {initial}
         </div>
       )}
-      <span className="text-lg font-semibold">{branding.storeName}</span>
+      <span className="text-lg font-semibold tracking-tight">{branding.storeName}</span>
     </header>
   );
 }
