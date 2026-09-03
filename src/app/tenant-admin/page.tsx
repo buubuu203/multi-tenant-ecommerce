@@ -325,8 +325,40 @@ export default async function TenantAdminHomePage() {
             const assignedOptionIds = new Set(assignedOptions.map((po) => po.variantOptionId));
             const availableOptions = variantOptions.filter((o) => !assignedOptionIds.has(o.id));
 
+            const primaryMedia = product.media[0];
+            const summaryPrice = simpleVariant
+              ? formatVnd(simpleVariant.price)
+              : `${activeVariants.length} variant${activeVariants.length === 1 ? "" : "s"}`;
+
             return (
-              <div key={product.id} className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-4 text-sm">
+              // Step 50 (revised): collapsed by default — a merchant with
+              // many products previously had every product's full editor
+              // (media gallery, stock, options, variant table) expanded
+              // and stacked at once, making the list unusable past a
+              // handful of products. <details>/<summary> needs no client
+              // JS and keeps each product's full edit form exactly as it
+              // was, just hidden until opened.
+              <details key={product.id} className="group rounded-lg border border-border bg-surface text-sm">
+                <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
+                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted">
+                    {primaryMedia ? (
+                      primaryMedia.type === "image" ? (
+                        // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see storefront ProductList.tsx
+                        <img src={primaryMedia.url} alt="" className="h-full w-full object-cover" />
+                      ) : (
+                        <video src={primaryMedia.url} muted className="h-full w-full object-cover" />
+                      )
+                    ) : (
+                      <span className="text-xs text-muted-foreground">—</span>
+                    )}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{product.name}</span>
+                  <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">{summaryPrice}</span>
+                  <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{product.status}</span>
+                  <span className="text-muted-foreground transition-transform group-open:rotate-90">›</span>
+                </summary>
+
+                <div className="flex flex-col gap-3 border-t border-border p-4">
                 <ActionForm action={updateProductAction} submitLabel="Save" className="flex flex-wrap items-end gap-2">
                   <input type="hidden" name="productId" value={product.id} />
                   <label className={adminLabelClassName}>
@@ -531,7 +563,8 @@ export default async function TenantAdminHomePage() {
                     ) : null}
                   </div>
                 )}
-              </div>
+                </div>
+              </details>
             );
           })}
           {products.length === 0 && <p className="text-sm text-muted-foreground">No products yet.</p>}
