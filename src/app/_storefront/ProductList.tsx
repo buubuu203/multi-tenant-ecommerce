@@ -124,12 +124,12 @@ export function applySelection(
 export function MediaThumbnail({ media, alt }: { media: { type: "image" | "video"; url: string }; alt: string }) {
   if (media.type === "image") {
     // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP
-    return <img src={media.url} alt={alt} className="w-full rounded object-cover" />;
+    return <img src={media.url} alt={alt} className="aspect-square w-full rounded-md object-cover" />;
   }
   return (
-    <div className="relative">
-      <video src={media.url} muted className="w-full rounded object-cover" />
-      <span className="absolute inset-0 flex items-center justify-center text-2xl text-white">▶</span>
+    <div className="relative aspect-square w-full overflow-hidden rounded-md">
+      <video src={media.url} muted className="h-full w-full object-cover" />
+      <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-2xl text-white">▶</span>
     </div>
   );
 }
@@ -246,7 +246,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   }
 
   return (
-    <li className="flex flex-col gap-2 rounded border px-3 py-2 text-sm">
+    <li className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 text-sm transition-shadow hover:shadow-sm">
       {/* Step 50: on the product list card (linkToDetail=true) show only
           the primary (first) media item as a thumbnail, linked to the
           detail page — the full carousel belongs on the detail page
@@ -256,31 +256,31 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           separate "primary image" field. */}
       {primaryMedia &&
         (linkToDetail ? (
-          <Link href={`/products/${product.id}`}>
+          <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-md bg-surface-muted">
             <MediaThumbnail media={primaryMedia} alt={product.name} />
           </Link>
         ) : (
           <ProductMediaCarousel media={product.media} productName={product.name} />
         ))}
 
-      <div className="flex items-center justify-between">
-        {linkToDetail ? (
-          <Link href={`/products/${product.id}`} className="hover:underline">
-            {product.name}
-          </Link>
-        ) : (
-          <span>{product.name}</span>
-        )}
-        <span className="flex items-baseline gap-2">
-          {lowStockHint && <span className="text-xs text-black/60 dark:text-white/60">{lowStockHint}</span>}
-          <span className="font-mono">{priceDisplay}</span>
-        </span>
+      <div className="flex flex-col gap-1">
+        <div className="flex items-start justify-between gap-2">
+          {linkToDetail ? (
+            <Link href={`/products/${product.id}`} className="font-medium hover:underline">
+              {product.name}
+            </Link>
+          ) : (
+            <span className="font-medium">{product.name}</span>
+          )}
+          <span className="font-mono text-sm whitespace-nowrap">{priceDisplay}</span>
+        </div>
+        {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
       </div>
 
       {/* Step 43: plain-text only, rendered as-is — no Markdown/HTML. Only
           when a description is actually set; renders nothing otherwise. */}
       {product.description && (
-        <p className="text-xs text-black/60 dark:text-white/60">{product.description}</p>
+        <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
       )}
 
       {!simpleVariant && options.length > 0 && (
@@ -289,9 +289,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
             const annotatedValues = getAvailableValues(product.variants, option.variantOptionId, option.values, selection);
             return (
               <label key={option.variantOptionId} className="flex flex-col gap-1">
-                {option.optionName}
+                <span className="text-muted-foreground">{option.optionName}</span>
                 <select
-                  className="rounded border px-2 py-1"
+                  className="rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
                   value={selection[option.variantOptionId] ?? ""}
                   onChange={(e) =>
                     setSelection((prev) => applySelection(product.variants, prev, option.variantOptionId, e.target.value))
@@ -315,12 +315,12 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         </div>
       )}
 
-      <div>
+      <div className="mt-1">
         <button
           type="button"
           onClick={handleAddToCart}
           disabled={!resolvedVariant || outOfStock || atAvailableLimit}
-          className="rounded bg-black px-3 py-1 text-xs text-white disabled:opacity-50 dark:bg-white dark:text-black"
+          className="w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {addToCartLabel}
         </button>
@@ -335,9 +335,9 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
   }
 
   return (
-    <section className="flex flex-col gap-3 px-6 py-12">
-      <h2 className="text-lg font-medium">Products</h2>
-      <ul className="flex flex-col gap-2">
+    <section className="flex flex-col gap-4 px-6 py-12 sm:py-16">
+      <h2 className="text-lg font-medium tracking-tight">Products</h2>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
         {products.map((product) => (
           <ProductRow key={product.id} product={product} />
         ))}
