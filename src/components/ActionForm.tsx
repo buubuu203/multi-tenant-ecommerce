@@ -29,7 +29,11 @@ export function ActionForm<T>({
   return (
     <form action={formAction} className={className}>
       {children}
-      <button type="submit" disabled={pending || disabled} className="rounded bg-black px-3 py-1 text-sm text-white disabled:opacity-50 dark:bg-white dark:text-black">
+      <button
+        type="submit"
+        disabled={pending || disabled}
+        className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+      >
         {submitLabel}
       </button>
       {state && !state.success && <p className="text-sm text-red-600">{state.error}</p>}
