@@ -18,23 +18,33 @@ export type WebhookProcessResult =
  * body field, or any client-supplied value. This function never reads a
  * `tenantId` off the incoming request.
  *
- * Steps, in order:
+ * Steps, in order (per the approved correction — PaymentEvent represents
+ * an event this system has ACCEPTED, not merely received; nothing gets
+ * recorded until every validation step has passed):
  *   1. provider.handleWebhook() — verifies signature/timestamp BEFORE
- *      ever parsing the payload for business use (each provider adapter
- *      owns this ordering internally).
+ *      ever parsing the payload for business use, and rejects anything
+ *      that isn't a real inbound-payment-relevant event (e.g. SePay's
+ *      outbound-transfer case) — each provider adapter owns this.
  *   2. Find the Payment by providerOrderId. Unknown -> reject, no read
  *      or write beyond the lookup itself.
- *   3. Insert PaymentEvent keyed on (provider, providerEventId) — the
- *      unique constraint is the FIRST, DB-enforced dedupe layer. A
- *      genuine duplicate webhook hits a unique-violation here and this
- *      function treats it as an already-processed success (no
- *      reprocessing, no error surfaced to the provider — providers retry
- *      on anything other than a clean success response).
- *   4. V1 exact-payment policy: if the provider reported "succeeded" but
- *      the verified amount doesn't match Payment.amount, this is
- *      downgraded to a rejection — a wrong-amount transfer must NEVER
- *      transition Payment to succeeded, partial or otherwise (partial
- *      payment support is explicitly out of scope for V1).
+ *   3. If the provider reported "succeeded", the verified amount MUST
+ *      equal Payment.amount, checked HERE — before anything is recorded.
+ *      A mismatch is rejected outright: no PaymentEvent, Payment stays
+ *      untouched. This is deliberate: recording the event here would let
+ *      a RETRY of the same wrong-amount webhook be mistaken for an
+ *      already-processed duplicate and get a false success response —
+ *      a retry of a genuinely wrong-amount transfer must be rejected
+ *      every single time, not just the first. Partial payments (SePay/
+ *      BIDV can support them) are explicitly OUT OF SCOPE for V1 — a
+ *      partial-amount transfer must never transition Payment to
+ *      succeeded.
+ *   4. ONLY NOW — past every validation — insert PaymentEvent keyed on
+ *      (provider, providerEventId). The unique constraint is the FIRST,
+ *      DB-enforced dedupe layer, but it can only ever fire for an event
+ *      that was ACCEPTED once already; a genuine duplicate of a validly
+ *      processed webhook hits the unique violation and is treated as an
+ *      already-processed success (no reprocessing, no error surfaced —
+ *      providers retry on anything other than a clean success response).
  *   5. Atomic guarded UPDATE ... WHERE status = 'pending' — the SECOND,
  *      independent dedupe layer (same proven pattern as the original
  *      Step 48 MoMo implementation). A payment already in a terminal
@@ -58,6 +68,16 @@ export async function processProviderWebhook(
     return { accepted: false, reason: "unknown_payment" };
   }
 
+  // Gate BEFORE recording anything — see doc comment step 3 above. A
+  // provider-reported "failed" (e.g. MoMo's own resultCode != 0 — a real,
+  // definitive outcome from the provider itself, not an ambiguous case
+  // like SePay's outbound transfer, which the provider already rejected
+  // earlier) proceeds straight through; only a would-be "succeeded" is
+  // amount-gated here.
+  if (result.newStatus === "succeeded" && result.verifiedAmount !== payment.amount) {
+    return { accepted: false, reason: "amount_mismatch" };
+  }
+
   try {
     await prisma.paymentEvent.create({
       data: {
@@ -69,31 +89,19 @@ export async function processProviderWebhook(
     });
   } catch (e) {
     // Unique constraint violation on (provider, providerEventId) means
-    // this exact webhook delivery was already recorded — a legitimate
-    // duplicate/retry, not an error. Report success so the provider
-    // stops retrying, without touching Payment.status again.
+    // this exact, ALREADY-VALID webhook delivery was already recorded —
+    // a legitimate duplicate/retry, not an error. Report success so the
+    // provider stops retrying, without touching Payment.status again.
     if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2002") {
       return { accepted: true };
     }
     throw e;
   }
 
-  // Amount is only meaningful for a would-be SUCCESS — an outbound/failed
-  // transfer being additionally the "wrong" amount is not a distinct
-  // failure mode worth rejecting the webhook over, it's just still a
-  // failed payment. Only a succeeded-but-wrong-amount transfer is
-  // downgraded and explicitly reported back as a rejection (never
-  // silently recorded as a quiet "failed" — the caller should know this
-  // specific payment needs manual attention).
-  const finalStatus = result.newStatus;
-  if (finalStatus === "succeeded" && result.verifiedAmount !== payment.amount) {
-    return { accepted: false, reason: "amount_mismatch" };
-  }
-
   await prisma.payment.updateMany({
     where: { id: payment.id, status: "pending" },
     data: {
-      status: finalStatus,
+      status: result.newStatus,
       providerTransactionId: result.providerEventId,
     },
   });
