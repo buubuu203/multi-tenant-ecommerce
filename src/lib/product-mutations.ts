@@ -45,11 +45,17 @@ function validateDescription(description: string | undefined): string | null {
 // Step 50: authoritative limit check on the media array — this is the
 // real enforcement point (the Tenant Admin UI also checks client-side for
 // immediate feedback, but that is UX only, same "server remains
-// authoritative" rule as everywhere else in this codebase). Does not
-// verify the URLs themselves point at this tenant's blob namespace —
-// they were only ever produced by uploadProductMediaFile() in the same
-// request flow (see tenant-admin/actions.ts), never accepted as arbitrary
-// client-supplied strings.
+// authoritative" rule as everywhere else in this codebase).
+//
+// Also rejects anything that isn't a real absolute http(s) URL. This
+// catches the case where the client submits before an upload finished —
+// ProductMediaGallery's local preview uses `URL.createObjectURL(file)`
+// (a `blob:...` URL, valid only in the browser tab that created it) until
+// uploadProductMediaFile() returns the real Blob URL to swap in; if the
+// form is submitted in that window, the stale `blob:` URL would otherwise
+// be persisted permanently and render as a broken image for every other
+// visitor. Does not verify the URL points at this tenant's blob namespace
+// specifically — only that it's a real, fetchable URL at all.
 function validateMedia(media: { url: string; type: MediaKind }[] | undefined): { error: string } | null {
   const items = media ?? [];
   if (items.length > MAX_MEDIA_ITEMS) {
@@ -62,6 +68,11 @@ function validateMedia(media: { url: string; type: MediaKind }[] | undefined): {
   }
   if (videoCount > MAX_VIDEOS) {
     return { error: `A product can have at most ${MAX_VIDEOS} videos.` };
+  }
+  for (const item of items) {
+    if (!item.url.startsWith("http://") && !item.url.startsWith("https://")) {
+      return { error: "One or more media items did not finish uploading — please wait for uploads to complete before saving." };
+    }
   }
   return null;
 }

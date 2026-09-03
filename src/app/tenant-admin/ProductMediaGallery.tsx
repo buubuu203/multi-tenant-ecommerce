@@ -1,6 +1,6 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   uploadProductMediaAction,
   deleteUploadedProductMediaAction,
@@ -39,9 +39,18 @@ type MediaItem = {
 export function ProductMediaGallery({
   productId,
   initialMedia = [],
+  onUploadingChange,
 }: {
   productId?: string;
   initialMedia?: { id: string; type: "image" | "video"; url: string }[];
+  // Step 50: lets the enclosing form (create mode only — see
+  // page.tsx/ActionForm's `disabled` prop) block submission while an
+  // upload is still in flight. Without this, submitting mid-upload sends
+  // the local `blob:` preview URL instead of the real Blob URL, which
+  // validateMedia() now also rejects server-side — this callback exists
+  // so the UI can prevent that submission from ever happening, rather
+  // than round-tripping to the server just to show an error.
+  onUploadingChange?: (uploading: boolean) => void;
 }) {
   const mode = productId ? "edit" : "create";
   const [items, setItems] = useState<MediaItem[]>(
@@ -54,6 +63,10 @@ export function ProductMediaGallery({
   const videoCount = items.filter((i) => i.type === "video" && !i.error).length;
   const totalCount = items.filter((i) => !i.error).length;
   const anyUploading = items.some((i) => i.uploading);
+
+  useEffect(() => {
+    onUploadingChange?.(anyUploading);
+  }, [anyUploading, onUploadingChange]);
 
   function classifyFile(file: File): "image" | "video" | null {
     if (["image/jpeg", "image/png", "image/webp"].includes(file.type)) return "image";
