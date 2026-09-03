@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useCart } from "./cart-context";
 import { checkoutAction } from "./checkout-actions";
+import type { BankTransferInfo } from "@/lib/bank-transfer-info";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
@@ -23,7 +24,14 @@ const inputClassName =
 type CheckoutState =
   | { status: "idle" }
   | { status: "submitting" }
-  | { status: "success"; orderId: string; paymentRedirectUrl?: string; paymentInitiationFailed?: boolean }
+  | {
+      status: "success";
+      orderId: string;
+      paymentMethod: (typeof PAYMENT_METHODS)[number]["value"];
+      paymentRedirectUrl?: string;
+      paymentInitiationFailed?: boolean;
+      bankTransferInfo?: BankTransferInfo;
+    }
   | { status: "error"; message: string };
 
 // Minimal V1 cart + checkout panel: count, list, quantity +/-, remove,
@@ -81,8 +89,10 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
       setCheckout({
         status: "success",
         orderId: result.data.orderId,
+        paymentMethod,
         paymentRedirectUrl: result.data.paymentRedirectUrl,
         paymentInitiationFailed: result.data.paymentInitiationFailed,
+        bankTransferInfo: result.data.bankTransferInfo,
       });
     } else {
       setCheckout({ status: "error", message: result.error });
@@ -115,9 +125,17 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
       {open && (
         <div className="absolute right-0 z-10 mt-2 w-80 rounded-lg border border-border bg-surface p-4 text-sm shadow-lg">
           {checkout.status === "success" ? (
-            <div className="flex flex-col gap-2">
-              <p className="font-medium">Order placed!</p>
-              <p className="text-xs text-muted-foreground">Order ID: {checkout.orderId}</p>
+            <div className="flex flex-col gap-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-green-600 text-white">
+                  ✓
+                </span>
+                <div>
+                  <p className="font-medium">Order placed!</p>
+                  <p className="font-mono text-xs text-muted-foreground">{checkout.orderId}</p>
+                </div>
+              </div>
+
               {/* Step 48: MoMo checkout success carries a redirect link to
                   MoMo's hosted payment page — the order already exists
                   (and its inventory reservation) regardless of whether the
@@ -131,20 +149,54 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                 </a>
               )}
               {checkout.paymentInitiationFailed && (
-                <p className="text-xs text-red-600">
-                  Your order was placed, but we couldn&apos;t start MoMo payment. Please contact the store.
+                <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
+                  Your order was placed, but we couldn&apos;t start MoMo payment. Please contact the store, or pay on
+                  delivery if the merchant allows it.
                 </p>
               )}
+
+              {/* Plain merchant-entered instructions (Tenant Admin's
+                  Branding form) — only present when the tenant has fully
+                  configured them (see bank-transfer-info.ts). No QR code,
+                  no gateway, no automated reconciliation: the customer
+                  wires the money themselves and the merchant confirms it
+                  manually (see Tenant Admin's Orders section). */}
+              {checkout.paymentMethod === "bank_transfer" &&
+                (checkout.bankTransferInfo ? (
+                  <div className="rounded-md border border-border bg-surface-muted p-3 text-xs">
+                    <p className="font-medium">Transfer to:</p>
+                    <p className="mt-1">{checkout.bankTransferInfo.bankName}</p>
+                    <p className="font-mono">{checkout.bankTransferInfo.bankAccountNumber}</p>
+                    <p>{checkout.bankTransferInfo.bankAccountHolder}</p>
+                    <p className="mt-2 text-muted-foreground">
+                      Please include your order ID as the transfer note, then wait for the merchant to confirm your
+                      order.
+                    </p>
+                  </div>
+                ) : (
+                  <p className="rounded-md border border-border bg-surface-muted p-3 text-xs text-muted-foreground">
+                    The merchant hasn&apos;t set up bank transfer details yet — please contact the store directly for
+                    payment instructions.
+                  </p>
+                ))}
+
+              {checkout.paymentMethod === "cod" && (
+                <p className="text-xs text-muted-foreground">Pay in cash when your order arrives.</p>
+              )}
+
               {/* Bookmarkable order-confirmation link — the customer's only
                   way to check this order's status again after leaving this
                   page (see src/app/orders/[orderId]/page.tsx). */}
-              <a href={`/orders/${checkout.orderId}`} className="self-start text-xs underline">
+              <a
+                href={`/orders/${checkout.orderId}`}
+                className="self-start rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-muted"
+              >
                 View your order
               </a>
               <button
                 type="button"
                 onClick={() => setCheckout({ status: "idle" })}
-                className="self-start text-xs underline"
+                className="self-start text-xs text-muted-foreground underline hover:text-foreground"
               >
                 Continue shopping
               </button>

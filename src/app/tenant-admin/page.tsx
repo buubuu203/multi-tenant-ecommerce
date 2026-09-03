@@ -35,6 +35,23 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "Bank transfer",
 };
 
+// Color-coded so the order lifecycle (pending -> fulfilled/cancelled) and
+// the separate payment lifecycle (pending -> succeeded/failed) are each
+// legible at a glance, not just distinguishable by reading the label text.
+// Two independent axes — see schema.prisma's Payment doc comment — so
+// deliberately two separate lookups rather than one combined status.
+const ORDER_STATUS_BADGE: Record<string, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  fulfilled: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  cancelled: "border-border bg-surface-muted text-muted-foreground",
+};
+
+const PAYMENT_STATUS_BADGE: Record<string, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  succeeded: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  failed: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+};
+
 // Resolves ProductVariantOptionValue -> VariantOption / VariantOptionValue
 // into a human-readable, deterministically-ordered label (sorted by option
 // name, not by combinationKey — combinationKey is never read or displayed
@@ -229,6 +246,42 @@ export default async function TenantAdminHomePage() {
               className={adminInputClassName}
             />
           </label>
+          <div className="mt-2 flex flex-col gap-3 border-t border-border pt-3">
+            <div className="flex flex-col gap-1">
+              <h3 className="text-sm font-medium">Bank transfer instructions</h3>
+              <p className="text-xs text-muted-foreground">
+                Shown to a customer at checkout and on their order confirmation whenever they choose Bank transfer.
+                Leave blank if you don&apos;t accept bank transfers.
+              </p>
+            </div>
+            <label className={adminLabelClassName}>
+              Bank name
+              <input
+                name="bankName"
+                defaultValue={branding?.bankName ?? ""}
+                placeholder="Vietcombank"
+                className={adminInputClassName}
+              />
+            </label>
+            <label className={adminLabelClassName}>
+              Account number
+              <input
+                name="bankAccountNumber"
+                defaultValue={branding?.bankAccountNumber ?? ""}
+                placeholder="0123456789"
+                className={adminInputClassName}
+              />
+            </label>
+            <label className={adminLabelClassName}>
+              Account holder name
+              <input
+                name="bankAccountHolder"
+                defaultValue={branding?.bankAccountHolder ?? ""}
+                placeholder="NGUYEN VAN A"
+                className={adminInputClassName}
+              />
+            </label>
+          </div>
         </ActionForm>
       </section>
 
@@ -579,21 +632,22 @@ export default async function TenantAdminHomePage() {
             <div key={order.id} className="rounded-lg border border-border bg-surface p-4 text-sm">
               <div className="flex flex-wrap items-center gap-2">
                 <span className="font-mono text-xs">Order {order.id}</span>
-                <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{order.status}</span>
+                <span
+                  className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? "border-border"}`}
+                >
+                  {order.status}
+                </span>
                 <span className="text-xs text-muted-foreground">
                   {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
                 </span>
                 {/* Step 49: business-level payment state — null for
                     cod/bank_transfer (no Payment row exists for those, see
                     order-queries.ts). Independent of order.status; never
-                    merged into that badge. */}
+                    merged into that badge — two separate lifecycles, two
+                    separate color-coded badges. */}
                 {order.paymentStatus && (
                   <span
-                    className={
-                      order.paymentStatus === "failed"
-                        ? "rounded-full border border-border px-2 py-0.5 text-xs capitalize text-red-600"
-                        : "rounded-full border border-border px-2 py-0.5 text-xs capitalize"
-                    }
+                    className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? "border-border"}`}
                   >
                     Payment: {order.paymentStatus}
                   </span>
