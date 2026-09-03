@@ -162,13 +162,25 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
    * BEFORE the payload is ever parsed for business use):
    *   1. Verify HMAC signature + timestamp — reject outright otherwise.
    *   2. Validate required fields are present.
-   *   3. V1 policy: exact payment only — transferType must be "in" AND
-   *      transferAmount must equal Payment.amount (checked by the
-   *      caller, payment-service.ts, which has the Payment row). Partial
-   *      payments (SePay/BIDV can support them) are explicitly OUT OF
-   *      SCOPE for V1 — a partial-amount transfer must never transition
-   *      Payment to succeeded.
-   *   4. providerEventId is `payload.id` (SePay's bank transaction ID) —
+   *   3. transferType must be "in" — an OUTBOUND bank transaction is not
+   *      evidence the customer's payment failed (money simply left the
+   *      account for an unrelated reason); it is treated exactly like an
+   *      invalid/irrelevant webhook — rejected here, BEFORE any Payment
+   *      lookup or PaymentEvent recording ever happens in
+   *      webhook-service.ts, so a retry of the same outbound transaction
+   *      is rejected identically every time, never a false "duplicate
+   *      success." Payment is never touched, never marked "failed" for
+   *      this reason.
+   *   4. Amount is intentionally NOT checked here — webhook-service.ts
+   *      does that once it has the actual Payment row, and (per the
+   *      approved correction) records PaymentEvent only AFTER that check
+   *      passes, so a wrong-amount webhook is never recorded as a
+   *      processed event either — a retry of the same wrong-amount
+   *      transaction must be rejected again, not treated as an
+   *      already-handled duplicate. V1 policy: exact payment only;
+   *      partial payments (SePay/BIDV can support them) are explicitly
+   *      OUT OF SCOPE.
+   *   5. providerEventId is `payload.id` (SePay's bank transaction ID) —
    *      NEVER `payload.code` (the order_code / payment reference).
    */
   async handleWebhook(rawBody: string, headers: Headers): Promise<WebhookResult> {
@@ -187,16 +199,15 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
       return { success: false, error: "Malformed payload." };
     }
 
-    // V1 policy: only an exact, inbound transfer counts as payment.
-    // Anything else (outbound, wrong amount) is reported back to the
-    // caller as a non-succeeded webhook — never silently accepted.
-    const newStatus = payload.transferType === "in" ? "succeeded" : "failed";
+    if (payload.transferType !== "in") {
+      return { success: false, error: "Not an inbound transfer." };
+    }
 
     return {
       success: true,
       providerOrderId: payload.code,
       providerEventId: payload.id,
-      newStatus,
+      newStatus: "succeeded",
       verifiedAmount: payload.transferAmount,
       rawPayload: payload,
     };
