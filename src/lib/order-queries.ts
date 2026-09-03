@@ -1,5 +1,6 @@
 import { getScopedDb } from "./db/tenant-db";
-import { getBankTransferInfo, type BankTransferInfo } from "./bank-transfer-info";
+import { getStoredPaymentInstructions } from "./payments/payment-service";
+import type { PaymentInstructions } from "./payments/provider";
 
 // Purpose-built, read-only shapes — never leak the raw Prisma Order/
 // OrderItem/ProductVariant models into the UI. combinationLabel is built
@@ -19,13 +20,13 @@ export type OrderListEntry = {
   id: string;
   status: string;
   paymentMethod: string;
-  // Step 49: business-level payment state for the Tenant Admin — null for
-  // every order that never gets a Payment row (cod/bank_transfer, see
-  // payment-mutations.ts) rather than a fabricated "n/a" status; a real
-  // Payment always has one of pending/succeeded/failed. Deliberately
+  // Step 49/51: business-level payment state for the Tenant Admin. Every
+  // order gets a Payment row as of Step 51 (previously only momo did) —
+  // null here now only for orders placed BEFORE that change. Deliberately
   // independent of `status` (OrderStatus) — this is a read-only
   // side-by-side display, never merged into one state machine (see
-  // schema.prisma's Payment doc comment).
+  // schema.prisma's Payment doc comment). cod stays "pending" until a
+  // separate, not-yet-built feature lets a merchant mark cash collected.
   paymentStatus: string | null;
   createdAt: Date;
   itemCount: number;
@@ -195,9 +196,9 @@ export type CustomerOrderView = {
   id: string;
   status: string;
   paymentMethod: string;
-  // Step 49: same business-level payment state as OrderListEntry (Tenant
-  // Admin) — null for cod/bank_transfer orders, which never get a
-  // Payment row.
+  // Step 49/51: same business-level payment state as OrderListEntry
+  // (Tenant Admin) — null only for orders placed before Step 51 (every
+  // order gets a Payment row as of Step 51, previously only momo did).
   paymentStatus: string | null;
   createdAt: Date;
   items: CustomerOrderItem[];
@@ -207,11 +208,12 @@ export type CustomerOrderView = {
   shippingDistrict: string;
   shippingCity: string;
   shippingNote: string | null;
-  // Non-null only when paymentMethod is "bank_transfer" AND the tenant has
-  // fully configured their bank details (see bank-transfer-info.ts) — a
-  // customer returning to check this order later still sees how to pay,
-  // not just at the moment of checkout.
-  bankTransferInfo: BankTransferInfo | null;
+  // Step 51: the same canonical, provider-agnostic shape checkout itself
+  // renders — reconstructed read-only from the persisted Payment row (see
+  // payment-service.ts's getStoredPaymentInstructions), never a fresh
+  // provider API call. Null only for a pre-Step-51 order with no Payment
+  // row at all.
+  paymentInstructions: PaymentInstructions | null;
 };
 
 /**
@@ -305,7 +307,7 @@ export async function getOrderForCustomer(
     lineTotal: item.price * item.quantity,
   }));
 
-  const bankTransferInfo = order.paymentMethod === "bank_transfer" ? await getBankTransferInfo(tenantId) : null;
+  const paymentInstructions = order.payment ? await getStoredPaymentInstructions(tenantId, order.payment) : null;
 
   return {
     id: order.id,
@@ -320,6 +322,6 @@ export async function getOrderForCustomer(
     shippingDistrict: order.shippingDistrict,
     shippingCity: order.shippingCity,
     shippingNote: order.shippingNote,
-    bankTransferInfo,
+    paymentInstructions,
   };
 }
