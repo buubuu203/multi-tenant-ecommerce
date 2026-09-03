@@ -24,8 +24,8 @@ export function ProductMediaCarousel({ media, productName }: { media: TenantProd
   }
 
   return (
-    <div className="flex flex-col gap-2">
-      <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded border bg-black/5 dark:bg-white/5">
+    <div className="flex flex-col gap-3">
+      <div className="relative flex aspect-square w-full items-center justify-center overflow-hidden rounded-lg border border-border bg-surface-muted">
         {current.type === "image" ? (
           // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP
           <img src={current.url} alt={productName} className="h-full w-full object-cover" />
@@ -38,7 +38,7 @@ export function ProductMediaCarousel({ media, productName }: { media: TenantProd
               type="button"
               onClick={() => go(-1)}
               aria-label="Previous media"
-              className="absolute left-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-white"
+              className="absolute left-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
             >
               ◀
             </button>
@@ -46,7 +46,7 @@ export function ProductMediaCarousel({ media, productName }: { media: TenantProd
               type="button"
               onClick={() => go(1)}
               aria-label="Next media"
-              className="absolute right-2 top-1/2 -translate-y-1/2 rounded-full bg-black/50 px-2 py-1 text-white"
+              className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full bg-black/50 text-white backdrop-blur-sm transition-colors hover:bg-black/70"
             >
               ▶
             </button>
@@ -62,7 +62,7 @@ export function ProductMediaCarousel({ media, productName }: { media: TenantProd
               type="button"
               onClick={() => setIndex(i)}
               aria-label={`Show media ${i + 1}`}
-              className={`relative h-14 w-14 flex-shrink-0 overflow-hidden rounded border ${i === index ? "ring-2 ring-black dark:ring-white" : ""}`}
+              className={`relative h-14 w-14 flex-shrink-0 overflow-hidden rounded-md border transition-colors ${i === index ? "border-foreground" : "border-border"}`}
             >
               {item.type === "image" ? (
                 // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP

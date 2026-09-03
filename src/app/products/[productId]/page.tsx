@@ -33,14 +33,14 @@ export default async function ProductDetailPage({
   return (
     <CartProvider>
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-between gap-2 border-b border-black/10 px-6 py-2 dark:border-white/10">
-          <Link href="/" className="text-sm underline">
+        <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-6 py-3 backdrop-blur-sm">
+          <Link href="/" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             ← Back to store
           </Link>
           <CartWidget availabilityByVariant={availabilityByVariant} />
         </div>
-        <main className="px-6 py-12">
-          <ul className="max-w-md">
+        <main className="px-6 py-10 sm:py-14">
+          <ul className="mx-auto max-w-md">
             <ProductRow product={product} linkToDetail={false} />
           </ul>
         </main>
