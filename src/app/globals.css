@@ -1,13 +1,34 @@
 @import "tailwindcss";
 
+/*
+ * Design tokens (single global set for the MVP). Kept as plain CSS custom
+ * properties on :root, mapped into Tailwind utilities below via
+ * `@theme inline` — so a future per-tenant theming layer only needs to
+ * override these variables (e.g. scoped to a `[data-tenant]` selector or
+ * injected inline per request), not touch any component markup.
+ */
 :root {
   --background: #ffffff;
   --foreground: #171717;
+  --surface: #ffffff;
+  --surface-muted: #fafafa;
+  --border: rgba(23, 23, 23, 0.1);
+  --muted-foreground: rgba(23, 23, 23, 0.6);
+  --radius-sm: 0.5rem;
+  --radius-md: 0.75rem;
+  --radius-lg: 1rem;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border: var(--border);
+  --color-muted-foreground: var(--muted-foreground);
+  --radius-sm: var(--radius-sm);
+  --radius-md: var(--radius-md);
+  --radius-lg: var(--radius-lg);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
@@ -16,11 +37,15 @@
   :root {
     --background: #0a0a0a;
     --foreground: #ededed;
+    --surface: #111111;
+    --surface-muted: #171717;
+    --border: rgba(237, 237, 237, 0.12);
+    --muted-foreground: rgba(237, 237, 237, 0.6);
   }
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }

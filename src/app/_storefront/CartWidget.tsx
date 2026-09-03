@@ -17,6 +17,9 @@ const PAYMENT_METHODS = [
   { value: "bank_transfer", label: "Bank transfer" },
 ] as const;
 
+const inputClassName =
+  "rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+
 type CheckoutState =
   | { status: "idle" }
   | { status: "submitting" }
@@ -103,18 +106,18 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
-        className="rounded border px-3 py-1 text-sm"
+        className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
         aria-expanded={open}
       >
         Cart ({itemCount})
       </button>
 
       {open && (
-        <div className="absolute right-0 z-10 mt-2 w-80 rounded border bg-white p-3 text-sm shadow-lg dark:bg-black">
+        <div className="absolute right-0 z-10 mt-2 w-80 rounded-lg border border-border bg-surface p-4 text-sm shadow-lg">
           {checkout.status === "success" ? (
             <div className="flex flex-col gap-2">
               <p className="font-medium">Order placed!</p>
-              <p className="text-xs text-black/60 dark:text-white/60">Order ID: {checkout.orderId}</p>
+              <p className="text-xs text-muted-foreground">Order ID: {checkout.orderId}</p>
               {/* Step 48: MoMo checkout success carries a redirect link to
                   MoMo's hosted payment page — the order already exists
                   (and its inventory reservation) regardless of whether the
@@ -122,7 +125,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
               {checkout.paymentRedirectUrl && (
                 <a
                   href={checkout.paymentRedirectUrl}
-                  className="self-start rounded bg-black px-3 py-1 text-xs text-white dark:bg-white dark:text-black"
+                  className="self-start rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
                 >
                   Pay with MoMo
                 </a>
@@ -147,7 +150,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
               </button>
             </div>
           ) : items.length === 0 ? (
-            <p className="text-black/60 dark:text-white/60">Your cart is empty.</p>
+            <p className="text-muted-foreground">Your cart is empty.</p>
           ) : (
             <>
               <ul className="flex flex-col gap-3">
@@ -161,12 +164,12 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                             price — never re-fetched/re-validated here. */}
                         {item.imageUrl && (
                           // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-                          <img src={item.imageUrl} alt={item.productName} className="h-10 w-10 rounded object-cover" />
+                          <img src={item.imageUrl} alt={item.productName} className="h-10 w-10 rounded-md object-cover" />
                         )}
                         <div className="flex flex-col">
                           <span>{item.productName}</span>
                           {item.variantLabel && (
-                            <span className="text-xs text-black/60 dark:text-white/60">{item.variantLabel}</span>
+                            <span className="text-xs text-muted-foreground">{item.variantLabel}</span>
                           )}
                           <span className="font-mono text-xs">{formatVnd(item.price)}</span>
                         </div>
@@ -175,7 +178,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                         <button
                           type="button"
                           onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity - 1))}
-                          className="rounded border px-2"
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted"
                           aria-label={`Decrease quantity of ${item.productName}`}
                         >
                           −
@@ -185,7 +188,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                           type="button"
                           onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity + 1))}
                           disabled={atAvailableLimit}
-                          className="rounded border px-2 disabled:opacity-50"
+                          className="flex h-6 w-6 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted disabled:opacity-40"
                           aria-label={`Increase quantity of ${item.productName}`}
                         >
                           +
@@ -193,7 +196,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                         <button
                           type="button"
                           onClick={handleCartAction(() => removeItem(item.productVariantId))}
-                          className="ml-1 text-xs text-red-600"
+                          className="ml-1 text-xs text-red-600 hover:underline"
                         >
                           Remove
                         </button>
@@ -203,22 +206,22 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                 })}
               </ul>
 
-              <div className="mt-3 flex items-center justify-between border-t pt-2 text-xs">
-                <span className="text-black/60 dark:text-white/60">
+              <div className="mt-3 flex items-center justify-between border-t border-border pt-3 text-xs">
+                <span className="text-muted-foreground">
                   Subtotal (final total confirmed at checkout)
                 </span>
                 <span className="font-mono">{formatVnd(subtotal)}</span>
               </div>
 
               <fieldset className="mt-3 flex flex-col gap-2 text-xs">
-                <legend className="text-black/60 dark:text-white/60">Contact info</legend>
+                <legend className="mb-1 text-muted-foreground">Contact info</legend>
                 <label className="flex flex-col gap-1">
                   Full name
                   <input
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -227,7 +230,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -236,20 +239,20 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
               </fieldset>
 
               <fieldset className="mt-3 flex flex-col gap-2 text-xs">
-                <legend className="text-black/60 dark:text-white/60">Shipping address</legend>
+                <legend className="mb-1 text-muted-foreground">Shipping address</legend>
                 <label className="flex flex-col gap-1">
                   Address
                   <input
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -258,7 +261,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={ward}
                     onChange={(e) => setWard(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -267,7 +270,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -276,7 +279,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
                 <label className="flex flex-col gap-1">
@@ -285,13 +288,13 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={note}
                     onChange={(e) => setNote(e.target.value)}
-                    className="rounded border px-2 py-1"
+                    className={inputClassName}
                   />
                 </label>
               </fieldset>
 
-              <fieldset className="mt-3 flex flex-col gap-1 text-xs">
-                <legend className="text-black/60 dark:text-white/60">Payment method</legend>
+              <fieldset className="mt-3 flex flex-col gap-1.5 text-xs">
+                <legend className="mb-1 text-muted-foreground">Payment method</legend>
                 {PAYMENT_METHODS.map((method) => (
                   <label key={method.value} className="flex items-center gap-2">
                     <input
@@ -310,11 +313,11 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                 <p className="mt-2 text-xs text-red-600">{checkout.message}</p>
               )}
 
-              <div className="mt-3 flex items-center justify-between">
+              <div className="mt-4 flex items-center justify-between">
                 <button
                   type="button"
                   onClick={handleCartAction(clearCart)}
-                  className="text-xs text-black/60 underline dark:text-white/60"
+                  className="text-xs text-muted-foreground underline hover:text-foreground"
                 >
                   Clear cart
                 </button>
@@ -322,7 +325,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                   type="button"
                   onClick={handleCheckout}
                   disabled={checkout.status === "submitting"}
-                  className="rounded bg-black px-3 py-1 text-xs text-white disabled:opacity-50 dark:bg-white dark:text-black"
+                  className="rounded-md bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   {checkout.status === "submitting" ? "Placing order…" : "Checkout"}
                 </button>
