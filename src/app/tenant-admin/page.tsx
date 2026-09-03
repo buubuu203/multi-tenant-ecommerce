@@ -3,7 +3,6 @@ import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
 import {
   updateBrandingAction,
-  createProductAction,
   updateProductAction,
   importProductsAction,
   createVariantOptionAction,
@@ -18,10 +17,10 @@ import {
 } from "./actions";
 import { ImportProductsForm } from "./ImportProductsForm";
 import { ProductMediaGallery } from "./ProductMediaGallery";
+import { CreateProductForm } from "./CreateProductForm";
 import { OrderStatusForm } from "./OrderStatusForm";
 import { listOrders } from "@/lib/order-queries";
-
-const PRODUCT_STATUSES = ["draft", "active"] as const;
+import { PRODUCT_STATUSES } from "./product-status";
 
 export const dynamic = "force-dynamic";
 
@@ -305,35 +304,7 @@ export default async function TenantAdminHomePage() {
           <ImportProductsForm action={importProductsAction} />
         </div>
 
-        <ActionForm
-          action={createProductAction}
-          submitLabel="Add product"
-          className="flex max-w-md flex-col gap-2"
-        >
-          <label className="flex flex-col gap-1 text-sm">
-            Name
-            <input name="name" className="rounded border px-2 py-1" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Price (VND)
-            <input name="price" inputMode="numeric" className="rounded border px-2 py-1" />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            Description (optional)
-            <textarea name="description" rows={3} className="rounded border px-2 py-1" />
-          </label>
-          <ProductMediaGallery />
-          <label className="flex flex-col gap-1 text-sm">
-            Status
-            <select name="status" defaultValue="draft" className="rounded border px-2 py-1">
-              {PRODUCT_STATUSES.map((status) => (
-                <option key={status} value={status}>
-                  {status}
-                </option>
-              ))}
-            </select>
-          </label>
-        </ActionForm>
+        <CreateProductForm />
 
         <div className="flex flex-col gap-3">
           {products.map((product) => {
