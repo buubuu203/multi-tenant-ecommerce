@@ -10,6 +10,11 @@ export type BrandingInput = {
   faviconUrl: string;
   primaryColor: string;
   secondaryColor: string;
+  // Plain instructional text for a customer who chose bank_transfer at
+  // checkout — no format validation beyond trimming, same as storeName.
+  bankName: string;
+  bankAccountNumber: string;
+  bankAccountHolder: string;
 };
 
 /**
@@ -67,6 +72,9 @@ export async function updateBranding(tenantId: string, input: BrandingInput): Pr
     faviconUrl: faviconUrl.value,
     primaryColor: primaryColor.value,
     secondaryColor: secondaryColor.value,
+    bankName: trimToNull(input.bankName),
+    bankAccountNumber: trimToNull(input.bankAccountNumber),
+    bankAccountHolder: trimToNull(input.bankAccountHolder),
   };
 
   try {

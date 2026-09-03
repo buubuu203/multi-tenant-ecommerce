@@ -18,12 +18,32 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
   bank_transfer: "Bank transfer",
 };
 
+// Mirrors tenant-admin/page.tsx's ORDER_STATUS_BADGE/PAYMENT_STATUS_BADGE —
+// same color coding so a customer and the merchant read the same order's
+// lifecycle the same way, duplicated per this codebase's established
+// per-file convention rather than a shared constants module.
+const ORDER_STATUS_BADGE: Record<string, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  fulfilled: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  cancelled: "border-border bg-surface-muted text-muted-foreground",
+};
+
+const PAYMENT_STATUS_BADGE: Record<string, string> = {
+  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  succeeded: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  failed: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+};
+
 function OrderDetails({ order }: { order: CustomerOrderView }) {
   return (
     <div className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm">
       <div className="flex flex-wrap items-center gap-2">
         <span className="font-mono text-xs">Order {order.id}</span>
-        <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{order.status}</span>
+        <span
+          className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? "border-border"}`}
+        >
+          {order.status}
+        </span>
         <span className="text-xs text-muted-foreground">
           {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
         </span>
@@ -32,11 +52,7 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
             cod/bank_transfer, which never have a Payment record. */}
         {order.paymentStatus && (
           <span
-            className={
-              order.paymentStatus === "failed"
-                ? "rounded-full border border-border px-2 py-0.5 text-xs capitalize text-red-600"
-                : "rounded-full border border-border px-2 py-0.5 text-xs capitalize"
-            }
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? "border-border"}`}
           >
             Payment: {order.paymentStatus}
           </span>
@@ -95,6 +111,19 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         <span className="text-muted-foreground">Total</span>
         <span className="font-mono">{formatVnd(order.total)}</span>
       </div>
+
+      {/* Same plain merchant-entered instructions as the checkout success
+          panel (CartWidget.tsx) — a customer returning to check on this
+          order later still sees how to pay, not just at checkout time. */}
+      {order.paymentMethod === "bank_transfer" && order.bankTransferInfo && (
+        <div className="mt-3 rounded-md border border-border bg-surface-muted p-3 text-xs">
+          <p className="font-medium">Transfer to:</p>
+          <p className="mt-1">{order.bankTransferInfo.bankName}</p>
+          <p className="font-mono">{order.bankTransferInfo.bankAccountNumber}</p>
+          <p>{order.bankTransferInfo.bankAccountHolder}</p>
+          <p className="mt-2 text-muted-foreground">Please include your order ID as the transfer note.</p>
+        </div>
+      )}
     </div>
   );
 }

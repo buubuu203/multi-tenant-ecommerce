@@ -3,6 +3,7 @@
 import { headers } from "next/headers";
 import { createOrder } from "@/lib/order-mutations";
 import { initiatePaymentForOrder } from "@/lib/payment-mutations";
+import { getBankTransferInfo, type BankTransferInfo } from "@/lib/bank-transfer-info";
 import type { ActionResult } from "@/lib/action-result";
 
 // Only the two identity fields this checkout flow is allowed to trust from
@@ -62,7 +63,14 @@ export async function checkoutAction(
   paymentMethod: string,
   customer: CheckoutCustomerInput,
   shipping: CheckoutShippingInput,
-): Promise<ActionResult<{ orderId: string; paymentRedirectUrl?: string; paymentInitiationFailed?: boolean }>> {
+): Promise<
+  ActionResult<{
+    orderId: string;
+    paymentRedirectUrl?: string;
+    paymentInitiationFailed?: boolean;
+    bankTransferInfo?: BankTransferInfo;
+  }>
+> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
@@ -123,6 +131,14 @@ export async function checkoutAction(
     return {
       success: true,
       data: { orderId: result.data.orderId, paymentRedirectUrl: paymentResult.payUrl },
+    };
+  }
+
+  if (paymentMethod === "bank_transfer") {
+    const bankTransferInfo = await getBankTransferInfo(tenantId);
+    return {
+      success: true,
+      data: { orderId: result.data.orderId, bankTransferInfo: bankTransferInfo ?? undefined },
     };
   }
 
