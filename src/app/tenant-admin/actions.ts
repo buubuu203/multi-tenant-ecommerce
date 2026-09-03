@@ -14,6 +14,8 @@ import { generateProductVariants, type GenerationResult } from "@/lib/variant-ge
 import { updateProductVariant } from "@/lib/product-variant-mutations";
 import { updateOrderStatus } from "@/lib/order-mutations";
 import { adjustInventoryOnHand } from "@/lib/inventory-mutations";
+import { updateTenantPaymentMethod } from "@/lib/tenant-payment-mutations";
+import type { PaymentMethod, PaymentProviderType } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
 
 // Independently re-checks auth + authorization before touching the
@@ -424,6 +426,32 @@ export async function adjustInventoryOnHandAction(
   }
 
   const result = await adjustInventoryOnHand(tenantId, productVariantId, Number(adjustmentRaw));
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+// --- Payment settings (Step 51) ------------------------------------------
+// Same rule as every action in this file: independently re-checks auth +
+// authorization; tenantId is NEVER read from formData.
+
+export async function updateTenantPaymentMethodAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const result = await updateTenantPaymentMethod(tenantId, {
+    method: String(formData.get("method") ?? "") as PaymentMethod,
+    provider: String(formData.get("provider") ?? "") as PaymentProviderType,
+    enabled: formData.get("enabled") === "on",
+    bankName: String(formData.get("bankName") ?? ""),
+    bankAccountNumber: String(formData.get("bankAccountNumber") ?? ""),
+    bankAccountHolder: String(formData.get("bankAccountHolder") ?? ""),
+    sepayBaUuid: String(formData.get("sepayBaUuid") ?? ""),
+  });
+
   if (result.success) {
     revalidatePath("/tenant-admin");
   }

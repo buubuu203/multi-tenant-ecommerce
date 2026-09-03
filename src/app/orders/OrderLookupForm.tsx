@@ -112,17 +112,37 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         <span className="font-mono">{formatVnd(order.total)}</span>
       </div>
 
-      {/* Same plain merchant-entered instructions as the checkout success
-          panel (CartWidget.tsx) — a customer returning to check on this
-          order later still sees how to pay, not just at checkout time. */}
-      {order.paymentMethod === "bank_transfer" && order.bankTransferInfo && (
+      {/* Step 51: the same canonical PaymentInstructions shape the
+          checkout success panel (CartWidget.tsx) renders — a customer
+          returning to check on this order later still sees how to pay,
+          reconstructed read-only from the persisted Payment row (see
+          payment-service.ts's getStoredPaymentInstructions). Never
+          branches on provider name. */}
+      {order.paymentInstructions?.type === "bank_transfer" && (
         <div className="mt-3 rounded-md border border-border bg-surface-muted p-3 text-xs">
-          <p className="font-medium">Transfer to:</p>
-          <p className="mt-1">{order.bankTransferInfo.bankName}</p>
-          <p className="font-mono">{order.bankTransferInfo.bankAccountNumber}</p>
-          <p>{order.bankTransferInfo.bankAccountHolder}</p>
-          <p className="mt-2 text-muted-foreground">Please include your order ID as the transfer note.</p>
+          <p className="font-medium">{order.paymentInstructions.title}</p>
+          {order.paymentInstructions.bankName && <p className="mt-1">{order.paymentInstructions.bankName}</p>}
+          {(order.paymentInstructions.accountNumber || order.paymentInstructions.virtualAccountNumber) && (
+            <p className="font-mono">
+              {order.paymentInstructions.virtualAccountNumber ?? order.paymentInstructions.accountNumber}
+            </p>
+          )}
+          {order.paymentInstructions.accountHolder && <p>{order.paymentInstructions.accountHolder}</p>}
+          {order.paymentInstructions.qrCodeUrl && (
+            // eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset
+            <img src={order.paymentInstructions.qrCodeUrl} alt="Payment QR code" className="mt-2 h-32 w-32" />
+          )}
+          {order.paymentInstructions.expiresAt && (
+            <p className="mt-1 text-muted-foreground">
+              Expires:{" "}
+              {new Date(order.paymentInstructions.expiresAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+            </p>
+          )}
+          <p className="mt-2 text-muted-foreground">{order.paymentInstructions.nextAction}</p>
         </div>
+      )}
+      {order.paymentInstructions?.type === "none" && order.status !== "cancelled" && (
+        <p className="mt-3 text-xs text-muted-foreground">{order.paymentInstructions.nextAction}</p>
       )}
     </div>
   );

@@ -7,6 +7,7 @@ import { ProductList } from "./_storefront/ProductList";
 import { PlatformMessage } from "./_storefront/PlatformMessage";
 import { CartProvider } from "./_storefront/cart-context";
 import { CartWidget } from "./_storefront/CartWidget";
+import { getEnabledPaymentMethods } from "@/lib/payments/payment-service";
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header). Force dynamic rendering so
@@ -58,12 +59,13 @@ export default async function StorefrontHomePage() {
   const availabilityByVariant = Object.fromEntries(
     products.flatMap((product) => product.variants.map((variant) => [variant.id, variant.available])),
   );
+  const enabledPaymentMethods = await getEnabledPaymentMethods(tenant.id);
 
   return (
     <CartProvider>
       <div className="flex flex-1 flex-col">
         <div className="flex items-center justify-end gap-2 border-b border-border bg-surface-muted px-6 py-2">
-          <CartWidget availabilityByVariant={availabilityByVariant} />
+          <CartWidget availabilityByVariant={availabilityByVariant} enabledPaymentMethods={enabledPaymentMethods} />
         </div>
         <StorefrontHeader branding={branding} />
         <StorefrontHero branding={branding} comingSoon={comingSoon} />

@@ -3,35 +3,37 @@
 import { useState } from "react";
 import { useCart } from "./cart-context";
 import { checkoutAction } from "./checkout-actions";
-import type { BankTransferInfo } from "@/lib/bank-transfer-info";
+import { isValidVietnamesePhone } from "@/lib/validation/phone";
+import type { PaymentInstructions } from "@/lib/payments/provider";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
 }
 
-// Mirrors order-mutations.ts's PAYMENT_METHODS. Only "cod" is functionally
-// complete today (Step 30) — no gateway call is made for any method yet;
-// the other two are recorded but not yet processed.
-const PAYMENT_METHODS = [
-  { value: "cod", label: "Cash on delivery" },
-  { value: "momo", label: "MoMo" },
-  { value: "bank_transfer", label: "Bank transfer" },
-] as const;
+const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+// Step 51: labels only — which of these actually appear is driven by
+// `enabledPaymentMethods` (server-resolved from TenantPaymentMethod), not
+// hardcoded per tenant. All three remain valid PaymentMethod values; a
+// tenant simply may not have enabled/configured all of them.
+const PAYMENT_METHOD_LABELS: Record<string, string> = {
+  cod: "Cash on delivery",
+  momo: "MoMo",
+  bank_transfer: "Bank transfer",
+};
 
 const inputClassName =
   "rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+const errorInputClassName =
+  "rounded-md border border-red-400 bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40";
+
+type FieldErrors = Partial<Record<"name" | "email" | "phone" | "address" | "ward" | "district" | "city", string>>;
 
 type CheckoutState =
   | { status: "idle" }
+  | { status: "validating" }
   | { status: "submitting" }
-  | {
-      status: "success";
-      orderId: string;
-      paymentMethod: (typeof PAYMENT_METHODS)[number]["value"];
-      paymentRedirectUrl?: string;
-      paymentInitiationFailed?: boolean;
-      bankTransferInfo?: BankTransferInfo;
-    }
+  | { status: "success"; orderId: string; instructions: PaymentInstructions }
   | { status: "error"; message: string };
 
 // Minimal V1 cart + checkout panel: count, list, quantity +/-, remove,
@@ -52,11 +54,22 @@ type CheckoutState =
 // "unknown" rather than "zero" — it does not block incrementing, since a
 // stale absence here must never be more restrictive than the real
 // checkout-time check.
-export function CartWidget({ availabilityByVariant }: { availabilityByVariant: Record<string, number> }) {
+export function CartWidget({
+  availabilityByVariant,
+  enabledPaymentMethods,
+}: {
+  availabilityByVariant: Record<string, number>;
+  // Step 51: server-resolved from TenantPaymentMethod (see
+  // payment-service.ts's getEnabledPaymentMethods) — UX only, so a
+  // customer never sees a method the tenant hasn't configured; the real
+  // enforcement is server-side in createOrder(), unaffected by this prop.
+  enabledPaymentMethods: string[];
+}) {
   const { items, itemCount, updateQuantity, removeItem, clearCart } = useCart();
   const [open, setOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
-  const [paymentMethod, setPaymentMethod] = useState<(typeof PAYMENT_METHODS)[number]["value"]>("cod");
+  const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [paymentMethod, setPaymentMethod] = useState<string>(enabledPaymentMethods[0] ?? "cod");
   // Step 32: guest-checkout contact info — no login, no session, no
   // account. Kept as plain component state, same as paymentMethod above.
   const [name, setName] = useState("");
@@ -73,7 +86,38 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
 
   const subtotal = items.reduce((sum, item) => sum + item.price * item.quantity, 0);
 
+  // Step 51: fast client-side feedback only — every one of these rules is
+  // re-checked authoritatively server-side in order-mutations.ts. Never
+  // relies on HTML `required` alone.
+  function validate(): FieldErrors {
+    const errors: FieldErrors = {};
+    if (!name.trim()) errors.name = "Full name is required.";
+    if (!email.trim() || !BASIC_EMAIL_PATTERN.test(email.trim())) errors.email = "A valid email is required.";
+    if (!phone.trim() || !isValidVietnamesePhone(phone)) errors.phone = "A valid Vietnamese phone number is required.";
+    if (!address.trim()) errors.address = "Address is required.";
+    if (!ward.trim()) errors.ward = "Ward is required.";
+    if (!district.trim()) errors.district = "District is required.";
+    if (!city.trim()) errors.city = "City is required.";
+    return errors;
+  }
+
   async function handleCheckout() {
+    // Step 51: duplicate-submit protection — the button is disabled
+    // whenever status is anything but "idle"/"error" (see the render
+    // below), and this guard is the second layer: a rapid double-click
+    // landing here twice while the first call is still in flight is
+    // blocked by state already having left "idle".
+    if (checkout.status === "validating" || checkout.status === "submitting") {
+      return;
+    }
+    setCheckout({ status: "validating" });
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) {
+      setCheckout({ status: "idle" });
+      return;
+    }
+
     setCheckout({ status: "submitting" });
     const result = await checkoutAction(
       items.map((item) => ({ productVariantId: item.productVariantId, quantity: item.quantity })),
@@ -86,14 +130,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
       // leave every item exactly as the customer had it, so they can fix
       // whatever went wrong (or just retry) without re-adding anything.
       clearCart();
-      setCheckout({
-        status: "success",
-        orderId: result.data.orderId,
-        paymentMethod,
-        paymentRedirectUrl: result.data.paymentRedirectUrl,
-        paymentInitiationFailed: result.data.paymentInitiationFailed,
-        bankTransferInfo: result.data.bankTransferInfo,
-      });
+      setCheckout({ status: "success", orderId: result.data.orderId, instructions: result.data.instructions });
     } else {
       setCheckout({ status: "error", message: result.error });
     }
@@ -136,52 +173,47 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                 </div>
               </div>
 
-              {/* Step 48: MoMo checkout success carries a redirect link to
-                  MoMo's hosted payment page — the order already exists
-                  (and its inventory reservation) regardless of whether the
-                  customer completes payment. */}
-              {checkout.paymentRedirectUrl && (
+              {/* Step 51: renders purely off the canonical PaymentInstructions
+                  shape — never branches on provider name. "redirect" is
+                  MoMo today, "bank_transfer" covers both manual and SePay
+                  VA (the presence of qrCodeUrl/virtualAccountNumber is
+                  supplementary detail on the same action, not a separate
+                  rail), "none" covers cod and any not-yet-actionable case. */}
+              {checkout.instructions.type === "redirect" && (
                 <a
-                  href={checkout.paymentRedirectUrl}
+                  href={checkout.instructions.redirectUrl}
                   className="self-start rounded-md bg-foreground px-3 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90"
                 >
-                  Pay with MoMo
+                  {checkout.instructions.nextAction}
                 </a>
               )}
-              {checkout.paymentInitiationFailed && (
-                <p className="rounded-md border border-red-200 bg-red-50 p-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400">
-                  Your order was placed, but we couldn&apos;t start MoMo payment. Please contact the store, or pay on
-                  delivery if the merchant allows it.
-                </p>
+
+              {checkout.instructions.type === "bank_transfer" && (
+                <div className="rounded-md border border-border bg-surface-muted p-3 text-xs">
+                  <p className="font-medium">{checkout.instructions.title}</p>
+                  {checkout.instructions.bankName && <p className="mt-1">{checkout.instructions.bankName}</p>}
+                  {(checkout.instructions.accountNumber || checkout.instructions.virtualAccountNumber) && (
+                    <p className="font-mono">
+                      {checkout.instructions.virtualAccountNumber ?? checkout.instructions.accountNumber}
+                    </p>
+                  )}
+                  {checkout.instructions.accountHolder && <p>{checkout.instructions.accountHolder}</p>}
+                  {checkout.instructions.qrCodeUrl && (
+                    // eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset
+                    <img src={checkout.instructions.qrCodeUrl} alt="Payment QR code" className="mt-2 h-32 w-32" />
+                  )}
+                  <p className="mt-1 font-mono">{formatVnd(checkout.instructions.amount)}</p>
+                  {checkout.instructions.expiresAt && (
+                    <p className="mt-1 text-muted-foreground">
+                      Expires: {new Date(checkout.instructions.expiresAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+                    </p>
+                  )}
+                  <p className="mt-2 text-muted-foreground">{checkout.instructions.nextAction}</p>
+                </div>
               )}
 
-              {/* Plain merchant-entered instructions (Tenant Admin's
-                  Branding form) — only present when the tenant has fully
-                  configured them (see bank-transfer-info.ts). No QR code,
-                  no gateway, no automated reconciliation: the customer
-                  wires the money themselves and the merchant confirms it
-                  manually (see Tenant Admin's Orders section). */}
-              {checkout.paymentMethod === "bank_transfer" &&
-                (checkout.bankTransferInfo ? (
-                  <div className="rounded-md border border-border bg-surface-muted p-3 text-xs">
-                    <p className="font-medium">Transfer to:</p>
-                    <p className="mt-1">{checkout.bankTransferInfo.bankName}</p>
-                    <p className="font-mono">{checkout.bankTransferInfo.bankAccountNumber}</p>
-                    <p>{checkout.bankTransferInfo.bankAccountHolder}</p>
-                    <p className="mt-2 text-muted-foreground">
-                      Please include your order ID as the transfer note, then wait for the merchant to confirm your
-                      order.
-                    </p>
-                  </div>
-                ) : (
-                  <p className="rounded-md border border-border bg-surface-muted p-3 text-xs text-muted-foreground">
-                    The merchant hasn&apos;t set up bank transfer details yet — please contact the store directly for
-                    payment instructions.
-                  </p>
-                ))}
-
-              {checkout.paymentMethod === "cod" && (
-                <p className="text-xs text-muted-foreground">Pay in cash when your order arrives.</p>
+              {checkout.instructions.type === "none" && (
+                <p className="text-xs text-muted-foreground">{checkout.instructions.nextAction}</p>
               )}
 
               {/* Bookmarkable order-confirmation link — the customer's only
@@ -273,8 +305,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.name ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.name && <span className="text-red-600">{fieldErrors.name}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   Email
@@ -282,8 +315,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="email"
                     value={email}
                     onChange={(e) => setEmail(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.email ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.email && <span className="text-red-600">{fieldErrors.email}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   Phone
@@ -291,8 +325,10 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="tel"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
-                    className={inputClassName}
+                    placeholder="0912345678"
+                    className={fieldErrors.phone ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.phone && <span className="text-red-600">{fieldErrors.phone}</span>}
                 </label>
               </fieldset>
 
@@ -304,8 +340,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={address}
                     onChange={(e) => setAddress(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.address ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.address && <span className="text-red-600">{fieldErrors.address}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   Ward
@@ -313,8 +350,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={ward}
                     onChange={(e) => setWard(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.ward ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.ward && <span className="text-red-600">{fieldErrors.ward}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   District
@@ -322,8 +360,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={district}
                     onChange={(e) => setDistrict(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.district ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.district && <span className="text-red-600">{fieldErrors.district}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   City
@@ -331,8 +370,9 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                     type="text"
                     value={city}
                     onChange={(e) => setCity(e.target.value)}
-                    className={inputClassName}
+                    className={fieldErrors.city ? errorInputClassName : inputClassName}
                   />
+                  {fieldErrors.city && <span className="text-red-600">{fieldErrors.city}</span>}
                 </label>
                 <label className="flex flex-col gap-1">
                   Delivery note
@@ -347,18 +387,22 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
 
               <fieldset className="mt-3 flex flex-col gap-1.5 text-xs">
                 <legend className="mb-1 text-muted-foreground">Payment method</legend>
-                {PAYMENT_METHODS.map((method) => (
-                  <label key={method.value} className="flex items-center gap-2">
-                    <input
-                      type="radio"
-                      name="paymentMethod"
-                      value={method.value}
-                      checked={paymentMethod === method.value}
-                      onChange={() => setPaymentMethod(method.value)}
-                    />
-                    {method.label}
-                  </label>
-                ))}
+                {enabledPaymentMethods.length === 0 ? (
+                  <p className="text-red-600">This store hasn&apos;t enabled any payment method yet.</p>
+                ) : (
+                  enabledPaymentMethods.map((method) => (
+                    <label key={method} className="flex items-center gap-2">
+                      <input
+                        type="radio"
+                        name="paymentMethod"
+                        value={method}
+                        checked={paymentMethod === method}
+                        onChange={() => setPaymentMethod(method)}
+                      />
+                      {PAYMENT_METHOD_LABELS[method] ?? method}
+                    </label>
+                  ))
+                )}
               </fieldset>
 
               {checkout.status === "error" && (
@@ -376,7 +420,7 @@ export function CartWidget({ availabilityByVariant }: { availabilityByVariant: R
                 <button
                   type="button"
                   onClick={handleCheckout}
-                  disabled={checkout.status === "submitting"}
+                  disabled={checkout.status === "submitting" || checkout.status === "validating" || enabledPaymentMethods.length === 0}
                   className="rounded-md bg-foreground px-4 py-1.5 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
                 >
                   {checkout.status === "submitting" ? "Placing order…" : "Checkout"}
