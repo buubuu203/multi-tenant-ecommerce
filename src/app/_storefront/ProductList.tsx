@@ -245,36 +245,122 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     });
   }
 
+  // Step 50 (revised): variant options get their own labeled block on the
+  // detail page (larger, one-per-line) so a product with several options
+  // stays legible as more get added — the card view keeps the original
+  // compact wrapped-row layout, since a list card has no room to spare.
+  const optionsBlock = !simpleVariant && options.length > 0 && (
+    <div className={linkToDetail ? "flex flex-wrap gap-3 text-xs" : "flex flex-col gap-3 text-sm"}>
+      {options.map((option) => {
+        const annotatedValues = getAvailableValues(product.variants, option.variantOptionId, option.values, selection);
+        return (
+          <label key={option.variantOptionId} className="flex flex-col gap-1">
+            <span className={linkToDetail ? "text-muted-foreground" : "text-xs font-medium tracking-wide text-muted-foreground uppercase"}>
+              {option.optionName}
+            </span>
+            <select
+              className={
+                linkToDetail
+                  ? "rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+                  : "w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+              }
+              value={selection[option.variantOptionId] ?? ""}
+              onChange={(e) =>
+                setSelection((prev) => applySelection(product.variants, prev, option.variantOptionId, e.target.value))
+              }
+            >
+              <option value="">Select {option.optionName}</option>
+              {annotatedValues.map((value) => (
+                <option key={value.variantOptionValueId} value={value.variantOptionValueId} disabled={!value.selectable}>
+                  {value.valueLabel}
+                  {value.selectable ? "" : " (unavailable)"}
+                </option>
+              ))}
+            </select>
+          </label>
+        );
+      })}
+    </div>
+  );
+
+  const addToCartButton = (
+    <button
+      type="button"
+      onClick={handleAddToCart}
+      disabled={!resolvedVariant || outOfStock || atAvailableLimit}
+      className={
+        linkToDetail
+          ? "w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          : "w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+      }
+    >
+      {addToCartLabel}
+    </button>
+  );
+
+  if (!linkToDetail) {
+    // Step 50 (revised): a real two-column product detail layout — media
+    // on the left (or stacked above on narrow screens), a clear
+    // typographic hierarchy for name/price, then description, options,
+    // and the add-to-cart action, each its own visually separated block.
+    // Deliberately more spacious than the card layout: this is the ONLY
+    // context where the customer sees every media item, the full
+    // description, and every variant option at once, so it needs room to
+    // grow as products carry more of that information — not visual polish
+    // for its own sake.
+    return (
+      <li className="flex flex-col gap-6 sm:flex-row sm:items-start">
+        <div className="sm:w-[420px] sm:flex-shrink-0">
+          <ProductMediaCarousel media={product.media} productName={product.name} />
+        </div>
+        <div className="flex flex-1 flex-col gap-5">
+          <div className="flex flex-col gap-2">
+            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{product.name}</h1>
+            <div className="flex items-baseline gap-3">
+              <span className="font-mono text-xl font-semibold">{priceDisplay}</span>
+              {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
+            </div>
+          </div>
+
+          {/* Step 43: plain-text only, rendered as-is — no Markdown/HTML.
+              whitespace-pre-line preserves the merchant's own line breaks
+              (still no Markdown/HTML rendering — just literal newlines). */}
+          {product.description && (
+            <p className="max-w-prose text-sm leading-relaxed whitespace-pre-line text-foreground/80">
+              {product.description}
+            </p>
+          )}
+
+          {optionsBlock}
+
+          <div className="pt-1">{addToCartButton}</div>
+        </div>
+      </li>
+    );
+  }
+
   return (
     <li className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 text-sm transition-shadow hover:shadow-sm">
-      {/* Step 50: on the product list card (linkToDetail=true) show only
-          the primary (first) media item as a thumbnail, linked to the
-          detail page — the full carousel belongs on the detail page
-          itself (linkToDetail=false), where every media item is
-          reachable. Deliberately the ONLY inventory-adjacent number never
-          duplicated here: this reads product.media directly, not a
-          separate "primary image" field. */}
-      {primaryMedia &&
-        (linkToDetail ? (
-          <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-md bg-surface-muted">
-            <MediaThumbnail media={primaryMedia} alt={product.name} />
-          </Link>
-        ) : (
-          <ProductMediaCarousel media={product.media} productName={product.name} />
-        ))}
+      {/* Step 50: on the product list card show only the primary (first)
+          media item as a thumbnail, linked to the detail page — the full
+          carousel belongs on the detail page itself, where every media
+          item is reachable. Deliberately the ONLY inventory-adjacent
+          number never duplicated here: this reads product.media directly,
+          not a separate "primary image" field. */}
+      {primaryMedia && (
+        <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-md bg-surface-muted">
+          <MediaThumbnail media={primaryMedia} alt={product.name} />
+        </Link>
+      )}
 
       <div className="flex flex-col gap-1">
-        <div className="flex items-start justify-between gap-2">
-          {linkToDetail ? (
-            <Link href={`/products/${product.id}`} className="font-medium hover:underline">
-              {product.name}
-            </Link>
-          ) : (
-            <span className="font-medium">{product.name}</span>
-          )}
-          <span className="font-mono text-sm whitespace-nowrap">{priceDisplay}</span>
+        <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium hover:underline">
+          {product.name}
+        </Link>
+        <div className="flex items-baseline justify-between gap-2">
+          <span className="font-mono text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+          {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
         </div>
-        {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
       </div>
 
       {/* Step 43: plain-text only, rendered as-is — no Markdown/HTML. Only
@@ -283,48 +369,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
       )}
 
-      {!simpleVariant && options.length > 0 && (
-        <div className="flex flex-wrap gap-3 text-xs">
-          {options.map((option) => {
-            const annotatedValues = getAvailableValues(product.variants, option.variantOptionId, option.values, selection);
-            return (
-              <label key={option.variantOptionId} className="flex flex-col gap-1">
-                <span className="text-muted-foreground">{option.optionName}</span>
-                <select
-                  className="rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-                  value={selection[option.variantOptionId] ?? ""}
-                  onChange={(e) =>
-                    setSelection((prev) => applySelection(product.variants, prev, option.variantOptionId, e.target.value))
-                  }
-                >
-                  <option value="">Select {option.optionName}</option>
-                  {annotatedValues.map((value) => (
-                    <option
-                      key={value.variantOptionValueId}
-                      value={value.variantOptionValueId}
-                      disabled={!value.selectable}
-                    >
-                      {value.valueLabel}
-                      {value.selectable ? "" : " (unavailable)"}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            );
-          })}
-        </div>
-      )}
+      {optionsBlock}
 
-      <div className="mt-1">
-        <button
-          type="button"
-          onClick={handleAddToCart}
-          disabled={!resolvedVariant || outOfStock || atAvailableLimit}
-          className="w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-        >
-          {addToCartLabel}
-        </button>
-      </div>
+      <div className="mt-1">{addToCartButton}</div>
     </li>
   );
 }

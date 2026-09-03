@@ -40,7 +40,7 @@ export default async function ProductDetailPage({
           <CartWidget availabilityByVariant={availabilityByVariant} />
         </div>
         <main className="px-6 py-10 sm:py-14">
-          <ul className="mx-auto max-w-md">
+          <ul className="mx-auto max-w-3xl">
             <ProductRow product={product} linkToDetail={false} />
           </ul>
         </main>
