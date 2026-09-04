@@ -15,6 +15,7 @@ import { updateProductVariant } from "@/lib/product-variant-mutations";
 import { updateOrderStatus } from "@/lib/order-mutations";
 import { adjustInventoryOnHand } from "@/lib/inventory-mutations";
 import { updateTenantPaymentMethod } from "@/lib/tenant-payment-mutations";
+import { markManualPaymentReceived } from "@/lib/payments/payment-service";
 import type { PaymentMethod, PaymentProviderType } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -399,6 +400,24 @@ export async function updateOrderStatusAction(
   const nextStatus = String(formData.get("nextStatus") ?? "");
 
   const result = await updateOrderStatus(tenantId, orderId, nextStatus);
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+// Confirms a bank_transfer_manual Payment after the merchant has verified
+// the transfer landed in their own bank account — see
+// markManualPaymentReceived's doc comment for why this is restricted to
+// that one provider only.
+export async function markManualPaymentReceivedAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const orderId = String(formData.get("orderId") ?? "");
+
+  const result = await markManualPaymentReceived(tenantId, orderId);
   if (result.success) {
     revalidatePath("/tenant-admin");
   }

@@ -28,6 +28,12 @@ export type OrderListEntry = {
   // schema.prisma's Payment doc comment). cod stays "pending" until a
   // separate, not-yet-built feature lets a merchant mark cash collected.
   paymentStatus: string | null;
+  // Step 52: which adapter handled this order's Payment (null alongside
+  // paymentStatus for the same pre-Step-51 orders). Lets the Tenant Admin
+  // UI show "Mark as Paid" only for bank_transfer_manual, never for
+  // bank_transfer_sepay_va (that one is only ever confirmed by SePay's own
+  // webhook — a manual override there would fight the real payment state).
+  paymentProvider: string | null;
   createdAt: Date;
   itemCount: number;
   total: number;
@@ -150,6 +156,7 @@ export async function listOrders(tenantId: string): Promise<OrderListEntry[]> {
       status: order.status,
       paymentMethod: order.paymentMethod,
       paymentStatus: order.payment?.status ?? null,
+      paymentProvider: order.payment?.provider ?? null,
       createdAt: order.createdAt,
       itemCount: items.length,
       total: items.reduce((sum, item) => sum + item.lineTotal, 0),
