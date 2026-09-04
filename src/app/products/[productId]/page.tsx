@@ -1,9 +1,11 @@
 import Link from "next/link";
+import { headers } from "next/headers";
 import { notFound } from "next/navigation";
 import { getTenantProduct } from "../../_storefront/get-tenant-products";
 import { ProductRow } from "../../_storefront/ProductList";
 import { CartProvider } from "../../_storefront/cart-context";
 import { CartWidget } from "../../_storefront/CartWidget";
+import { getEnabledPaymentMethods } from "@/lib/payments/payment-service";
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header), same as the storefront home
@@ -29,6 +31,9 @@ export default async function ProductDetailPage({
   // pattern as src/app/page.tsx — CartWidget has no other access to
   // inventory data.
   const availabilityByVariant = Object.fromEntries(product.variants.map((variant) => [variant.id, variant.available]));
+  const headerList = await headers();
+  const tenantId = headerList.get("x-tenant-id") ?? "";
+  const enabledPaymentMethods = tenantId ? await getEnabledPaymentMethods(tenantId) : [];
 
   return (
     <CartProvider>
@@ -37,7 +42,7 @@ export default async function ProductDetailPage({
           <Link href="/" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
             ← Back to store
           </Link>
-          <CartWidget availabilityByVariant={availabilityByVariant} />
+          <CartWidget availabilityByVariant={availabilityByVariant} enabledPaymentMethods={enabledPaymentMethods} />
         </div>
         <main className="px-6 py-10 sm:py-14">
           <ul className="mx-auto max-w-3xl">

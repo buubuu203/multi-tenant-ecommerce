@@ -40,6 +40,7 @@ model Tenant {
   customers      Customer[]
   payments       Payment[]
   productMedia   ProductMedia[]
+  paymentMethods TenantPaymentMethod[]
 
   @@map("tenants")
 }
@@ -413,10 +414,10 @@ model Order {
   tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   items    OrderItem[]
-  // Step 48: at most one Payment per Order (only ever created for
-  // paymentMethod = "momo" — cod/bank_transfer never get a Payment row in
-  // this MVP). Deliberately a separate model/status axis from
-  // OrderStatus — see PaymentStatus below.
+  // Step 51: a Payment row now exists for EVERY order regardless of
+  // paymentMethod (cod/bank_transfer_manual included) — see PaymentProviderType
+  // below. Still deliberately a separate model/status axis from
+  // OrderStatus — payment succeeding or failing never changes Order.status.
   payment  Payment?
 
   @@unique([id, tenantId])
@@ -443,19 +444,30 @@ model OrderItem {
   @@map("order_items")
 }
 
-// Step 48: MoMo Payment MVP. Deliberately a SEPARATE concept/status axis
-// from OrderStatus (pending/fulfilled/cancelled) — payment succeeding or
-// failing NEVER changes Order.status in this MVP, and OrderStatus
-// transitions (Step 36-37) never read Payment at all. One Payment per
-// Order at most (1:1, enforced by @@unique on orderId), created only when
-// paymentMethod = "momo" — cod/bank_transfer orders never get a Payment
-// row. This is a single-platform-level MoMo merchant account for this
-// MVP (credentials come from environment variables, not per-tenant
-// configuration) — a deliberate scope decision, see momo.ts.
+// Step 51 (Payment Architecture V2): deliberately a SEPARATE concept/
+// status axis from OrderStatus (pending/fulfilled/cancelled) — payment
+// succeeding or failing NEVER changes Order.status. One Payment per
+// Order at most (1:1, enforced by @@unique on orderId) — now created for
+// EVERY order regardless of method (see PaymentProviderType), not just
+// momo as in the original Step 48 MVP.
 enum PaymentStatus {
   pending
   succeeded
   failed
+  expired
+  cancelled
+}
+
+// Which adapter actually handled this Payment — distinct from the
+// customer-facing PaymentMethod above. A customer only ever sees/chooses
+// "bank_transfer"; whether that's fulfilled by bank_transfer_manual or
+// bank_transfer_sepay_va is a tenant-configuration detail (see
+// TenantPaymentMethod) invisible to checkout logic.
+enum PaymentProviderType {
+  cod
+  bank_transfer_manual
+  bank_transfer_sepay_va
+  momo
 }
 
 model Payment {
@@ -463,23 +475,98 @@ model Payment {
   tenantId String
   orderId  String
   status   PaymentStatus @default(pending)
-  // The exact orderId string sent to MoMo at initiation time (NOT
-  // Order.id directly — a fresh, unguessable per-attempt reference, see
-  // momo.ts) — MoMo's IPN webhook echoes this back, and it is the sole
-  // correlation key used to find this row from a webhook payload. Unique
-  // because each initiation attempt gets its own reference.
-  providerOrderId String     @unique
-  // MoMo's own transaction id, populated once the IPN arrives — null
-  // while status is still pending.
+  provider PaymentProviderType
+  // Provider-specific semantics (never renamed for naming-purity alone —
+  // preserves the original Step 48 MoMo field, extended to other
+  // providers rather than replaced):
+  //   momo:                   our generated MoMo order reference (fresh,
+  //                           unguessable per attempt) — MoMo's IPN
+  //                           echoes this back as the correlation key.
+  //   bank_transfer_sepay_va: our generated `order_code` sent to SePay
+  //                           when creating the order/VA — SePay's
+  //                           webhook `code` field echoes this back.
+  //   cod / bank_transfer_manual: a fresh generated reference, never
+  //                           sent to any external system, kept only so
+  //                           every Payment has a stable unique handle.
+  providerOrderId String @unique
+  // momo: MoMo's transId. Other providers: informational only — the
+  // AUTHORITATIVE dedupe key for webhook-driven providers lives on
+  // PaymentEvent.providerEventId instead (see below), never here.
   providerTransactionId String?
-  amount   Int // VND snapshot of the order total at initiation time
+  amount    Int // VND snapshot of the order total at initiation time
+  // Set only for providers with a real expiration (SePay's VA); null for
+  // cod/bank_transfer_manual/momo.
+  expiresAt DateTime?
+  // Customer/merchant-facing reason when status = "failed" — e.g. "MoMo
+  // payment is not configured on this server." Never a raw provider
+  // error dump (no stack traces, no internal exception text).
+  failureReason String?
+  // Provider-owned, adapter-specific data with no schema-level shape:
+  // SePay's va_number/qr_code_url/order UUID, etc. Never sensitive
+  // credentials — only per-payment public-ish data already returned to
+  // the customer via PaymentInstructions.
+  providerMetadata Json?
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   order  Order  @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  events PaymentEvent[]
 
   @@unique([orderId, tenantId])
   @@index([tenantId])
   @@map("payments")
+}
+
+// Step 51: webhook audit trail + the AUTHORITATIVE dedupe mechanism for
+// any provider whose webhook can plausibly retry/replay (SePay, MoMo).
+// Two independent layers of duplicate protection exist by design: this
+// table's @@unique constraint (a true DB-level reject), plus the atomic
+// guarded UPDATE ... WHERE status = 'pending' already used to transition
+// Payment.status (a second, independent safety net — see
+// payment-service.ts). Deliberately NOT an unbounded raw-log system:
+// one row per genuine webhook delivery, nothing polled/generated
+// speculatively.
+model PaymentEvent {
+  id        String              @id @default(uuid())
+  paymentId String
+  provider  PaymentProviderType
+  // The provider's own stable transaction identity, retained across
+  // retries — NEVER a payment/order reference that could legitimately
+  // repeat (e.g. SePay's `code`/order_code is NOT used here; SePay's
+  // webhook `id`, its actual bank-transaction id, is). Null only for a
+  // provider with no such id, which then falls back to relying solely on
+  // the Payment.status guard for idempotency.
+  providerEventId String?
+  rawPayload      Json
+  receivedAt      DateTime @default(now())
+
+  payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerEventId])
+  @@index([paymentId])
+  @@map("payment_events")
+}
+
+// Step 51: per-tenant enablement + configuration for each customer-facing
+// PaymentMethod. Closes a real gap in the original MVP: previously any
+// tenant could have a customer select "momo" or "bank_transfer" with zero
+// server-side check that the tenant had actually configured (or wanted)
+// that method. `provider` picks which adapter backs a method when more
+// than one exists for it (only bank_transfer today); `config` is
+// provider-shaped JSON (manual: bank details; sepay_va: SePay bank
+// account UUID) — never rendered back to the browser as raw JSON from
+// Tenant Admin, only as a derived "configured"/"not configured" status.
+model TenantPaymentMethod {
+  id       String              @id @default(uuid())
+  tenantId String
+  method   PaymentMethod
+  provider PaymentProviderType
+  enabled  Boolean             @default(false)
+  config   Json?
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([tenantId, method])
+  @@map("tenant_payment_methods")
 }

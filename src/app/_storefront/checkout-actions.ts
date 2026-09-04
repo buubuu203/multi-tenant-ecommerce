@@ -2,8 +2,9 @@
 
 import { headers } from "next/headers";
 import { createOrder } from "@/lib/order-mutations";
-import { initiatePaymentForOrder } from "@/lib/payment-mutations";
-import { getBankTransferInfo, type BankTransferInfo } from "@/lib/bank-transfer-info";
+import { createPaymentForOrder } from "@/lib/payments/payment-service";
+import type { PaymentInstructions } from "@/lib/payments/provider";
+import type { PaymentMethod } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
 
 // Only the two identity fields this checkout flow is allowed to trust from
@@ -38,39 +39,35 @@ export type CheckoutShippingInput = {
 };
 
 /**
- * Converts the current client-side cart into an Order. tenantId is read
- * from the trusted `x-tenant-id` header — resolved server-side by
- * src/proxy.ts from the verified request hostname, the same pattern every
- * other storefront read/write in this project uses (get-tenant-products.ts,
- * get-current-tenant.ts) — never accepted as a client-supplied argument.
+ * Converts the current client-side cart into an Order, then initiates
+ * payment for it via the generic PaymentService (Step 51) — never
+ * branches on provider name here; `instructions` is the one canonical
+ * shape the checkout UI renders off, regardless of which provider ends up
+ * handling the chosen method.
  *
- * Does no order/inventory/payment/customer/shipping logic of its own:
- * delegates entirely to the existing createOrder() (Step 28), which
- * re-reads authoritative ProductVariant data, verifies tenant ownership,
- * snapshots price, reserves inventory atomically in the same transaction
- * as the Order/OrderItem rows, (Step 30) validates+stores the chosen
- * payment method, (Step 32) validates+upserts the Customer record, and
- * (Step 34) validates+persists the shipping address — all in that same
- * transaction. This function's only job is resolving the trusted tenant
- * context and passing through the minimal (productVariantId, quantity)
- * pairs plus the selected payment method, entered contact info, and
- * entered shipping address — nothing about pricing, totals, stock,
- * payment validity, customer identity, or address validity is decided
- * here.
+ * tenantId is read from the trusted `x-tenant-id` header — resolved
+ * server-side by src/proxy.ts from the verified request hostname, same
+ * pattern every other storefront read/write in this project uses — never
+ * accepted as a client-supplied argument. The provider/config behind a
+ * payment method is likewise never client-controlled — PaymentService
+ * resolves it exclusively from TenantPaymentMethod, looked up by
+ * (tenantId, method).
+ *
+ * Does no order/inventory/customer/shipping logic of its own: delegates
+ * entirely to createOrder() (Step 28, extended in Step 51 with the
+ * tenant-payment-method-enabled check), which re-reads authoritative
+ * ProductVariant data, reserves inventory atomically, and snapshots
+ * price server-side. The order (and its inventory reservation) is ALREADY
+ * created and committed before payment initiation ever runs — the
+ * approved pay-after design, unchanged since Step 48. Payment initiation
+ * failing never rolls the order back.
  */
 export async function checkoutAction(
   items: CheckoutItemInput[],
   paymentMethod: string,
   customer: CheckoutCustomerInput,
   shipping: CheckoutShippingInput,
-): Promise<
-  ActionResult<{
-    orderId: string;
-    paymentRedirectUrl?: string;
-    paymentInitiationFailed?: boolean;
-    bankTransferInfo?: BankTransferInfo;
-  }>
-> {
+): Promise<ActionResult<{ orderId: string; instructions: PaymentInstructions }>> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
@@ -85,16 +82,12 @@ export async function checkoutAction(
     quantity: item.quantity,
   }));
 
-  // Same defensive stripping for the customer object — only these three
-  // fields are ever read, regardless of what else the caller's object
-  // might carry.
   const sanitizedCustomer = {
     name: customer.name,
     email: customer.email,
     phone: customer.phone,
   };
 
-  // Same defensive stripping for the shipping object.
   const sanitizedShipping = {
     address: shipping.address,
     ward: shipping.ward,
@@ -108,39 +101,29 @@ export async function checkoutAction(
     return result;
   }
 
-  // Step 48: the order (and its inventory reservation) is ALREADY
-  // created and committed at this point, for every payment method,
-  // including "momo" — the approved pay-after design keeps reservation
-  // timing completely unchanged. Payment initiation is a separate step
-  // layered on afterward; nothing below this line can undo the order or
-  // its reservation. cod/bank_transfer are untouched — no Payment row is
-  // ever created for them.
-  if (paymentMethod === "momo") {
-    const total = result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
-    const paymentResult = await initiatePaymentForOrder(tenantId, result.data.orderId, total, `Order ${result.data.orderId}`);
-    if (!paymentResult.initiated) {
-      // Smallest safe behavior for this MVP: the order stands as created
-      // (per the pay-after design, its existence never depended on
-      // payment succeeding) — we simply tell the customer payment could
-      // not be started, rather than inventing a retry/cancellation flow.
-      return {
-        success: true,
-        data: { orderId: result.data.orderId, paymentInitiationFailed: true },
-      };
-    }
+  // Server-computed total from the just-created, server-snapshotted order
+  // items — never a client-supplied amount.
+  const total = result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  const paymentResult = await createPaymentForOrder(
+    tenantId,
+    result.data.orderId,
+    paymentMethod as PaymentMethod,
+    total,
+    `Order ${result.data.orderId}`,
+  );
+
+  if (!paymentResult.success) {
+    // Smallest safe behavior, unchanged from the original MVP design: the
+    // order stands as created regardless of payment initiation outcome —
+    // the customer sees a clear failure, not a silently missing order.
     return {
       success: true,
-      data: { orderId: result.data.orderId, paymentRedirectUrl: paymentResult.payUrl },
+      data: {
+        orderId: result.data.orderId,
+        instructions: { type: "none", nextAction: `We couldn't start payment: ${paymentResult.error}` },
+      },
     };
   }
 
-  if (paymentMethod === "bank_transfer") {
-    const bankTransferInfo = await getBankTransferInfo(tenantId);
-    return {
-      success: true,
-      data: { orderId: result.data.orderId, bankTransferInfo: bankTransferInfo ?? undefined },
-    };
-  }
-
-  return { success: true, data: { orderId: result.data.orderId } };
+  return { success: true, data: { orderId: result.data.orderId, instructions: paymentResult.instructions } };
 }

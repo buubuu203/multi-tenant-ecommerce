@@ -1,5 +1,6 @@
 import { getScopedDb } from "./db/tenant-db";
 import { reserveInventoryInTx, releaseInventoryInTx, consumeReservedInventoryInTx, InventoryError } from "./inventory-mutations";
+import { isValidVietnamesePhone } from "./validation/phone";
 import type { ActionResult } from "./action-result";
 
 // The client cart (see cart-context.tsx) is NOT authoritative — this is
@@ -65,6 +66,9 @@ function validateCustomerInput(
   const phone = input.phone.trim();
   if (!phone) {
     return { error: "Phone is required." };
+  }
+  if (!isValidVietnamesePhone(phone)) {
+    return { error: "A valid Vietnamese phone number is required." };
   }
 
   return { name, email, phone };
@@ -207,6 +211,20 @@ export async function createOrder(
   const paymentMethodError = validatePaymentMethod(paymentMethod);
   if (paymentMethodError) {
     return { success: false, error: paymentMethodError.error };
+  }
+  // Step 51: server-authoritative — a tenant must never end up with a
+  // customer able to select a method the tenant hasn't enabled/configured
+  // (closing the gap where any of the 3 global enum values was previously
+  // selectable regardless of tenant configuration). Read outside the
+  // transaction below: a race where a merchant disables a method between
+  // this check and order creation is an acceptable, extremely rare edge
+  // case — not worth serializing order creation against admin config
+  // changes for.
+  const tenantMethod = await getScopedDb(tenantId).tenantPaymentMethod.findUnique({
+    where: { tenantId_method: { tenantId, method: paymentMethod as PaymentMethodInput } },
+  });
+  if (!tenantMethod || !tenantMethod.enabled) {
+    return { success: false, error: "This payment method is not available for this store." };
   }
   const customerInput = validateCustomerInput(customer);
   if ("error" in customerInput) {
