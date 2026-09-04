@@ -1,10 +1,11 @@
 import { randomUUID } from "crypto";
 import { prisma } from "@/lib/prisma";
+import type { ActionResult } from "@/lib/action-result";
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { Prisma, type Payment, type PaymentMethod, type PaymentProviderType } from "@/generated/prisma/client";
 import type { PaymentProvider, PaymentInstructions } from "./provider";
 import { CodProvider } from "./cod-provider";
-import { ManualBankTransferProvider } from "./manual-bank-transfer-provider";
+import { ManualBankTransferProvider, buildManualTransferQrUrl } from "./manual-bank-transfer-provider";
 import { SePayVirtualAccountProvider } from "./sepay-va-provider";
 import { MomoProvider } from "./momo-provider";
 
@@ -144,6 +145,37 @@ export async function createPaymentForOrder(
 }
 
 /**
+ * Manually confirms a bank_transfer_manual Payment after the merchant has
+ * checked their own bank account and seen the transfer land — the only
+ * confirmation path this provider has, since it never receives a webhook
+ * (see ManualBankTransferProvider's doc comment). Restricted to that one
+ * provider so a bank_transfer_sepay_va Payment (which SePay's webhook is
+ * the sole source of truth for) can never be overridden from here.
+ *
+ * Same atomic guarded-update idempotency pattern as webhook-service.ts:
+ * WHERE status = 'pending' means a second click (or a stale page) is a
+ * harmless no-op, never a double-transition.
+ */
+export async function markManualPaymentReceived(tenantId: string, orderId: string): Promise<ActionResult> {
+  const payment = await prisma.payment.findFirst({ where: { tenantId, orderId } });
+
+  if (!payment || payment.provider !== "bank_transfer_manual") {
+    return { success: false, error: "This order has no manual bank transfer payment to confirm." };
+  }
+
+  const result = await prisma.payment.updateMany({
+    where: { id: payment.id, tenantId, status: "pending" },
+    data: { status: "succeeded" },
+  });
+
+  if (result.count === 0) {
+    return { success: false, error: "This payment is no longer pending." };
+  }
+
+  return { success: true, data: undefined };
+}
+
+/**
  * Reconstructs display-only PaymentInstructions from an ALREADY-PERSISTED
  * Payment row — used by the order-lookup page (a returning customer
  * checking on a still-pending payment), never during checkout itself.
@@ -174,6 +206,7 @@ export async function getStoredPaymentInstructions(tenantId: string, payment: Pa
       bankName: config.bankName,
       accountNumber: config.accountNumber,
       accountHolder: config.accountHolder,
+      qrCodeUrl: buildManualTransferQrUrl(config.bankName, config.accountNumber, config.accountHolder, payment.amount, payment.orderId),
       nextAction: "Please include your order ID as the transfer note.",
     };
   }
