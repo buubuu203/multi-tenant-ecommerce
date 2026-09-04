@@ -13,6 +13,7 @@ import {
   generateVariantsAction,
   updateProductVariantAction,
   updateOrderStatusAction,
+  markManualPaymentReceivedAction,
   adjustInventoryOnHandAction,
   updateTenantPaymentMethodAction,
 } from "./actions";
@@ -782,6 +783,15 @@ export default async function TenantAdminHomePage() {
                   >
                     Payment: {order.paymentStatus}
                   </span>
+                )}
+                {/* Manual bank transfer never gets a webhook — this is the
+                    only way its Payment ever leaves "pending". Never shown
+                    for bank_transfer_sepay_va: SePay's own webhook is the
+                    sole source of truth for that provider. */}
+                {order.paymentProvider === "bank_transfer_manual" && order.paymentStatus === "pending" && (
+                  <ActionForm action={markManualPaymentReceivedAction} submitLabel="Mark as paid" className="inline-flex">
+                    <input type="hidden" name="orderId" value={order.id} />
+                  </ActionForm>
                 )}
                 <span className="text-xs text-muted-foreground">
                   {order.itemCount} item{order.itemCount === 1 ? "" : "s"}
