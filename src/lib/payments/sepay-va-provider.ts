@@ -22,13 +22,28 @@ type SepayVaConfig = {
   baUuid?: string;
 };
 
+// The actual envelope SePay returns from POST .../orders (confirmed
+// against a real Sandbox response, not assumed from docs alone) —
+// top-level status/message wrap the real order object one level deeper,
+// under `data`. `data` is absent on a validation failure (e.g. the
+// documented `errors.order_code` shape), present on success.
 type SepayCreateOrderResponse = {
   status?: string;
-  va_number?: string;
-  qr_code_url?: string;
-  expired_at?: string;
-  id?: string; // SePay's order UUID (data.id) — distinct from our order_code
   message?: string;
+  data?: {
+    id?: string; // SePay's order UUID — distinct from our order_code
+    order_code?: string;
+    va_number?: string;
+    va_holder_name?: string;
+    amount?: number;
+    status?: string;
+    bank_name?: string;
+    account_holder_name?: string;
+    account_number?: string;
+    expired_at?: string | null;
+    qr_code?: string;
+    qr_code_url?: string;
+  };
 };
 
 // SePay's documented webhook payload fields (per the official Order VA v2
@@ -44,7 +59,7 @@ type SepayCreateOrderResponse = {
 //                    Payment.amount before ever accepting the payment.
 //   transferType   — "in" for an inbound transfer; anything else rejected.
 export type SepayWebhookPayload = {
-  id: string;
+  id: string | number;
   code: string;
   subAccount?: string;
   transferAmount: number;
@@ -114,40 +129,93 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
       return { success: false, error: "SePay bank account is not configured for this store." };
     }
 
-    const providerOrderId = `${params.orderId}`;
+    // SePay's order_code field rejects anything but alphanumeric
+    // characters (confirmed against Sandbox: "Trường order_code chỉ có
+    // thể chứa các ký tự chữ và số.") — Order.id is a UUID and contains
+    // hyphens, so those are stripped here. The result (32 hex chars,
+    // well under SePay's 50-char limit) is still deterministic and
+    // unique per order, and is used as-is for Payment.providerOrderId —
+    // SePay's webhook `code` field echoes this exact value back, so the
+    // correlation lookup in webhook-service.ts (by providerOrderId)
+    // continues to work unchanged.
+    const providerOrderId = params.orderId.replace(/-/g, "");
+    const endpoint = `${SEPAY_API_BASE_URL}/bank-accounts/${config.baUuid}/orders`;
+    const requestBody = {
+      order_code: providerOrderId,
+      amount: params.amount,
+      with_qrcode: true,
+    };
 
     try {
-      const response = await fetch(`${SEPAY_API_BASE_URL}/bank-accounts/${config.baUuid}/orders`, {
+      const response = await fetch(endpoint, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
           Authorization: `Bearer ${SEPAY_API_TOKEN}`,
         },
-        body: JSON.stringify({
-          order_code: providerOrderId,
-          amount: params.amount,
-          with_qrcode: true,
-        }),
+        body: JSON.stringify(requestBody),
       });
-      const data = (await response.json()) as SepayCreateOrderResponse;
-      if (!response.ok || !data.va_number) {
-        return { success: false, error: data.message ?? "SePay did not return a virtual account." };
+      // Read as text first so the full raw body is always captured even if
+      // it isn't valid JSON, then try to parse it. On failure, the details
+      // are logged for diagnosing SePay integration issues — never logs the
+      // Authorization header, the API token, or the webhook secret; only
+      // the endpoint (no query string/creds), the request body we ourselves
+      // constructed (already non-secret), and whatever SePay sent back.
+      const rawBody = await response.text();
+      let envelope: SepayCreateOrderResponse = {};
+      try {
+        envelope = JSON.parse(rawBody) as SepayCreateOrderResponse;
+      } catch {
+        // leave envelope as {} — rawBody is still logged/returned below
+      }
+      // The real order object is nested under `envelope.data` (confirmed
+      // against an actual Sandbox 201 response) — NOT top-level fields on
+      // the envelope itself. `order` is undefined on a validation failure.
+      const order = envelope.data;
+
+      if (!response.ok || !order?.va_number) {
+        console.error("SePay createPayment failed:", {
+          endpoint,
+          requestBody,
+          httpStatus: response.status,
+          httpStatusText: response.statusText,
+          rawResponseBody: rawBody,
+          parsedResponseBody: envelope,
+        });
+        return { success: false, error: envelope.message ?? "SePay did not return a virtual account." };
       }
 
-      const expiresAt = data.expired_at ? new Date(data.expired_at) : null;
+      const expiresAt = order.expired_at ? new Date(order.expired_at) : null;
 
       return {
         success: true,
-        providerOrderId,
+        // SePay's returned order_code (present on every successful
+        // response) is what its webhook `code` field will echo back —
+        // using it here (rather than re-deriving providerOrderId again)
+        // guarantees Payment.providerOrderId is byte-for-byte the value
+        // the webhook will actually send, even if SePay ever normalizes
+        // it (e.g. the uppercasing observed in Sandbox).
+        providerOrderId: order.order_code ?? providerOrderId,
         expiresAt,
-        metadata: { sepayOrderId: data.id ?? null, vaNumber: data.va_number, qrCodeUrl: data.qr_code_url ?? null },
+        metadata: {
+          sepayOrderId: order.id ?? null,
+          vaNumber: order.va_number,
+          vaHolderName: order.va_holder_name ?? null,
+          bankName: order.bank_name ?? null,
+          accountHolderName: order.account_holder_name ?? null,
+          accountNumber: order.account_number ?? null,
+          qrCodeUrl: order.qr_code_url ?? null,
+        },
         instructions: {
           type: "bank_transfer",
           title: "Transfer to:",
           amount: params.amount,
           currency: "VND",
-          virtualAccountNumber: data.va_number,
-          qrCodeUrl: data.qr_code_url,
+          bankName: order.bank_name,
+          accountNumber: order.account_number,
+          accountHolder: order.account_holder_name,
+          virtualAccountNumber: order.va_number,
+          qrCodeUrl: order.qr_code_url,
           expiresAt: expiresAt ? expiresAt.toISOString() : undefined,
           nextAction: "Scan the QR code or transfer the exact amount to the virtual account number above.",
         },
@@ -206,7 +274,9 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
     return {
       success: true,
       providerOrderId: payload.code,
-      providerEventId: payload.id,
+      // SePay may serialize the bank transaction ID as a number, while
+      // PaymentEvent.providerEventId is stored as a string.
+      providerEventId: String(payload.id),
       newStatus: "succeeded",
       verifiedAmount: payload.transferAmount,
       rawPayload: payload,
