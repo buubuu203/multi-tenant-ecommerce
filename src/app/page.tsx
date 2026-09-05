@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { getCurrentTenant } from "./_storefront/get-current-tenant";
 import { getTenantProducts } from "./_storefront/get-tenant-products";
 import { resolveBranding } from "./_storefront/resolve-branding";
@@ -8,6 +9,7 @@ import { PlatformMessage } from "./_storefront/PlatformMessage";
 import { CartProvider } from "./_storefront/cart-context";
 import { CartWidget } from "./_storefront/CartWidget";
 import { getEnabledPaymentMethods } from "@/lib/payments/payment-service";
+import { getEnabledShippingMethods } from "@/lib/shipping-service";
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header). Force dynamic rendering so
@@ -60,14 +62,29 @@ export default async function StorefrontHomePage() {
     products.flatMap((product) => product.variants.map((variant) => [variant.id, variant.available])),
   );
   const enabledPaymentMethods = await getEnabledPaymentMethods(tenant.id);
+  const enabledShippingMethods = await getEnabledShippingMethods(tenant.id);
 
   return (
     <CartProvider>
       <div className="flex flex-1 flex-col">
-        <div className="flex items-center justify-end gap-2 border-b border-border bg-surface-muted px-6 py-2">
-          <CartWidget availabilityByVariant={availabilityByVariant} enabledPaymentMethods={enabledPaymentMethods} />
-        </div>
-        <StorefrontHeader branding={branding} />
+        <StorefrontHeader
+          branding={branding}
+          rightSlot={
+            <>
+              <Link
+                href="/orders"
+                className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
+              >
+                My orders
+              </Link>
+              <CartWidget
+                availabilityByVariant={availabilityByVariant}
+                enabledPaymentMethods={enabledPaymentMethods}
+                enabledShippingMethods={enabledShippingMethods}
+              />
+            </>
+          }
+        />
         <StorefrontHero branding={branding} comingSoon={comingSoon} />
         {!comingSoon && (
           <div className="mx-auto w-full max-w-6xl">

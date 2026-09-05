@@ -16,6 +16,7 @@ import { updateOrderStatus } from "@/lib/order-mutations";
 import { adjustInventoryOnHand } from "@/lib/inventory-mutations";
 import { updateTenantPaymentMethod } from "@/lib/tenant-payment-mutations";
 import { markManualPaymentReceived } from "@/lib/payments/payment-service";
+import { createShippingMethod, updateShippingMethod, deleteShippingMethod } from "@/lib/shipping-mutations";
 import type { PaymentMethod, PaymentProviderType } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
 
@@ -471,6 +472,63 @@ export async function updateTenantPaymentMethodAction(
     sepayBaUuid: String(formData.get("sepayBaUuid") ?? ""),
   });
 
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+// --- V1 Configurable Shipping -----------------------------------------
+// Same independent-requireTenantAdmin()-per-action rule as every mutation
+// above; tenantId is never read from formData.
+
+export async function createShippingMethodAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const result = await createShippingMethod(tenantId, {
+    name: String(formData.get("name") ?? ""),
+    amount: String(formData.get("amount") ?? ""),
+    enabled: formData.get("enabled") === "on",
+    isDefault: formData.get("isDefault") === "on",
+  });
+
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+export async function updateShippingMethodAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const methodId = String(formData.get("methodId") ?? "");
+
+  const result = await updateShippingMethod(tenantId, methodId, {
+    name: String(formData.get("name") ?? ""),
+    amount: String(formData.get("amount") ?? ""),
+    enabled: formData.get("enabled") === "on",
+    isDefault: formData.get("isDefault") === "on",
+  });
+
+  if (result.success) {
+    revalidatePath("/tenant-admin");
+  }
+  return result;
+}
+
+export async function deleteShippingMethodAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const methodId = String(formData.get("methodId") ?? "");
+
+  const result = await deleteShippingMethod(tenantId, methodId);
   if (result.success) {
     revalidatePath("/tenant-admin");
   }
