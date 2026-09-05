@@ -31,16 +31,17 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  domains        Domain[]
-  branding       Branding?
-  products       Product[]
-  variantOptions VariantOption[]
-  locations      Location[]
-  orders         Order[]
-  customers      Customer[]
-  payments       Payment[]
-  productMedia   ProductMedia[]
-  paymentMethods TenantPaymentMethod[]
+  domains         Domain[]
+  branding        Branding?
+  products        Product[]
+  variantOptions  VariantOption[]
+  locations       Location[]
+  orders          Order[]
+  customers       Customer[]
+  payments        Payment[]
+  productMedia    ProductMedia[]
+  paymentMethods  TenantPaymentMethod[]
+  shippingMethods TenantShippingMethod[]
 
   @@map("tenants")
 }
@@ -50,6 +51,15 @@ enum DomainType {
   custom
 }
 
+// NOTE: "at most one isPrimary per tenant" IS enforced at the database
+// level, via a partial unique index (domains_one_primary_per_tenant,
+// added in 20260824150052_init_tenant_foundation/migration.sql) — it does
+// not appear below because this Prisma version has no declarative syntax
+// for partial/filtered unique indexes, so it exists only as raw SQL in
+// the migration file. Don't assume "not visible in this model block"
+// means "not enforced" — check the migration before concluding a
+// same-shape invariant elsewhere (e.g. TenantShippingMethod.isDefault)
+// needs its own new mechanism rather than this same proven one.
 model Domain {
   id        String     @id @default(uuid())
   tenantId  String
@@ -65,22 +75,22 @@ model Domain {
 }
 
 model Branding {
-  id             String   @id @default(uuid())
-  tenantId       String   @unique
-  storeName      String?
-  logoUrl        String?
-  faviconUrl     String?
-  primaryColor   String?
-  secondaryColor String?
+  id                String   @id @default(uuid())
+  tenantId          String   @unique
+  storeName         String?
+  logoUrl           String?
+  faviconUrl        String?
+  primaryColor      String?
+  secondaryColor    String?
   // Manual bank transfer details the merchant configures themselves —
   // displayed to a customer at checkout/order-confirmation time whenever
   // they chose paymentMethod = "bank_transfer" (see checkout-actions.ts,
   // order-queries.ts). No gateway integration: this is plain instructional
   // text, never verified/reconciled against any actual transfer.
-  bankName            String?
-  bankAccountNumber   String?
-  bankAccountHolder   String?
-  updatedAt      DateTime @updatedAt
+  bankName          String?
+  bankAccountNumber String?
+  bankAccountHolder String?
+  updatedAt         DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
 
@@ -126,16 +136,16 @@ enum ProductStatus {
 }
 
 model Product {
-  id        String        @id @default(uuid())
-  tenantId  String
-  name      String
+  id          String        @id @default(uuid())
+  tenantId    String
+  name        String
   // Step 43: optional plain-text description — no Markdown, no HTML, no
   // rich text, rendered as-is. null means "no description set" (never an
   // empty string — see product-mutations.ts's validateDescription()).
   description String?
-  status    ProductStatus @default(draft)
-  createdAt DateTime      @default(now())
-  updatedAt DateTime      @updatedAt
+  status      ProductStatus @default(draft)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
 
   tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   variants ProductVariant[]
@@ -391,11 +401,11 @@ enum PaymentMethod {
 }
 
 model Order {
-  id               String        @id @default(uuid())
-  tenantId         String
-  customerId       String
-  status           OrderStatus   @default(pending)
-  paymentMethod    PaymentMethod
+  id                 String        @id @default(uuid())
+  tenantId           String
+  customerId         String
+  status             OrderStatus   @default(pending)
+  paymentMethod      PaymentMethod
   // Step 34: a delivery-address SNAPSHOT captured at checkout time, the
   // same convention as OrderItem.price — stored directly on Order (not on
   // Customer, not a separate Address model, per the approved design), so
@@ -403,13 +413,24 @@ model Order {
   // without altering this order's historical delivery record. No
   // province/ward IDs, no postal code, no geocoding — plain text fields
   // only, V1 scope.
-  shippingAddress  String
-  shippingWard     String
-  shippingDistrict String
-  shippingCity     String
-  shippingNote     String?
-  createdAt        DateTime      @default(now())
-  updatedAt        DateTime      @updatedAt
+  shippingAddress    String
+  shippingWard       String
+  shippingDistrict   String
+  shippingCity       String
+  shippingNote       String?
+  // V1 Configurable Shipping: both are SNAPSHOTS taken once at order
+  // creation, the same convention as OrderItem.price above — never a live
+  // read of TenantShippingMethod, so a merchant later renaming/repricing/
+  // deleting a shipping method can never alter what an already-placed
+  // order shows or was charged. shippingAmount defaults to 0 (not
+  // nullable) so every historical pre-shipping order is correctly and
+  // permanently "free shipping" rather than an ambiguous null state.
+  // shippingMethodName is nullable only for those same historical orders
+  // (which never had a method at all) — a new order always populates it.
+  shippingAmount     Int           @default(0)
+  shippingMethodName String?
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
   tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
@@ -471,11 +492,11 @@ enum PaymentProviderType {
 }
 
 model Payment {
-  id       String        @id @default(uuid())
-  tenantId String
-  orderId  String
-  status   PaymentStatus @default(pending)
-  provider PaymentProviderType
+  id                    String              @id @default(uuid())
+  tenantId              String
+  orderId               String
+  status                PaymentStatus       @default(pending)
+  provider              PaymentProviderType
   // Provider-specific semantics (never renamed for naming-purity alone —
   // preserves the original Step 48 MoMo field, extended to other
   // providers rather than replaced):
@@ -488,29 +509,29 @@ model Payment {
   //   cod / bank_transfer_manual: a fresh generated reference, never
   //                           sent to any external system, kept only so
   //                           every Payment has a stable unique handle.
-  providerOrderId String @unique
+  providerOrderId       String              @unique
   // momo: MoMo's transId. Other providers: informational only — the
   // AUTHORITATIVE dedupe key for webhook-driven providers lives on
   // PaymentEvent.providerEventId instead (see below), never here.
   providerTransactionId String?
-  amount    Int // VND snapshot of the order total at initiation time
+  amount                Int // VND snapshot of the order total at initiation time
   // Set only for providers with a real expiration (SePay's VA); null for
   // cod/bank_transfer_manual/momo.
-  expiresAt DateTime?
+  expiresAt             DateTime?
   // Customer/merchant-facing reason when status = "failed" — e.g. "MoMo
   // payment is not configured on this server." Never a raw provider
   // error dump (no stack traces, no internal exception text).
-  failureReason String?
+  failureReason         String?
   // Provider-owned, adapter-specific data with no schema-level shape:
   // SePay's va_number/qr_code_url/order UUID, etc. Never sensitive
   // credentials — only per-payment public-ish data already returned to
   // the customer via PaymentInstructions.
-  providerMetadata Json?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  providerMetadata      Json?
+  createdAt             DateTime            @default(now())
+  updatedAt             DateTime            @updatedAt
 
-  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  order  Order  @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+  tenant Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  order  Order          @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
   events PaymentEvent[]
 
   @@unique([orderId, tenantId])
@@ -528,9 +549,9 @@ model Payment {
 // one row per genuine webhook delivery, nothing polled/generated
 // speculatively.
 model PaymentEvent {
-  id        String              @id @default(uuid())
-  paymentId String
-  provider  PaymentProviderType
+  id              String              @id @default(uuid())
+  paymentId       String
+  provider        PaymentProviderType
   // The provider's own stable transaction identity, retained across
   // retries — NEVER a payment/order reference that could legitimately
   // repeat (e.g. SePay's `code`/order_code is NOT used here; SePay's
@@ -539,7 +560,7 @@ model PaymentEvent {
   // the Payment.status guard for idempotency.
   providerEventId String?
   rawPayload      Json
-  receivedAt      DateTime @default(now())
+  receivedAt      DateTime            @default(now())
 
   payment Payment @relation(fields: [paymentId], references: [id], onDelete: Cascade)
 
@@ -569,4 +590,42 @@ model TenantPaymentMethod {
 
   @@unique([tenantId, method])
   @@map("tenant_payment_methods")
+}
+
+// V1 Configurable Shipping. Deliberately an open, tenant-authored LIST
+// (create/rename/reprice/delete any number of methods) rather than a
+// fixed-enum row-per-method shape like TenantPaymentMethod above —
+// "payment method" is a closed set of integration types, "shipping
+// method" is merchant-defined ("Standard", "Express", "Local Pickup").
+// Flat-rate only for V1: `amount` is a plain VND integer, 0 = free/pickup
+// (no separate free-shipping or pickup mechanism — see the doc comment on
+// Order.shippingAmount/shippingMethodName for why Order never reads this
+// model live). At most one row per tenant may have isDefault: true,
+// enforced BOTH in application code (shipping-mutations.ts's
+// clearOtherDefaults(), which handles the normal case cleanly) AND at the
+// database level via a partial unique index (tenant_shipping_methods_one_default_per_tenant,
+// added in the Shipping V1 migration — not visible in this model block,
+// the same way Domain.isPrimary's own equivalent index,
+// domains_one_primary_per_tenant, isn't visible on that model either;
+// both are raw-SQL-only, this Prisma version has no declarative partial-
+// index syntax). CORRECTION: an earlier version of this comment
+// incorrectly claimed Domain.isPrimary has no such index — it does (see
+// 20260824150052_init_tenant_foundation/migration.sql) — and
+// TenantShippingMethod now follows that exact same precedent rather than
+// deviating from it.
+model TenantShippingMethod {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  amount    Int
+  enabled   Boolean  @default(false)
+  isDefault Boolean  @default(false)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("tenant_shipping_methods")
 }

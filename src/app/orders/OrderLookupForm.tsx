@@ -1,7 +1,7 @@
 "use client";
 
-import { useActionState } from "react";
-import { lookupOrderAction } from "./actions";
+import { useActionState, useState } from "react";
+import { lookupOrderAction, lookupOrderHistoryAction } from "./actions";
 import type { CustomerOrderView } from "@/lib/order-queries";
 
 function formatVnd(price: number): string {
@@ -66,7 +66,10 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
         <p className="mt-1 text-xs">{order.shippingAddress}</p>
         <p className="text-xs text-muted-foreground">
-          {order.shippingWard}, {order.shippingDistrict}, {order.shippingCity}
+          {/* District is no longer collected (Vietnam's 2025 2-tier reform
+              dropped it) — only shown for orders placed before that change,
+              which still have a real value on file. */}
+          {[order.shippingWard, order.shippingDistrict, order.shippingCity].filter(Boolean).join(", ")}
         </p>
         {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
       </div>
@@ -107,9 +110,22 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         </tbody>
       </table>
 
-      <div className="mt-2 flex items-center justify-between border-t border-border pt-3 text-xs">
-        <span className="text-muted-foreground">Total</span>
-        <span className="font-mono">{formatVnd(order.total)}</span>
+      {/* V1 Configurable Shipping: breakdown only — never a second
+          computation of `total`, which is already subtotal + shippingAmount
+          from order-queries.ts. */}
+      <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3 text-xs">
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span>Subtotal</span>
+          <span className="font-mono">{formatVnd(order.subtotal)}</span>
+        </div>
+        <div className="flex items-center justify-between text-muted-foreground">
+          <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}</span>
+          <span className="font-mono">{order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}</span>
+        </div>
+        <div className="flex items-center justify-between font-medium text-foreground">
+          <span>Total</span>
+          <span className="font-mono">{formatVnd(order.total)}</span>
+        </div>
       </div>
 
       {/* Step 51: the same canonical PaymentInstructions shape the
@@ -148,13 +164,13 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
   );
 }
 
-// Used both by /orders/[orderId] (orderId pre-filled from the URL — only
-// email is asked for) and /orders (both fields entered by the customer).
-// Not reusing the shared ActionForm here for the same reason
-// ImportProductsForm.tsx doesn't: a successful lookup must render
-// structured order data, not just an inline error string — same
-// established precedent as that component and OrderStatusForm.tsx.
-export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
+const inputClassName =
+  "rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+
+// A single order lookup by ID + email (unchanged behavior). Split out so
+// OrderLookupForm can switch between this and the history view below
+// without either mode's useActionState wiring interfering with the other.
+function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
   const [state, formAction, pending] = useActionState(lookupOrderAction, null);
 
   return (
@@ -165,19 +181,12 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
         ) : (
           <label className="flex flex-col gap-1">
             Order ID
-            <input
-              name="orderId"
-              className="rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-            />
+            <input name="orderId" placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20" className={inputClassName} />
           </label>
         )}
         <label className="flex flex-col gap-1">
           Email used at checkout
-          <input
-            type="email"
-            name="email"
-            className="rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-          />
+          <input type="email" name="email" placeholder="you@example.com" className={inputClassName} />
         </label>
         <button
           type="submit"
@@ -190,6 +199,78 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
 
       {state && !state.success && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
       {state && state.success && <OrderDetails order={state.data} />}
+    </div>
+  );
+}
+
+// Every order under this tenant placed with the given email, newest
+// first — the guest-checkout equivalent of an account's "order history",
+// since there is no login to attach a real history to (see
+// lookupOrderHistoryAction's doc comment for the access-control tradeoff
+// this implies: email alone, no order id, proves ownership here).
+function OrderHistoryLookup() {
+  const [state, formAction, pending] = useActionState(lookupOrderHistoryAction, null);
+
+  return (
+    <div>
+      <form action={formAction} className="flex flex-wrap items-end gap-3 text-sm">
+        <label className="flex flex-col gap-1">
+          Email used at checkout
+          <input type="email" name="email" placeholder="you@example.com" className={inputClassName} />
+        </label>
+        <button
+          type="submit"
+          disabled={pending}
+          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {pending ? "Looking up…" : "View my orders"}
+        </button>
+      </form>
+
+      {state && !state.success && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
+      {state && state.success && (
+        <div className="flex flex-col gap-3">
+          {state.data.map((order) => (
+            <OrderDetails key={order.id} order={order} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Used both by /orders/[orderId] (orderId pre-filled from the URL — only
+// email is asked for, and the history tab makes no sense there since the
+// customer already followed a link to one specific order) and /orders
+// (a customer arriving with nothing but their email can pick either a
+// single lookup or their full history).
+export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
+  const [mode, setMode] = useState<"single" | "history">("single");
+
+  if (fixedOrderId) {
+    return <SingleOrderLookup fixedOrderId={fixedOrderId} />;
+  }
+
+  return (
+    <div>
+      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-sm">
+        <button
+          type="button"
+          onClick={() => setMode("single")}
+          className={`rounded px-3 py-1 transition-colors ${mode === "single" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          Look up an order
+        </button>
+        <button
+          type="button"
+          onClick={() => setMode("history")}
+          className={`rounded px-3 py-1 transition-colors ${mode === "history" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          My order history
+        </button>
+      </div>
+
+      {mode === "single" ? <SingleOrderLookup /> : <OrderHistoryLookup />}
     </div>
   );
 }

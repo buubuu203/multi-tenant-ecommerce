@@ -36,6 +36,16 @@ export type OrderListEntry = {
   paymentProvider: string | null;
   createdAt: Date;
   itemCount: number;
+  // V1 Configurable Shipping: `subtotal` (items only) and `shippingAmount`
+  // are now both exposed alongside `total` (subtotal + shippingAmount) so
+  // the UI can show a real breakdown instead of one opaque number — never
+  // recompute `total` again on top of these, or shipping double-counts.
+  // shippingAmount reads directly off the Order row's own snapshot column
+  // (0 for every order placed before this feature existed); shippingMethodName
+  // is null for those same historical orders.
+  subtotal: number;
+  shippingAmount: number;
+  shippingMethodName: string | null;
   total: number;
   items: OrderListItem[];
   // Step 33: only the three contact fields the UI needs — never the raw
@@ -159,7 +169,10 @@ export async function listOrders(tenantId: string): Promise<OrderListEntry[]> {
       paymentProvider: order.payment?.provider ?? null,
       createdAt: order.createdAt,
       itemCount: items.length,
-      total: items.reduce((sum, item) => sum + item.lineTotal, 0),
+      subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+      shippingAmount: order.shippingAmount,
+      shippingMethodName: order.shippingMethodName,
+      total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
       items,
       customer: {
         name: order.customer.name,
@@ -209,6 +222,12 @@ export type CustomerOrderView = {
   paymentStatus: string | null;
   createdAt: Date;
   items: CustomerOrderItem[];
+  // V1 Configurable Shipping — see OrderListEntry's identical fields for
+  // the full rationale (subtotal/shippingAmount/total breakdown, snapshot
+  // semantics, historical-order zero-shipping behavior).
+  subtotal: number;
+  shippingAmount: number;
+  shippingMethodName: string | null;
   total: number;
   shippingAddress: string;
   shippingWard: string;
@@ -323,7 +342,10 @@ export async function getOrderForCustomer(
     paymentStatus: order.payment?.status ?? null,
     createdAt: order.createdAt,
     items,
-    total: items.reduce((sum, item) => sum + item.lineTotal, 0),
+    subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+    shippingAmount: order.shippingAmount,
+    shippingMethodName: order.shippingMethodName,
+    total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
     shippingAddress: order.shippingAddress,
     shippingWard: order.shippingWard,
     shippingDistrict: order.shippingDistrict,
@@ -331,4 +353,106 @@ export async function getOrderForCustomer(
     shippingNote: order.shippingNote,
     paymentInstructions,
   };
+}
+
+/**
+ * Order history for a guest customer — every order under this tenant
+ * placed with this email, newest first. Same access-control posture as
+ * getOrderForCustomer (email is the entire proof of ownership, no
+ * accounts/sessions), just without an order id to narrow to one row.
+ *
+ * Kept as a separate, independent query rather than a thin wrapper around
+ * getOrderForCustomer: that function's single-order shape is baked around
+ * `findFirst` + one order's worth of variant-option resolution, and
+ * reshaping it to also handle N orders would obscure both cases for
+ * marginal reuse — the duplication here is the "two things that look
+ * similar but change for different reasons" kind, not the harmful kind.
+ */
+export async function getOrdersForCustomerEmail(tenantId: string, email: string): Promise<CustomerOrderView[]> {
+  const trimmedEmail = email.trim();
+  if (!trimmedEmail) {
+    return [];
+  }
+
+  const db = getScopedDb(tenantId);
+
+  const orders = await db.order.findMany({
+    where: {
+      tenantId,
+      customer: { email: { equals: trimmedEmail, mode: "insensitive" } },
+    },
+    orderBy: { createdAt: "desc" },
+    include: {
+      payment: true,
+      items: {
+        include: {
+          productVariant: {
+            include: {
+              product: { include: { media: { where: { sortOrder: 0 }, take: 1 } } },
+              optionValues: true,
+            },
+          },
+        },
+      },
+    },
+  });
+  if (orders.length === 0) {
+    return [];
+  }
+
+  const variantOptionIds = new Set<string>();
+  const variantOptionValueIds = new Set<string>();
+  for (const order of orders) {
+    for (const item of order.items) {
+      for (const ov of item.productVariant.optionValues) {
+        variantOptionIds.add(ov.variantOptionId);
+        variantOptionValueIds.add(ov.variantOptionValueId);
+      }
+    }
+  }
+
+  const [variantOptions, variantOptionValues] = await Promise.all([
+    variantOptionIds.size > 0
+      ? db.variantOption.findMany({ where: { tenantId, id: { in: [...variantOptionIds] } } })
+      : Promise.resolve([]),
+    variantOptionValueIds.size > 0
+      ? db.variantOptionValue.findMany({ where: { tenantId, id: { in: [...variantOptionValueIds] } } })
+      : Promise.resolve([]),
+  ]);
+  const optionNameById = new Map(variantOptions.map((o) => [o.id, o.name]));
+  const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
+
+  return Promise.all(
+    orders.map(async (order) => {
+      const items: CustomerOrderItem[] = order.items.map((item) => ({
+        productName: item.productVariant.product.name,
+        imageUrl: item.productVariant.product.media[0]?.url ?? null,
+        combinationLabel: formatCombination(item.productVariant.optionValues, optionNameById, valueLabelById),
+        quantity: item.quantity,
+        unitPrice: item.price,
+        lineTotal: item.price * item.quantity,
+      }));
+
+      const paymentInstructions = order.payment ? await getStoredPaymentInstructions(tenantId, order.payment) : null;
+
+      return {
+        id: order.id,
+        status: order.status,
+        paymentMethod: order.paymentMethod,
+        paymentStatus: order.payment?.status ?? null,
+        createdAt: order.createdAt,
+        items,
+        subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+        shippingAmount: order.shippingAmount,
+        shippingMethodName: order.shippingMethodName,
+        total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
+        shippingAddress: order.shippingAddress,
+        shippingWard: order.shippingWard,
+        shippingDistrict: order.shippingDistrict,
+        shippingCity: order.shippingCity,
+        shippingNote: order.shippingNote,
+        paymentInstructions,
+      };
+    }),
+  );
 }
