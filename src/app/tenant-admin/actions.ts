@@ -5,6 +5,8 @@ import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
   updateBranding,
   updateBrandingLogoUrl,
+  updateBrandingFaviconUrl,
+  updateBankTransferDetails,
   updateDesignTokens,
 } from '@/lib/branding-mutations';
 import { createProduct, updateProduct } from '@/lib/product-mutations';
@@ -12,6 +14,7 @@ import {
   uploadProductMediaFile,
   deleteProductMediaFile,
   uploadBrandingLogoFile,
+  uploadBrandingFaviconFile,
   deleteBrandingLogoFile,
   type MediaKind,
 } from '@/lib/blob-storage';
@@ -61,11 +64,6 @@ export async function updateBrandingAction(
     storeName: String(formData.get('storeName') ?? ''),
     logoUrl: String(formData.get('logoUrl') ?? ''),
     faviconUrl: String(formData.get('faviconUrl') ?? ''),
-    primaryColor: String(formData.get('primaryColor') ?? ''),
-    secondaryColor: String(formData.get('secondaryColor') ?? ''),
-    bankName: String(formData.get('bankName') ?? ''),
-    bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
-    bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
   });
 
   if (result.success) {
@@ -94,6 +92,35 @@ export async function uploadBrandingLogoAction(
   }
   revalidatePath('/tenant-admin');
   return { success: true, data: result };
+}
+
+export async function uploadBrandingFaviconAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) return { success: false, error: 'No favicon file provided.' };
+
+  const result = await uploadBrandingFaviconFile(tenantId, file);
+  if ('error' in result) return { success: false, error: result.error };
+  const saved = await updateBrandingFaviconUrl(tenantId, result.url);
+  if (!saved.success) return saved as ActionResult<{ url: string }>;
+  revalidatePath('/tenant-admin');
+  return { success: true, data: result };
+}
+
+export async function updateBankTransferDetailsAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await updateBankTransferDetails(tenantId, {
+    bankName: String(formData.get('bankName') ?? ''),
+    bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
+    bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
+  });
+  if (result.success) revalidatePath('/tenant-admin');
+  return result;
 }
 
 export async function uploadDesignTokensAction(formData: FormData): Promise<ActionResult> {

@@ -12,12 +12,30 @@ export const MAX_VIDEOS = 2;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+export const MAX_FAVICON_BYTES = 1 * 1024 * 1024;
 
 export type MediaKind = 'image' | 'video';
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm']);
-const LOGO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const LOGO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']);
+const FAVICON_MIME_TYPES = new Set([
+  'image/x-icon',
+  'image/vnd.microsoft.icon',
+  'image/png',
+  'image/svg+xml',
+]);
+
+async function validateSvgUpload(file: File): Promise<string | null> {
+  if (file.type !== 'image/svg+xml') return null;
+  const source = await file.text();
+  if (
+    /<script\b|<foreignObject\b|javascript:|on[a-z]+\s*=|data:text\/html/i.test(source)
+  ) {
+    return 'SVG files may not contain scripts, event handlers, or embedded HTML.';
+  }
+  return null;
+}
 
 export function classifyMediaMimeType(mimeType: string): MediaKind | null {
   if (IMAGE_MIME_TYPES.has(mimeType)) return 'image';
@@ -78,14 +96,36 @@ export async function uploadBrandingLogoFile(
   file: File,
 ): Promise<{ url: string } | { error: string }> {
   if (!LOGO_MIME_TYPES.has(file.type)) {
-    return { error: 'Unsupported logo type. Use JPG, PNG, or WebP.' };
+    return { error: 'Unsupported logo type. Use JPG, PNG, WebP, or SVG.' };
   }
   if (file.size > MAX_LOGO_BYTES) {
     return { error: 'Logo image exceeds the 5MB limit.' };
   }
+  const svgError = await validateSvgUpload(file);
+  if (svgError) return { error: svgError };
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
   const blob = await put(`branding/${tenantId}/${randomUUID()}-${safeName}`, file, {
+    access: 'public',
+  });
+  return { url: blob.url };
+}
+
+export async function uploadBrandingFaviconFile(
+  tenantId: string,
+  file: File,
+): Promise<{ url: string } | { error: string }> {
+  if (!FAVICON_MIME_TYPES.has(file.type)) {
+    return { error: 'Unsupported favicon type. Use ICO, PNG, or SVG.' };
+  }
+  if (file.size > MAX_FAVICON_BYTES) {
+    return { error: 'Favicon exceeds the 1MB limit.' };
+  }
+  const svgError = await validateSvgUpload(file);
+  if (svgError) return { error: svgError };
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const blob = await put(`branding/${tenantId}/favicon-${randomUUID()}-${safeName}`, file, {
     access: 'public',
   });
   return { url: blob.url };
