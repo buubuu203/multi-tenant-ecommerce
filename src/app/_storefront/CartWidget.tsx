@@ -270,7 +270,7 @@ export function CartWidget({
           />
 
           {/* Drawer */}
-          <div className="relative flex h-full w-full max-w-md flex-col bg-surface shadow-xl">
+          <div className="relative z-10 flex h-full min-w-0 w-full max-w-md flex-col bg-surface shadow-xl">
             <div className="flex items-center justify-between border-b border-border px-5 py-4">
               <h2 className="text-base font-medium">
                 {checkout.status === "success" ? "Order confirmed" : "Your cart"}
@@ -285,7 +285,7 @@ export function CartWidget({
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto px-5 py-4">
+            <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
               {checkout.status === "success" ? (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
@@ -405,8 +405,8 @@ export function CartWidget({
                       const available = availabilityByVariant[item.productVariantId];
                       const atAvailableLimit = typeof available === "number" && item.quantity >= available;
                       return (
-                        <li key={item.productVariantId} className="flex items-start justify-between gap-3">
-                          <div className="flex items-start gap-3">
+                        <li key={item.productVariantId} className="flex min-w-0 items-start justify-between gap-3">
+                          <div className="flex min-w-0 flex-1 items-start gap-3">
                             {/* Step 45: display-only thumbnail, same posture as
                                 price — never re-fetched/re-validated here. */}
                             {item.imageUrl && (
@@ -417,15 +417,15 @@ export function CartWidget({
                                 className="h-14 w-14 rounded-md object-cover"
                               />
                             )}
-                            <div className="flex flex-col">
-                              <span className="text-sm">{item.productName}</span>
+                            <div className="min-w-0 flex-1">
+                              <span className="block break-words text-sm">{item.productName}</span>
                               {item.variantLabel && (
-                                <span className="text-xs text-muted-foreground">{item.variantLabel}</span>
+                                <span className="block break-words text-xs text-muted-foreground">{item.variantLabel}</span>
                               )}
-                              <span className="mt-0.5 font-mono text-xs">{formatVnd(item.price)}</span>
+                              <span className="mt-0.5 block font-mono text-xs">{formatVnd(item.price)}</span>
                             </div>
                           </div>
-                          <div className="flex flex-col items-end gap-1.5">
+                          <div className="flex shrink-0 flex-col items-end gap-1.5">
                             <div className="flex items-center gap-1.5">
                               <button
                                 type="button"
