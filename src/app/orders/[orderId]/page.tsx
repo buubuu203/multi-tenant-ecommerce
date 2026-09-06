@@ -1,8 +1,9 @@
-import { OrderLookupForm } from "../OrderLookupForm";
-import Link from "next/link";
-import { getCurrentTenant } from "../../_storefront/get-current-tenant";
-import { resolveBranding } from "../../_storefront/resolve-branding";
-import { StorefrontHeader } from "../../_storefront/StorefrontHeader";
+import { OrderLookupForm } from '../OrderLookupForm';
+import Link from 'next/link';
+import { getCurrentTenant } from '../../_storefront/get-current-tenant';
+import { resolveBranding } from '../../_storefront/resolve-branding';
+import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
+import { TenantTheme } from '@/components/TenantTheme';
 
 // The bookmarkable order-confirmation link a customer is given right
 // after checkout (see CartWidget.tsx's success state). The order ID alone
@@ -11,7 +12,7 @@ import { StorefrontHeader } from "../../_storefront/StorefrontHeader";
 // action, never appended to this URL. See order-queries.ts's
 // getOrderForCustomer() for why Order ID + email together are the entire
 // access-control mechanism (there are no customer accounts).
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export default async function OrderConfirmationPage({
   params,
@@ -22,7 +23,7 @@ export default async function OrderConfirmationPage({
   const tenant = await getCurrentTenant();
   const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
 
-  return (
+  const content = (
     <div className="flex min-h-full flex-1 flex-col">
       {branding && (
         <StorefrontHeader
@@ -63,4 +64,5 @@ export default async function OrderConfirmationPage({
       </main>
     </div>
   );
+  return branding ? <TenantTheme branding={branding}>{content}</TenantTheme> : content;
 }
