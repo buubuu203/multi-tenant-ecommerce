@@ -66,7 +66,7 @@ export default async function ProductDetailPage({
             }
           />
         ) : (
-          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-6 py-3 backdrop-blur-sm">
+          <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-6 py-3">
             <Link href="/" className="text-sm text-muted-foreground transition-colors hover:text-foreground">
               ← Back to store
             </Link>
