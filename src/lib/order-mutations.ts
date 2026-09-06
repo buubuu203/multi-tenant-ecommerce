@@ -1,6 +1,7 @@
 import { getScopedDb } from "./db/tenant-db";
 import { reserveInventoryInTx, releaseInventoryInTx, consumeReservedInventoryInTx, InventoryError } from "./inventory-mutations";
 import { isValidVietnamesePhone } from "./validation/phone";
+import { resolveShippingMethod } from "./shipping-service";
 import type { ActionResult } from "./action-result";
 
 // The client cart (see cart-context.tsx) is NOT authoritative — this is
@@ -100,10 +101,13 @@ function validateShippingInput(
     return { error: "Ward is required." };
   }
 
+  // District is no longer a real administrative tier as of Vietnam's July
+  // 2025 reform (63 provinces/districts/wards -> 34 provinces/wards, see
+  // public/vn-address.json) — the storefront's address picker (CartWidget)
+  // no longer collects it and always sends "". The column itself stays
+  // (schema.prisma) for orders placed before this change, which still
+  // have a real value; not required going forward.
   const district = input.district.trim();
-  if (!district) {
-    return { error: "District is required." };
-  }
 
   const city = input.city.trim();
   if (!city) {
@@ -203,7 +207,8 @@ export async function createOrder(
   paymentMethod: string,
   customer: CustomerInput,
   shipping: ShippingInput,
-): Promise<ActionResult<{ orderId: string; items: CreatedOrderItem[] }>> {
+  shippingMethodId: string,
+): Promise<ActionResult<{ orderId: string; items: CreatedOrderItem[]; shippingAmount: number }>> {
   const inputError = validateItemsInput(items);
   if (inputError) {
     return { success: false, error: inputError.error };
@@ -211,6 +216,19 @@ export async function createOrder(
   const paymentMethodError = validatePaymentMethod(paymentMethod);
   if (paymentMethodError) {
     return { success: false, error: paymentMethodError.error };
+  }
+  // V1 Configurable Shipping: authoritative resolution BEFORE the
+  // transaction, same "read outside the transaction, accept the rare
+  // merchant-changes-config-mid-checkout race" posture already
+  // established (and explicitly documented) for the payment-method check
+  // just below — re-reads the CURRENT amount from the database and
+  // re-confirms the method is still enabled, never trusting whatever
+  // amount/name the client displayed. A tenant with zero enabled methods
+  // fails here with the same "not available" posture as zero enabled
+  // payment methods.
+  const resolvedShipping = await resolveShippingMethod(tenantId, shippingMethodId);
+  if (!resolvedShipping) {
+    return { success: false, error: "The selected shipping method is not available for this store." };
   }
   // Step 51: server-authoritative — a tenant must never end up with a
   // customer able to select a method the tenant hasn't enabled/configured
@@ -263,6 +281,11 @@ export async function createOrder(
           shippingDistrict: shippingInput.district,
           shippingCity: shippingInput.city,
           shippingNote: shippingInput.note,
+          // Snapshots, taken once, here, from the already-resolved value
+          // above — never a live reference to TenantShippingMethod (see
+          // schema.prisma's doc comment on these two columns).
+          shippingAmount: resolvedShipping.amount,
+          shippingMethodName: resolvedShipping.name,
         },
       });
 
@@ -311,7 +334,7 @@ export async function createOrder(
         createdItems.push({ productVariantId: orderItem.productVariantId, quantity: orderItem.quantity, price: orderItem.price });
       }
 
-      return { orderId: order.id, items: createdItems };
+      return { orderId: order.id, items: createdItems, shippingAmount: resolvedShipping.amount };
     });
 
     return { success: true, data: result };
