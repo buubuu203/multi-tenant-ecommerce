@@ -9,13 +9,13 @@ export type BrandingInput = {
   storeName: string;
   logoUrl: string;
   faviconUrl: string;
-  primaryColor: string;
-  secondaryColor: string;
+  primaryColor?: string;
+  secondaryColor?: string;
   // Plain instructional text for a customer who chose bank_transfer at
   // checkout — no format validation beyond trimming, same as storeName.
-  bankName: string;
-  bankAccountNumber: string;
-  bankAccountHolder: string;
+  bankName?: string;
+  bankAccountNumber?: string;
+  bankAccountHolder?: string;
 };
 
 /**
@@ -62,8 +62,14 @@ export async function updateBranding(
   const storeName = trimToNull(input.storeName);
   const logoUrl = validateUrlField(input.logoUrl, 'Logo URL');
   const faviconUrl = validateUrlField(input.faviconUrl, 'Favicon URL');
-  const primaryColor = validateColorField(input.primaryColor, 'Primary color');
-  const secondaryColor = validateColorField(input.secondaryColor, 'Secondary color');
+  const primaryColor =
+    input.primaryColor === undefined
+      ? { value: undefined, error: undefined }
+      : validateColorField(input.primaryColor, 'Primary color');
+  const secondaryColor =
+    input.secondaryColor === undefined
+      ? { value: undefined, error: undefined }
+      : validateColorField(input.secondaryColor, 'Secondary color');
 
   const firstError =
     logoUrl.error ?? faviconUrl.error ?? primaryColor.error ?? secondaryColor.error;
@@ -75,11 +81,15 @@ export async function updateBranding(
     storeName,
     logoUrl: logoUrl.value,
     faviconUrl: faviconUrl.value,
-    primaryColor: primaryColor.value,
-    secondaryColor: secondaryColor.value,
-    bankName: trimToNull(input.bankName),
-    bankAccountNumber: trimToNull(input.bankAccountNumber),
-    bankAccountHolder: trimToNull(input.bankAccountHolder),
+    ...(primaryColor.value !== undefined ? { primaryColor: primaryColor.value } : {}),
+    ...(secondaryColor.value !== undefined ? { secondaryColor: secondaryColor.value } : {}),
+    ...(input.bankName !== undefined ? { bankName: trimToNull(input.bankName) } : {}),
+    ...(input.bankAccountNumber !== undefined
+      ? { bankAccountNumber: trimToNull(input.bankAccountNumber) }
+      : {}),
+    ...(input.bankAccountHolder !== undefined
+      ? { bankAccountHolder: trimToNull(input.bankAccountHolder) }
+      : {}),
   };
 
   try {
@@ -127,5 +137,48 @@ export async function updateBrandingLogoUrl(
   } catch (e) {
     console.error('updateBrandingLogoUrl failed:', e);
     return { success: false, error: 'Something went wrong saving the logo.' };
+  }
+}
+
+export async function updateBrandingFaviconUrl(
+  tenantId: string,
+  faviconUrl: string,
+): Promise<ActionResult> {
+  try {
+    await getScopedDb(tenantId).branding.upsert({
+      where: { tenantId },
+      create: { tenantId, faviconUrl },
+      update: { faviconUrl },
+    });
+    return { success: true, data: undefined };
+  } catch (e) {
+    console.error('updateBrandingFaviconUrl failed:', e);
+    return { success: false, error: 'Something went wrong saving the favicon.' };
+  }
+}
+
+export async function updateBankTransferDetails(
+  tenantId: string,
+  input: Pick<BrandingInput, 'bankName' | 'bankAccountNumber' | 'bankAccountHolder'>,
+): Promise<ActionResult> {
+  try {
+    await getScopedDb(tenantId).branding.upsert({
+      where: { tenantId },
+      create: {
+        tenantId,
+        bankName: trimToNull(input.bankName ?? ''),
+        bankAccountNumber: trimToNull(input.bankAccountNumber ?? ''),
+        bankAccountHolder: trimToNull(input.bankAccountHolder ?? ''),
+      },
+      update: {
+        bankName: trimToNull(input.bankName ?? ''),
+        bankAccountNumber: trimToNull(input.bankAccountNumber ?? ''),
+        bankAccountHolder: trimToNull(input.bankAccountHolder ?? ''),
+      },
+    });
+    return { success: true, data: undefined };
+  } catch (e) {
+    console.error('updateBankTransferDetails failed:', e);
+    return { success: false, error: 'Something went wrong saving bank transfer details.' };
   }
 }

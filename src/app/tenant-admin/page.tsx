@@ -16,6 +16,7 @@ import {
   markManualPaymentReceivedAction,
   adjustInventoryOnHandAction,
   updateTenantPaymentMethodAction,
+  updateBankTransferDetailsAction,
   createShippingMethodAction,
   updateShippingMethodAction,
   deleteShippingMethodAction,
@@ -24,6 +25,7 @@ import { ImportProductsForm } from './ImportProductsForm';
 import { ProductMediaGallery } from './ProductMediaGallery';
 import { CreateProductForm } from './CreateProductForm';
 import { BrandingUploadControls } from './BrandingUploadControls';
+import { AdminTabs } from './AdminTabs';
 import { OrderStatusForm } from './OrderStatusForm';
 import { listOrders } from '@/lib/order-queries';
 import { PRODUCT_STATUSES } from './product-status';
@@ -245,30 +247,7 @@ export default async function TenantAdminHomePage() {
           replaces "scroll and hope" with "see what needs attention, jump
           straight there." Plain anchor links + scroll-mt on each section
           (below) — no client JS needed for this part. */}
-        <nav className="sticky top-0 z-10 -mx-6 flex flex-wrap gap-1 border-b border-border bg-background/95 px-6 py-2 backdrop-blur-sm sm:-mx-0 sm:rounded-lg sm:border sm:px-2">
-          {[
-            { href: '#branding', label: 'Branding' },
-            { href: '#payments', label: 'Payments' },
-            { href: '#shipping', label: `Shipping (${shippingMethods.length})` },
-            { href: '#catalog', label: `Catalog (${products.length})` },
-            {
-              href: '#orders',
-              label: `Orders (${orders.length}${
-                orders.filter((o) => o.status === 'pending').length > 0
-                  ? ` · ${orders.filter((o) => o.status === 'pending').length} pending`
-                  : ''
-              })`,
-            },
-          ].map((item) => (
-            <a
-              key={item.href}
-              href={item.href}
-              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
-            >
-              {item.label}
-            </a>
-          ))}
-        </nav>
+        <AdminTabs />
 
         <section id="branding" className={`${adminSectionClassName} scroll-mt-16`}>
           <h2 className="text-lg font-medium tracking-tight">Branding</h2>
@@ -288,71 +267,51 @@ export default async function TenantAdminHomePage() {
             </label>
             <BrandingUploadControls
               initialLogoUrl={branding?.logoUrl ?? ''}
+              initialFaviconUrl={branding?.faviconUrl ?? ''}
               hasTokens={Boolean(branding?.designTokens)}
             />
+          </ActionForm>
+        </section>
+
+        <section id="bank-transfer" className={`${adminSectionClassName} scroll-mt-16`}>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-medium tracking-tight">Bank transfer instructions</h2>
+            <p className="text-xs text-muted-foreground">
+              These details are shown to customers who choose manual bank transfer.
+            </p>
+          </div>
+          <ActionForm
+            action={updateBankTransferDetailsAction}
+            submitLabel="Save bank details"
+            className="flex max-w-md flex-col gap-3"
+          >
             <label className={adminLabelClassName}>
-              Favicon URL
+              Bank name
               <input
-                name="faviconUrl"
-                defaultValue={branding?.faviconUrl ?? ''}
-                placeholder="https://..."
+                name="bankName"
+                defaultValue={branding?.bankName ?? ''}
+                placeholder="Vietcombank"
                 className={adminInputClassName}
               />
             </label>
             <label className={adminLabelClassName}>
-              Primary color
+              Account number
               <input
-                name="primaryColor"
-                defaultValue={branding?.primaryColor ?? ''}
-                placeholder="#3b3b3b"
+                name="bankAccountNumber"
+                defaultValue={branding?.bankAccountNumber ?? ''}
+                placeholder="0123456789"
                 className={adminInputClassName}
               />
             </label>
             <label className={adminLabelClassName}>
-              Secondary color
+              Account holder name
               <input
-                name="secondaryColor"
-                defaultValue={branding?.secondaryColor ?? ''}
-                placeholder="#8a8a8a"
+                name="bankAccountHolder"
+                defaultValue={branding?.bankAccountHolder ?? ''}
+                placeholder="NGUYEN VAN A"
                 className={adminInputClassName}
               />
             </label>
-            <div className="mt-2 flex flex-col gap-3 border-t border-border pt-3">
-              <div className="flex flex-col gap-1">
-                <h3 className="text-sm font-medium">Bank transfer instructions</h3>
-                <p className="text-xs text-muted-foreground">
-                  Shown to a customer at checkout and on their order confirmation whenever they
-                  choose Bank transfer. Leave blank if you don&apos;t accept bank transfers.
-                </p>
-              </div>
-              <label className={adminLabelClassName}>
-                Bank name
-                <input
-                  name="bankName"
-                  defaultValue={branding?.bankName ?? ''}
-                  placeholder="Vietcombank"
-                  className={adminInputClassName}
-                />
-              </label>
-              <label className={adminLabelClassName}>
-                Account number
-                <input
-                  name="bankAccountNumber"
-                  defaultValue={branding?.bankAccountNumber ?? ''}
-                  placeholder="0123456789"
-                  className={adminInputClassName}
-                />
-              </label>
-              <label className={adminLabelClassName}>
-                Account holder name
-                <input
-                  name="bankAccountHolder"
-                  defaultValue={branding?.bankAccountHolder ?? ''}
-                  placeholder="NGUYEN VAN A"
-                  className={adminInputClassName}
-                />
-              </label>
-            </div>
           </ActionForm>
         </section>
 
@@ -682,6 +641,41 @@ export default async function TenantAdminHomePage() {
 
           <CreateProductForm />
 
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[620px] text-left text-sm">
+              <thead className="bg-surface-muted text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Product</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Variants</th>
+                  <th className="px-3 py-2 font-medium">Price</th>
+                  <th className="px-3 py-2 font-medium">Editor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {products.map((product) => {
+                  const activeVariants = product.variants.filter((v) => v.status !== 'archived');
+                  const simpleVariant =
+                    activeVariants.length === 1 && activeVariants[0].combinationKey === ''
+                      ? activeVariants[0]
+                      : null;
+                  return (
+                    <tr key={product.id} className="border-t border-border">
+                      <td className="px-3 py-2 font-medium">{product.name}</td>
+                      <td className="px-3 py-2 capitalize">{product.status}</td>
+                      <td className="px-3 py-2">{activeVariants.length}</td>
+                      <td className="px-3 py-2 font-mono">
+                        {simpleVariant ? formatVnd(simpleVariant.price) : 'Multiple'}
+                      </td>
+                      <td className="px-3 py-2 text-muted-foreground">Open below</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          <h3 className="text-sm font-medium text-muted-foreground">Product editors</h3>
           <div className="flex flex-col gap-3">
             {products.map((product) => {
               const activeVariants = product.variants.filter((v) => v.status !== 'archived');
@@ -1023,6 +1017,40 @@ export default async function TenantAdminHomePage() {
         <section id="orders" className={`${adminSectionClassName} scroll-mt-16`}>
           <h2 className="text-lg font-medium tracking-tight">Orders</h2>
 
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full min-w-[760px] text-left text-sm">
+              <thead className="bg-surface-muted text-xs uppercase tracking-wide text-muted-foreground">
+                <tr>
+                  <th className="px-3 py-2 font-medium">Order</th>
+                  <th className="px-3 py-2 font-medium">Customer</th>
+                  <th className="px-3 py-2 font-medium">Status</th>
+                  <th className="px-3 py-2 font-medium">Payment</th>
+                  <th className="px-3 py-2 font-medium">Total</th>
+                  <th className="px-3 py-2 font-medium">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orders.map((order) => (
+                  <tr key={order.id} className="border-t border-border">
+                    <td className="px-3 py-2 font-mono text-xs">{order.id}</td>
+                    <td className="px-3 py-2">
+                      <div>{order.customer.name}</div>
+                      <div className="text-xs text-muted-foreground">{order.customer.email}</div>
+                    </td>
+                    <td className="px-3 py-2 capitalize">{order.status}</td>
+                    <td className="px-3 py-2">
+                      {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+                    </td>
+                    <td className="px-3 py-2 font-mono">{formatVnd(order.total)}</td>
+                    <td className="px-3 py-2 text-xs text-muted-foreground">
+                      {order.createdAt.toLocaleDateString('en-US')}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <h3 className="text-sm font-medium text-muted-foreground">Order details and actions</h3>
           <div className="flex flex-col gap-3">
             {orders.map((order) => (
               <div
