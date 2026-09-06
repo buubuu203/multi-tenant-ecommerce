@@ -23,15 +23,20 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 // lifecycle the same way, duplicated per this codebase's established
 // per-file convention rather than a shared constants module.
 const ORDER_STATUS_BADGE: Record<string, string> = {
-  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
-  fulfilled: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  pending:
+    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  fulfilled:
+    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
   cancelled: "border-border bg-surface-muted text-muted-foreground",
 };
 
 const PAYMENT_STATUS_BADGE: Record<string, string> = {
-  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
-  succeeded: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
-  failed: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+  pending:
+    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+  succeeded:
+    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+  failed:
+    "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
 };
 
 function OrderDetails({ order }: { order: CustomerOrderView }) {
@@ -63,52 +68,64 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
       </p>
 
       <div className="mt-3 border-t border-border pt-3">
-        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
+        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+          Shipping address
+        </h4>
         <p className="mt-1 text-xs">{order.shippingAddress}</p>
         <p className="text-xs text-muted-foreground">
           {/* District is no longer collected (Vietnam's 2025 2-tier reform
               dropped it) — only shown for orders placed before that change,
               which still have a real value on file. */}
-          {[order.shippingWard, order.shippingDistrict, order.shippingCity].filter(Boolean).join(", ")}
+          {[order.shippingWard, order.shippingDistrict, order.shippingCity]
+            .filter(Boolean)
+            .join(", ")}
         </p>
-        {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
+        {order.shippingNote && (
+          <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>
+        )}
       </div>
 
-      <table className="mt-3 w-full text-left text-xs">
-        <thead>
-          <tr className="border-b border-border">
-            <th className="py-1.5 pr-2 font-medium">Item</th>
-            <th className="py-1.5 pr-2 font-medium">Qty</th>
-            <th className="py-1.5 pr-2 font-medium">Unit price</th>
-            <th className="py-1.5 font-medium">Line total</th>
-          </tr>
-        </thead>
-        <tbody>
-          {order.items.map((item, i) => (
-            <tr key={i} className="border-b border-border last:border-0">
-              <td className="py-1.5 pr-2">
-                <div className="flex items-center gap-2">
-                  {/* Step 47: same display-only posture as the rest of this
-                      row — the product's current image, not a snapshot. */}
-                  {item.imageUrl && (
-                    // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-                    <img src={item.imageUrl} alt={item.productName} className="h-8 w-8 rounded-md object-cover" />
-                  )}
-                  <span>
-                    {item.productName}
-                    {item.combinationLabel && (
-                      <span className="text-muted-foreground"> — {item.combinationLabel}</span>
-                    )}
-                  </span>
-                </div>
-              </td>
-              <td className="py-1.5 pr-2">{item.quantity}</td>
-              <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
-              <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+      <div className="mt-3 overflow-x-auto rounded-md border border-border">
+        <table className="w-full min-w-[520px] text-left text-xs">
+          <thead>
+            <tr className="border-b border-border">
+              <th className="py-1.5 pr-2 font-medium">Item</th>
+              <th className="py-1.5 pr-2 font-medium">Qty</th>
+              <th className="py-1.5 pr-2 font-medium">Unit price</th>
+              <th className="py-1.5 font-medium">Line total</th>
             </tr>
-          ))}
-        </tbody>
-      </table>
+          </thead>
+          <tbody>
+            {order.items.map((item, i) => (
+              <tr key={i} className="border-b border-border last:border-0">
+                <td className="py-1.5 pr-2">
+                  <div className="flex items-center gap-2">
+                    {/* Step 47: same display-only posture as the rest of this
+                      row — the product's current image, not a snapshot. */}
+                    {item.imageUrl && (
+                      // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
+                      <img
+                        src={item.imageUrl}
+                        alt={item.productName}
+                        className="h-8 w-8 rounded-md object-cover"
+                      />
+                    )}
+                    <span>
+                      {item.productName}
+                      {item.combinationLabel && (
+                        <span className="text-muted-foreground"> — {item.combinationLabel}</span>
+                      )}
+                    </span>
+                  </div>
+                </td>
+                <td className="py-1.5 pr-2">{item.quantity}</td>
+                <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+                <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
 
       {/* V1 Configurable Shipping: breakdown only — never a second
           computation of `total`, which is already subtotal + shippingAmount
@@ -120,7 +137,9 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         </div>
         <div className="flex items-center justify-between text-muted-foreground">
           <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}</span>
-          <span className="font-mono">{order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}</span>
+          <span className="font-mono">
+            {order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}
+          </span>
         </div>
         <div className="flex items-center justify-between font-medium text-foreground">
           <span>Total</span>
@@ -137,21 +156,34 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
       {order.paymentInstructions?.type === "bank_transfer" && (
         <div className="mt-3 rounded-md border border-border bg-surface-muted p-3 text-xs">
           <p className="font-medium">{order.paymentInstructions.title}</p>
-          {order.paymentInstructions.bankName && <p className="mt-1">{order.paymentInstructions.bankName}</p>}
-          {(order.paymentInstructions.accountNumber || order.paymentInstructions.virtualAccountNumber) && (
+          {order.paymentInstructions.bankName && (
+            <p className="mt-1">{order.paymentInstructions.bankName}</p>
+          )}
+          {(order.paymentInstructions.accountNumber ||
+            order.paymentInstructions.virtualAccountNumber) && (
             <p className="font-mono">
-              {order.paymentInstructions.virtualAccountNumber ?? order.paymentInstructions.accountNumber}
+              {order.paymentInstructions.virtualAccountNumber ??
+                order.paymentInstructions.accountNumber}
             </p>
           )}
-          {order.paymentInstructions.accountHolder && <p>{order.paymentInstructions.accountHolder}</p>}
+          {order.paymentInstructions.accountHolder && (
+            <p>{order.paymentInstructions.accountHolder}</p>
+          )}
           {order.paymentInstructions.qrCodeUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset
-            <img src={order.paymentInstructions.qrCodeUrl} alt="Payment QR code" className="mt-2 h-32 w-32" />
+            <img
+              src={order.paymentInstructions.qrCodeUrl}
+              alt="Payment QR code"
+              className="mt-2 h-32 w-32"
+            />
           )}
           {order.paymentInstructions.expiresAt && (
             <p className="mt-1 text-muted-foreground">
               Expires:{" "}
-              {new Date(order.paymentInstructions.expiresAt).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
+              {new Date(order.paymentInstructions.expiresAt).toLocaleString("en-US", {
+                dateStyle: "medium",
+                timeStyle: "short",
+              })}
             </p>
           )}
           <p className="mt-2 text-muted-foreground">{order.paymentInstructions.nextAction}</p>
@@ -165,7 +197,7 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
 }
 
 const inputClassName =
-  "rounded-md border border-border bg-background px-2.5 py-1.5 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+  "w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
 
 // A single order lookup by ID + email (unchanged behavior). Split out so
 // OrderLookupForm can switch between this and the history view below
@@ -175,23 +207,32 @@ function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
 
   return (
     <div>
-      <form action={formAction} className="flex flex-wrap items-end gap-3 text-sm">
+      <form action={formAction} className="flex flex-col gap-4 text-sm">
         {fixedOrderId ? (
           <input type="hidden" name="orderId" value={fixedOrderId} />
         ) : (
-          <label className="flex flex-col gap-1">
+          <label className="flex flex-col gap-1.5">
             Order ID
-            <input name="orderId" placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20" className={inputClassName} />
+            <input
+              name="orderId"
+              placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20"
+              className={inputClassName}
+            />
           </label>
         )}
-        <label className="flex flex-col gap-1">
+        <label className="flex flex-col gap-1.5">
           Email used at checkout
-          <input type="email" name="email" placeholder="you@example.com" className={inputClassName} />
+          <input
+            type="email"
+            name="email"
+            placeholder="you@example.com"
+            className={inputClassName}
+          />
         </label>
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {pending ? "Looking up…" : "View order"}
         </button>
@@ -213,15 +254,20 @@ function OrderHistoryLookup() {
 
   return (
     <div>
-      <form action={formAction} className="flex flex-wrap items-end gap-3 text-sm">
-        <label className="flex flex-col gap-1">
+      <form action={formAction} className="flex flex-col gap-4 text-sm">
+        <label className="flex flex-col gap-1.5">
           Email used at checkout
-          <input type="email" name="email" placeholder="you@example.com" className={inputClassName} />
+          <input
+            type="email"
+            name="email"
+            placeholder="you@example.com"
+            className={inputClassName}
+          />
         </label>
         <button
           type="submit"
           disabled={pending}
-          className="rounded-md bg-foreground px-4 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
           {pending ? "Looking up…" : "View my orders"}
         </button>
