@@ -1,5 +1,5 @@
-import { put, del } from "@vercel/blob";
-import { randomUUID } from "crypto";
+import { put, del } from '@vercel/blob';
+import { randomUUID } from 'crypto';
 
 // Step 50: the ONLY module that talks to Vercel Blob directly — every
 // upload/delete in the app goes through here, so the tenant-scoping
@@ -11,15 +11,17 @@ export const MAX_IMAGES = 8;
 export const MAX_VIDEOS = 2;
 export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
+export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 
-export type MediaKind = "image" | "video";
+export type MediaKind = 'image' | 'video';
 
-const IMAGE_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const VIDEO_MIME_TYPES = new Set(["video/mp4", "video/webm"]);
+const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm']);
+const LOGO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 
 export function classifyMediaMimeType(mimeType: string): MediaKind | null {
-  if (IMAGE_MIME_TYPES.has(mimeType)) return "image";
-  if (VIDEO_MIME_TYPES.has(mimeType)) return "video";
+  if (IMAGE_MIME_TYPES.has(mimeType)) return 'image';
+  if (VIDEO_MIME_TYPES.has(mimeType)) return 'video';
   return null;
 }
 
@@ -39,19 +41,21 @@ export async function uploadProductMediaFile(
 ): Promise<{ url: string; type: MediaKind } | { error: string }> {
   const kind = classifyMediaMimeType(file.type);
   if (!kind) {
-    return { error: "Unsupported file type. Use JPG, PNG, or WebP for images, or MP4 or WebM for videos." };
+    return {
+      error: 'Unsupported file type. Use JPG, PNG, or WebP for images, or MP4 or WebM for videos.',
+    };
   }
 
-  const maxBytes = kind === "image" ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
+  const maxBytes = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
   if (file.size > maxBytes) {
     const limitMb = Math.round(maxBytes / (1024 * 1024));
-    return { error: `${kind === "image" ? "Image" : "Video"} exceeds the ${limitMb}MB limit.` };
+    return { error: `${kind === 'image' ? 'Image' : 'Video'} exceeds the ${limitMb}MB limit.` };
   }
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").slice(-80);
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
   const pathname = `product-media/${tenantId}/${randomUUID()}-${safeName}`;
 
-  const blob = await put(pathname, file, { access: "public" });
+  const blob = await put(pathname, file, { access: 'public' });
   return { url: blob.url, type: kind };
 }
 
@@ -65,6 +69,31 @@ export async function uploadProductMediaFile(
 export async function deleteProductMediaFile(tenantId: string, url: string): Promise<void> {
   if (!url.includes(`/product-media/${tenantId}/`)) {
     throw new Error("Refusing to delete a blob outside this tenant's media namespace.");
+  }
+  await del(url);
+}
+
+export async function uploadBrandingLogoFile(
+  tenantId: string,
+  file: File,
+): Promise<{ url: string } | { error: string }> {
+  if (!LOGO_MIME_TYPES.has(file.type)) {
+    return { error: 'Unsupported logo type. Use JPG, PNG, or WebP.' };
+  }
+  if (file.size > MAX_LOGO_BYTES) {
+    return { error: 'Logo image exceeds the 5MB limit.' };
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const blob = await put(`branding/${tenantId}/${randomUUID()}-${safeName}`, file, {
+    access: 'public',
+  });
+  return { url: blob.url };
+}
+
+export async function deleteBrandingLogoFile(tenantId: string, url: string): Promise<void> {
+  if (!url.includes(`/branding/${tenantId}/`)) {
+    throw new Error("Refusing to delete a blob outside this tenant's branding namespace.");
   }
   await del(url);
 }

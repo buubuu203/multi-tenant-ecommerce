@@ -82,6 +82,9 @@ model Branding {
   faviconUrl        String?
   primaryColor      String?
   secondaryColor    String?
+  // Parsed, whitelisted design tokens uploaded by the tenant admin. Raw
+  // Markdown/HTML is never stored or rendered.
+  designTokens      Json?
   // Manual bank transfer details the merchant configures themselves —
   // displayed to a customer at checkout/order-confirmation time whenever
   // they chose paymentMethod = "bank_transfer" (see checkout-actions.ts,

@@ -1,6 +1,6 @@
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getScopedDb } from "@/lib/db/tenant-db";
-import { ActionForm } from "@/components/ActionForm";
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getScopedDb } from '@/lib/db/tenant-db';
+import { ActionForm } from '@/components/ActionForm';
 import {
   updateBrandingAction,
   updateProductAction,
@@ -19,25 +19,33 @@ import {
   createShippingMethodAction,
   updateShippingMethodAction,
   deleteShippingMethodAction,
-} from "./actions";
-import { ImportProductsForm } from "./ImportProductsForm";
-import { ProductMediaGallery } from "./ProductMediaGallery";
-import { CreateProductForm } from "./CreateProductForm";
-import { OrderStatusForm } from "./OrderStatusForm";
-import { listOrders } from "@/lib/order-queries";
-import { PRODUCT_STATUSES } from "./product-status";
-import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "./styles";
+} from './actions';
+import { ImportProductsForm } from './ImportProductsForm';
+import { ProductMediaGallery } from './ProductMediaGallery';
+import { CreateProductForm } from './CreateProductForm';
+import { BrandingUploadControls } from './BrandingUploadControls';
+import { OrderStatusForm } from './OrderStatusForm';
+import { listOrders } from '@/lib/order-queries';
+import { PRODUCT_STATUSES } from './product-status';
+import {
+  adminInputClassName,
+  adminLabelClassName,
+  adminSectionClassName,
+  adminCardClassName,
+} from './styles';
+import { resolveBranding } from '../_storefront/resolve-branding';
+import { TenantTheme } from '@/components/TenantTheme';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 function formatVnd(price: number): string {
-  return `${price.toLocaleString("vi-VN")} ₫`;
+  return `${price.toLocaleString('vi-VN')} ₫`;
 }
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: "Cash on delivery",
-  momo: "MoMo",
-  bank_transfer: "Bank transfer",
+  cod: 'Cash on delivery',
+  momo: 'MoMo',
+  bank_transfer: 'Bank transfer',
 };
 
 // Color-coded so the order lifecycle (pending -> fulfilled/cancelled) and
@@ -46,15 +54,20 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 // Two independent axes — see schema.prisma's Payment doc comment — so
 // deliberately two separate lookups rather than one combined status.
 const ORDER_STATUS_BADGE: Record<string, string> = {
-  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
-  fulfilled: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
-  cancelled: "border-border bg-surface-muted text-muted-foreground",
+  pending:
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
+  fulfilled:
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
+  cancelled: 'border-border bg-surface-muted text-muted-foreground',
 };
 
 const PAYMENT_STATUS_BADGE: Record<string, string> = {
-  pending: "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
-  succeeded: "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
-  failed: "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+  pending:
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
+  succeeded:
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
+  failed:
+    'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
 };
 
 // Resolves ProductVariantOptionValue -> VariantOption / VariantOptionValue
@@ -67,16 +80,16 @@ function formatCombination(
   valueLabelById: Map<string, string>,
 ): string {
   if (variant.optionValues.length === 0) {
-    return "(no options)";
+    return '(no options)';
   }
   return variant.optionValues
     .map((ov) => ({
-      optionName: optionNameById.get(ov.variantOptionId) ?? "?",
-      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? "?",
+      optionName: optionNameById.get(ov.variantOptionId) ?? '?',
+      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? '?',
     }))
     .sort((a, b) => a.optionName.localeCompare(b.optionName))
     .map((pair) => `${pair.optionName}: ${pair.valueLabel}`)
-    .join(" / ");
+    .join(' / ');
 }
 
 // Step 38: renders the on-hand/reserved/available display plus the
@@ -110,7 +123,12 @@ function StockControl({
       </span>
       <label className={adminLabelClassName}>
         Adjust by
-        <input name="adjustment" inputMode="numeric" placeholder="+10 or -3" className={`w-24 ${adminInputClassName}`} />
+        <input
+          name="adjustment"
+          inputMode="numeric"
+          placeholder="+10 or -3"
+          className={`w-24 ${adminInputClassName}`}
+        />
       </label>
     </ActionForm>
   );
@@ -131,6 +149,7 @@ export default async function TenantAdminHomePage() {
   const db = getScopedDb(tenantId);
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
+  const themeBranding = resolveBranding(tenant ?? { name: 'Store' }, branding);
   const primaryDomain = await db.domain.findFirst({ where: { tenantId, isPrimary: true } });
   // Step 51: one row per PaymentMethod at most, keyed by method — see
   // TenantPaymentMethod.@@unique([tenantId, method]).
@@ -138,14 +157,17 @@ export default async function TenantAdminHomePage() {
   // V1 Configurable Shipping — a tenant-authored list, ordered for display
   // (see TenantShippingMethod's doc comment for why this is a list rather
   // than one row per fixed method like TenantPaymentMethod above).
-  const shippingMethods = await db.tenantShippingMethod.findMany({ where: { tenantId }, orderBy: { sortOrder: "asc" } });
+  const shippingMethods = await db.tenantShippingMethod.findMany({
+    where: { tenantId },
+    orderBy: { sortOrder: 'asc' },
+  });
   const paymentMethodByMethod = new Map(tenantPaymentMethods.map((row) => [row.method, row]));
   const products = await db.product.findMany({
     where: { tenantId },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: 'asc' },
     include: {
       variants: { include: { optionValues: true } },
-      media: { orderBy: { sortOrder: "asc" } },
+      media: { orderBy: { sortOrder: 'asc' } },
     },
   });
 
@@ -154,8 +176,14 @@ export default async function TenantAdminHomePage() {
   // pattern across products/options in a single page render. All writes
   // still go exclusively through the existing mutation functions via
   // server actions below — this page never writes through `db` directly.
-  const variantOptions = await db.variantOption.findMany({ where: { tenantId }, orderBy: { name: "asc" } });
-  const variantOptionValues = await db.variantOptionValue.findMany({ where: { tenantId }, orderBy: { value: "asc" } });
+  const variantOptions = await db.variantOption.findMany({
+    where: { tenantId },
+    orderBy: { name: 'asc' },
+  });
+  const variantOptionValues = await db.variantOptionValue.findMany({
+    where: { tenantId },
+    orderBy: { value: 'asc' },
+  });
   const allProductOptions = await db.productOption.findMany({ where: { tenantId } });
 
   // Step 38: one Inventory row per variant at the tenant's single default
@@ -174,11 +202,14 @@ export default async function TenantAdminHomePage() {
   const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
   const productOptionsByProduct = new Map<string, typeof allProductOptions>();
   for (const po of allProductOptions) {
-    productOptionsByProduct.set(po.productId, [...(productOptionsByProduct.get(po.productId) ?? []), po]);
+    productOptionsByProduct.set(po.productId, [
+      ...(productOptionsByProduct.get(po.productId) ?? []),
+      po,
+    ]);
   }
-  const archivedVariantsByProduct = new Map<string, (typeof products)[number]["variants"]>();
+  const archivedVariantsByProduct = new Map<string, (typeof products)[number]['variants']>();
   for (const product of products) {
-    const archived = product.variants.filter((v) => v.status === "archived");
+    const archived = product.variants.filter((v) => v.status === 'archived');
     if (archived.length > 0) {
       archivedVariantsByProduct.set(product.id, archived);
     }
@@ -189,818 +220,965 @@ export default async function TenantAdminHomePage() {
   const orders = await listOrders(tenantId);
 
   return (
-    <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
-      <div className="flex flex-col gap-1">
-        <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
-        <p className="text-sm text-muted-foreground">
-          You are managing {tenant?.name ?? "(unknown tenant)"}.
-        </p>
-        {primaryDomain && (
-          <a
-            href={`http://${primaryDomain.hostname}:3000/`}
-            target="_blank"
-            rel="noreferrer"
-            className="w-fit text-sm text-muted-foreground underline transition-colors hover:text-foreground"
-          >
-            View storefront ↗
-          </a>
-        )}
-      </div>
+    <TenantTheme branding={themeBranding} className="flex flex-1 flex-col">
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
+        <div className="flex flex-col gap-1">
+          <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
+          <p className="text-sm text-muted-foreground">
+            You are managing {tenant?.name ?? '(unknown tenant)'}.
+          </p>
+          {primaryDomain && (
+            <a
+              href={`http://${primaryDomain.hostname}:3000/`}
+              target="_blank"
+              rel="noreferrer"
+              className="w-fit text-sm text-muted-foreground underline transition-colors hover:text-foreground"
+            >
+              View storefront ↗
+            </a>
+          )}
+        </div>
 
-      {/* Sticky quick-nav — this page stacks five sizeable sections in one
+        {/* Sticky quick-nav — this page stacks five sizeable sections in one
           long scroll (Branding/Payments/Catalog/Orders can each run to
           hundreds of rows), so a persistent jump-to bar with live counts
           replaces "scroll and hope" with "see what needs attention, jump
           straight there." Plain anchor links + scroll-mt on each section
           (below) — no client JS needed for this part. */}
-      <nav className="sticky top-0 z-10 -mx-6 flex flex-wrap gap-1 border-b border-border bg-background/95 px-6 py-2 backdrop-blur-sm sm:-mx-0 sm:rounded-lg sm:border sm:px-2">
-        {[
-          { href: "#branding", label: "Branding" },
-          { href: "#payments", label: "Payments" },
-          { href: "#shipping", label: `Shipping (${shippingMethods.length})` },
-          { href: "#catalog", label: `Catalog (${products.length})` },
-          {
-            href: "#orders",
-            label: `Orders (${orders.length}${
-              orders.filter((o) => o.status === "pending").length > 0
-                ? ` · ${orders.filter((o) => o.status === "pending").length} pending`
-                : ""
-            })`,
-          },
-        ].map((item) => (
-          <a
-            key={item.href}
-            href={item.href}
-            className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+        <nav className="sticky top-0 z-10 -mx-6 flex flex-wrap gap-1 border-b border-border bg-background/95 px-6 py-2 backdrop-blur-sm sm:-mx-0 sm:rounded-lg sm:border sm:px-2">
+          {[
+            { href: '#branding', label: 'Branding' },
+            { href: '#payments', label: 'Payments' },
+            { href: '#shipping', label: `Shipping (${shippingMethods.length})` },
+            { href: '#catalog', label: `Catalog (${products.length})` },
+            {
+              href: '#orders',
+              label: `Orders (${orders.length}${
+                orders.filter((o) => o.status === 'pending').length > 0
+                  ? ` · ${orders.filter((o) => o.status === 'pending').length} pending`
+                  : ''
+              })`,
+            },
+          ].map((item) => (
+            <a
+              key={item.href}
+              href={item.href}
+              className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+            >
+              {item.label}
+            </a>
+          ))}
+        </nav>
+
+        <section id="branding" className={`${adminSectionClassName} scroll-mt-16`}>
+          <h2 className="text-lg font-medium tracking-tight">Branding</h2>
+          <ActionForm
+            action={updateBrandingAction}
+            submitLabel="Save branding"
+            className="flex max-w-md flex-col gap-3"
           >
-            {item.label}
-          </a>
-        ))}
-      </nav>
-
-      <section id="branding" className={`${adminSectionClassName} scroll-mt-16`}>
-        <h2 className="text-lg font-medium tracking-tight">Branding</h2>
-        <ActionForm
-          action={updateBrandingAction}
-          submitLabel="Save branding"
-          className="flex max-w-md flex-col gap-3"
-        >
-          <label className={adminLabelClassName}>
-            Store name
-            <input
-              name="storeName"
-              defaultValue={branding?.storeName ?? ""}
-              placeholder={tenant?.name}
-              className={adminInputClassName}
+            <label className={adminLabelClassName}>
+              Store name
+              <input
+                name="storeName"
+                defaultValue={branding?.storeName ?? ''}
+                placeholder={tenant?.name}
+                className={adminInputClassName}
+              />
+            </label>
+            <BrandingUploadControls
+              initialLogoUrl={branding?.logoUrl ?? ''}
+              hasTokens={Boolean(branding?.designTokens)}
             />
-          </label>
-          <label className={adminLabelClassName}>
-            Logo URL
-            <input
-              name="logoUrl"
-              defaultValue={branding?.logoUrl ?? ""}
-              placeholder="https://..."
-              className={adminInputClassName}
-            />
-          </label>
-          <label className={adminLabelClassName}>
-            Favicon URL
-            <input
-              name="faviconUrl"
-              defaultValue={branding?.faviconUrl ?? ""}
-              placeholder="https://..."
-              className={adminInputClassName}
-            />
-          </label>
-          <label className={adminLabelClassName}>
-            Primary color
-            <input
-              name="primaryColor"
-              defaultValue={branding?.primaryColor ?? ""}
-              placeholder="#3b3b3b"
-              className={adminInputClassName}
-            />
-          </label>
-          <label className={adminLabelClassName}>
-            Secondary color
-            <input
-              name="secondaryColor"
-              defaultValue={branding?.secondaryColor ?? ""}
-              placeholder="#8a8a8a"
-              className={adminInputClassName}
-            />
-          </label>
-          <div className="mt-2 flex flex-col gap-3 border-t border-border pt-3">
-            <div className="flex flex-col gap-1">
-              <h3 className="text-sm font-medium">Bank transfer instructions</h3>
-              <p className="text-xs text-muted-foreground">
-                Shown to a customer at checkout and on their order confirmation whenever they choose Bank transfer.
-                Leave blank if you don&apos;t accept bank transfers.
-              </p>
+            <label className={adminLabelClassName}>
+              Favicon URL
+              <input
+                name="faviconUrl"
+                defaultValue={branding?.faviconUrl ?? ''}
+                placeholder="https://..."
+                className={adminInputClassName}
+              />
+            </label>
+            <label className={adminLabelClassName}>
+              Primary color
+              <input
+                name="primaryColor"
+                defaultValue={branding?.primaryColor ?? ''}
+                placeholder="#3b3b3b"
+                className={adminInputClassName}
+              />
+            </label>
+            <label className={adminLabelClassName}>
+              Secondary color
+              <input
+                name="secondaryColor"
+                defaultValue={branding?.secondaryColor ?? ''}
+                placeholder="#8a8a8a"
+                className={adminInputClassName}
+              />
+            </label>
+            <div className="mt-2 flex flex-col gap-3 border-t border-border pt-3">
+              <div className="flex flex-col gap-1">
+                <h3 className="text-sm font-medium">Bank transfer instructions</h3>
+                <p className="text-xs text-muted-foreground">
+                  Shown to a customer at checkout and on their order confirmation whenever they
+                  choose Bank transfer. Leave blank if you don&apos;t accept bank transfers.
+                </p>
+              </div>
+              <label className={adminLabelClassName}>
+                Bank name
+                <input
+                  name="bankName"
+                  defaultValue={branding?.bankName ?? ''}
+                  placeholder="Vietcombank"
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className={adminLabelClassName}>
+                Account number
+                <input
+                  name="bankAccountNumber"
+                  defaultValue={branding?.bankAccountNumber ?? ''}
+                  placeholder="0123456789"
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className={adminLabelClassName}>
+                Account holder name
+                <input
+                  name="bankAccountHolder"
+                  defaultValue={branding?.bankAccountHolder ?? ''}
+                  placeholder="NGUYEN VAN A"
+                  className={adminInputClassName}
+                />
+              </label>
             </div>
-            <label className={adminLabelClassName}>
-              Bank name
-              <input
-                name="bankName"
-                defaultValue={branding?.bankName ?? ""}
-                placeholder="Vietcombank"
-                className={adminInputClassName}
-              />
-            </label>
-            <label className={adminLabelClassName}>
-              Account number
-              <input
-                name="bankAccountNumber"
-                defaultValue={branding?.bankAccountNumber ?? ""}
-                placeholder="0123456789"
-                className={adminInputClassName}
-              />
-            </label>
-            <label className={adminLabelClassName}>
-              Account holder name
-              <input
-                name="bankAccountHolder"
-                defaultValue={branding?.bankAccountHolder ?? ""}
-                placeholder="NGUYEN VAN A"
-                className={adminInputClassName}
-              />
-            </label>
-          </div>
-        </ActionForm>
-      </section>
-
-      <section id="payments" className={`${adminSectionClassName} scroll-mt-16`}>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium tracking-tight">Payments</h2>
-          <p className="text-xs text-muted-foreground">
-            Only enabled AND fully configured methods appear at checkout — a customer can never select a method
-            you haven&apos;t set up here, even if this toggle is on but the required fields below are empty.
-          </p>
-        </div>
-
-        {/* Cash on delivery — no configuration, just enable/disable. */}
-        <div className={adminCardClassName}>
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">Cash on delivery</h3>
-            <span className="text-xs text-muted-foreground">
-              {paymentMethodByMethod.get("cod")?.enabled ? "Enabled" : "Disabled"}
-            </span>
-          </div>
-          <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
-            <input type="hidden" name="method" value="cod" />
-            <input type="hidden" name="provider" value="cod" />
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" name="enabled" defaultChecked={paymentMethodByMethod.get("cod")?.enabled ?? false} />
-              Enabled
-            </label>
           </ActionForm>
-        </div>
+        </section>
 
-        {/* Bank transfer — two possible providers behind the same
+        <section id="payments" className={`${adminSectionClassName} scroll-mt-16`}>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-medium tracking-tight">Payments</h2>
+            <p className="text-xs text-muted-foreground">
+              Only enabled AND fully configured methods appear at checkout — a customer can never
+              select a method you haven&apos;t set up here, even if this toggle is on but the
+              required fields below are empty.
+            </p>
+          </div>
+
+          {/* Cash on delivery — no configuration, just enable/disable. */}
+          <div className={adminCardClassName}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Cash on delivery</h3>
+              <span className="text-xs text-muted-foreground">
+                {paymentMethodByMethod.get('cod')?.enabled ? 'Enabled' : 'Disabled'}
+              </span>
+            </div>
+            <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+              <input type="hidden" name="method" value="cod" />
+              <input type="hidden" name="provider" value="cod" />
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={paymentMethodByMethod.get('cod')?.enabled ?? false}
+                />
+                Enabled
+              </label>
+            </ActionForm>
+          </div>
+
+          {/* Bank transfer — two possible providers behind the same
             customer-facing method; manual requires bank details, SePay VA
             requires a registered bank-account UUID (set up with SePay
             directly — that account linking happens outside this app). */}
-        <div className={adminCardClassName}>
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">Bank transfer</h3>
-            <span className="text-xs text-muted-foreground">
-              {paymentMethodByMethod.get("bank_transfer")?.enabled ? "Enabled" : "Disabled"} ·{" "}
-              {paymentMethodByMethod.get("bank_transfer")?.provider === "bank_transfer_sepay_va"
-                ? "SePay virtual account"
-                : "Manual"}
-            </span>
+          <div className={adminCardClassName}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">Bank transfer</h3>
+              <span className="text-xs text-muted-foreground">
+                {paymentMethodByMethod.get('bank_transfer')?.enabled ? 'Enabled' : 'Disabled'} ·{' '}
+                {paymentMethodByMethod.get('bank_transfer')?.provider === 'bank_transfer_sepay_va'
+                  ? 'SePay virtual account'
+                  : 'Manual'}
+              </span>
+            </div>
+            <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+              <input type="hidden" name="method" value="bank_transfer" />
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={paymentMethodByMethod.get('bank_transfer')?.enabled ?? false}
+                />
+                Enabled
+              </label>
+              <label className={adminLabelClassName}>
+                Provider
+                <select
+                  name="provider"
+                  defaultValue={
+                    paymentMethodByMethod.get('bank_transfer')?.provider ?? 'bank_transfer_manual'
+                  }
+                  className={adminInputClassName}
+                >
+                  <option value="bank_transfer_manual">
+                    Manual (merchant confirms transfers by hand)
+                  </option>
+                  <option value="bank_transfer_sepay_va">
+                    SePay virtual account (automatic confirmation)
+                  </option>
+                </select>
+              </label>
+              <label className={adminLabelClassName}>
+                Bank name (manual)
+                <input
+                  name="bankName"
+                  defaultValue={
+                    (
+                      paymentMethodByMethod.get('bank_transfer')?.config as {
+                        bankName?: string;
+                      } | null
+                    )?.bankName ?? ''
+                  }
+                  placeholder="Vietcombank"
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className={adminLabelClassName}>
+                Account number (manual)
+                <input
+                  name="bankAccountNumber"
+                  defaultValue={
+                    (
+                      paymentMethodByMethod.get('bank_transfer')?.config as {
+                        accountNumber?: string;
+                      } | null
+                    )?.accountNumber ?? ''
+                  }
+                  placeholder="0123456789"
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className={adminLabelClassName}>
+                Account holder (manual)
+                <input
+                  name="bankAccountHolder"
+                  defaultValue={
+                    (
+                      paymentMethodByMethod.get('bank_transfer')?.config as {
+                        accountHolder?: string;
+                      } | null
+                    )?.accountHolder ?? ''
+                  }
+                  placeholder="NGUYEN VAN A"
+                  className={adminInputClassName}
+                />
+              </label>
+              <label className={adminLabelClassName}>
+                SePay bank account UUID (SePay VA)
+                <input
+                  name="sepayBaUuid"
+                  defaultValue={
+                    (
+                      paymentMethodByMethod.get('bank_transfer')?.config as {
+                        baUuid?: string;
+                      } | null
+                    )?.baUuid ?? ''
+                  }
+                  placeholder="From your SePay dashboard, after registering your bank account"
+                  className={adminInputClassName}
+                />
+              </label>
+            </ActionForm>
           </div>
-          <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
-            <input type="hidden" name="method" value="bank_transfer" />
-            <label className="flex items-center gap-2 text-xs">
-              <input
-                type="checkbox"
-                name="enabled"
-                defaultChecked={paymentMethodByMethod.get("bank_transfer")?.enabled ?? false}
-              />
-              Enabled
-            </label>
-            <label className={adminLabelClassName}>
-              Provider
-              <select
-                name="provider"
-                defaultValue={paymentMethodByMethod.get("bank_transfer")?.provider ?? "bank_transfer_manual"}
-                className={adminInputClassName}
-              >
-                <option value="bank_transfer_manual">Manual (merchant confirms transfers by hand)</option>
-                <option value="bank_transfer_sepay_va">SePay virtual account (automatic confirmation)</option>
-              </select>
-            </label>
-            <label className={adminLabelClassName}>
-              Bank name (manual)
-              <input
-                name="bankName"
-                defaultValue={(paymentMethodByMethod.get("bank_transfer")?.config as { bankName?: string } | null)?.bankName ?? ""}
-                placeholder="Vietcombank"
-                className={adminInputClassName}
-              />
-            </label>
-            <label className={adminLabelClassName}>
-              Account number (manual)
-              <input
-                name="bankAccountNumber"
-                defaultValue={
-                  (paymentMethodByMethod.get("bank_transfer")?.config as { accountNumber?: string } | null)?.accountNumber ?? ""
-                }
-                placeholder="0123456789"
-                className={adminInputClassName}
-              />
-            </label>
-            <label className={adminLabelClassName}>
-              Account holder (manual)
-              <input
-                name="bankAccountHolder"
-                defaultValue={
-                  (paymentMethodByMethod.get("bank_transfer")?.config as { accountHolder?: string } | null)?.accountHolder ?? ""
-                }
-                placeholder="NGUYEN VAN A"
-                className={adminInputClassName}
-              />
-            </label>
-            <label className={adminLabelClassName}>
-              SePay bank account UUID (SePay VA)
-              <input
-                name="sepayBaUuid"
-                defaultValue={(paymentMethodByMethod.get("bank_transfer")?.config as { baUuid?: string } | null)?.baUuid ?? ""}
-                placeholder="From your SePay dashboard, after registering your bank account"
-                className={adminInputClassName}
-              />
-            </label>
-          </ActionForm>
-        </div>
 
-        {/* MoMo — platform-level credentials (env vars), no per-tenant
+          {/* MoMo — platform-level credentials (env vars), no per-tenant
             config to enter; enabling it here just opts this tenant into
             the shared platform MoMo integration once it's configured. */}
-        <div className={adminCardClassName}>
-          <div className="flex items-center justify-between">
-            <h3 className="font-medium">MoMo</h3>
-            <span className="text-xs text-muted-foreground">
-              {paymentMethodByMethod.get("momo")?.enabled ? "Enabled" : "Disabled"}
-            </span>
-          </div>
-          <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
-            <input type="hidden" name="method" value="momo" />
-            <input type="hidden" name="provider" value="momo" />
-            <label className="flex items-center gap-2 text-xs">
-              <input type="checkbox" name="enabled" defaultChecked={paymentMethodByMethod.get("momo")?.enabled ?? false} />
-              Enabled
-            </label>
-          </ActionForm>
-        </div>
-      </section>
-
-      <section id="shipping" className={`${adminSectionClassName} scroll-mt-16`}>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium tracking-tight">Shipping</h2>
-          <p className="text-xs text-muted-foreground">
-            Only enabled methods appear at checkout. If no method is enabled, checkout is blocked entirely — same
-            rule as payment methods above. At most one method can be the default (pre-selected at checkout).
-          </p>
-        </div>
-
-        {shippingMethods.length === 0 && (
-          <p className="text-xs text-red-600">No shipping methods yet — checkout is currently blocked for this store.</p>
-        )}
-
-        <div className="flex flex-col gap-3">
-          {shippingMethods.map((method) => (
-            <div key={method.id} className={adminCardClassName}>
-              <div className="flex items-center justify-between">
-                <h3 className="font-medium">{method.name}</h3>
-                <span className="text-xs text-muted-foreground">
-                  {method.enabled ? "Enabled" : "Disabled"} {method.isDefault && "· Default"}
-                </span>
-              </div>
-              <ActionForm action={updateShippingMethodAction} submitLabel="Save">
-                <input type="hidden" name="methodId" value={method.id} />
-                <label className={adminLabelClassName}>
-                  Name
-                  <input name="name" defaultValue={method.name} className={adminInputClassName} />
-                </label>
-                <label className={adminLabelClassName}>
-                  Amount (VND, 0 = free)
-                  <input
-                    name="amount"
-                    inputMode="numeric"
-                    defaultValue={String(method.amount)}
-                    className={adminInputClassName}
-                  />
-                </label>
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" name="enabled" defaultChecked={method.enabled} />
-                  Enabled
-                </label>
-                <label className="flex items-center gap-2 text-xs">
-                  <input type="checkbox" name="isDefault" defaultChecked={method.isDefault} />
-                  Default method
-                </label>
-              </ActionForm>
-              <ActionForm action={deleteShippingMethodAction} submitLabel="Delete">
-                <input type="hidden" name="methodId" value={method.id} />
-              </ActionForm>
+          <div className={adminCardClassName}>
+            <div className="flex items-center justify-between">
+              <h3 className="font-medium">MoMo</h3>
+              <span className="text-xs text-muted-foreground">
+                {paymentMethodByMethod.get('momo')?.enabled ? 'Enabled' : 'Disabled'}
+              </span>
             </div>
-          ))}
-        </div>
+            <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+              <input type="hidden" name="method" value="momo" />
+              <input type="hidden" name="provider" value="momo" />
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  name="enabled"
+                  defaultChecked={paymentMethodByMethod.get('momo')?.enabled ?? false}
+                />
+                Enabled
+              </label>
+            </ActionForm>
+          </div>
+        </section>
 
-        <ActionForm action={createShippingMethodAction} submitLabel="Add shipping method" className="flex max-w-md flex-col gap-3">
-          <label className={adminLabelClassName}>
-            Name
-            <input name="name" placeholder="Standard" className={adminInputClassName} />
-          </label>
-          <label className={adminLabelClassName}>
-            Amount (VND, 0 = free)
-            <input name="amount" inputMode="numeric" placeholder="20000" className={adminInputClassName} />
-          </label>
-          <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" name="enabled" />
-            Enabled
-          </label>
-          <label className="flex items-center gap-2 text-xs">
-            <input type="checkbox" name="isDefault" />
-            Default method
-          </label>
-        </ActionForm>
-      </section>
+        <section id="shipping" className={`${adminSectionClassName} scroll-mt-16`}>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-medium tracking-tight">Shipping</h2>
+            <p className="text-xs text-muted-foreground">
+              Only enabled methods appear at checkout. If no method is enabled, checkout is blocked
+              entirely — same rule as payment methods above. At most one method can be the default
+              (pre-selected at checkout).
+            </p>
+          </div>
 
-      <section id="catalog" className={`${adminSectionClassName} scroll-mt-16`}>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium tracking-tight">Variant Options</h2>
-          <p className="text-xs text-muted-foreground">
-            Reusable option types (e.g. Color, Size) shared across every product for this store.
-          </p>
-        </div>
+          {shippingMethods.length === 0 && (
+            <p className="text-xs text-red-600">
+              No shipping methods yet — checkout is currently blocked for this store.
+            </p>
+          )}
 
-        <ActionForm
-          action={createVariantOptionAction}
-          submitLabel="Add option"
-          className="flex max-w-md flex-col gap-3"
-        >
-          <label className={adminLabelClassName}>
-            Option name
-            <input name="name" placeholder="Color" className={adminInputClassName} />
-          </label>
-        </ActionForm>
-
-        <div className="flex flex-col gap-3">
-          {variantOptions.map((option) => {
-            const values = valuesByOption.get(option.id) ?? [];
-            return (
-              <div key={option.id} className={adminCardClassName}>
-                <h3 className="font-medium">{option.name}</h3>
-                <div className="flex flex-col gap-1">
-                  {values.map((value) => (
-                    <div
-                      key={value.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
-                    >
-                      <span>{value.value}</span>
-                      <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete">
-                        <input type="hidden" name="variantOptionValueId" value={value.id} />
-                      </ActionForm>
-                    </div>
-                  ))}
-                  {values.length === 0 && <p className="text-xs text-muted-foreground">No values yet.</p>}
-                </div>
-                {values.length > 0 && (
-                  <p className="text-xs text-amber-700 dark:text-amber-500">
-                    Deleting a value also removes it from any product variants that used it.
-                  </p>
-                )}
-                <ActionForm
-                  action={createVariantOptionValueAction}
-                  submitLabel="Add value"
-                  className="flex items-end gap-2"
-                >
-                  <input type="hidden" name="variantOptionId" value={option.id} />
-                  <label className={adminLabelClassName}>
-                    Value
-                    <input name="value" placeholder="White" className={adminInputClassName} />
-                  </label>
-                </ActionForm>
-              </div>
-            );
-          })}
-          {variantOptions.length === 0 && <p className="text-sm text-muted-foreground">No variant options yet.</p>}
-        </div>
-      </section>
-
-      <section className={adminSectionClassName}>
-        <h2 className="text-lg font-medium tracking-tight">Products</h2>
-
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
-          <h3 className="text-sm font-medium">Import Products (CSV)</h3>
-          <p className="text-xs text-muted-foreground">
-            CSV import supports: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
-            Media can be added after import from the product editor below.
-          </p>
-          <ImportProductsForm action={importProductsAction} />
-        </div>
-
-        <CreateProductForm />
-
-        <div className="flex flex-col gap-3">
-          {products.map((product) => {
-            const activeVariants = product.variants.filter((v) => v.status !== "archived");
-            // Simple-product path: every product created without options
-            // has exactly one variant with combinationKey === "", the same
-            // sentinel product-mutations.ts and the v4.1 migration backfill
-            // both use to mean "the" variant. Once real combinations exist,
-            // this is no longer true — see product-mutations.ts's
-            // updateProduct() doc comment for why price editing below is
-            // gated on this same check (Step 21).
-            const simpleVariant =
-              activeVariants.length === 1 && activeVariants[0].combinationKey === "" ? activeVariants[0] : null;
-
-            const assignedOptions = productOptionsByProduct.get(product.id) ?? [];
-            const assignedOptionIds = new Set(assignedOptions.map((po) => po.variantOptionId));
-            const availableOptions = variantOptions.filter((o) => !assignedOptionIds.has(o.id));
-
-            const primaryMedia = product.media[0];
-            const summaryPrice = simpleVariant
-              ? formatVnd(simpleVariant.price)
-              : `${activeVariants.length} variant${activeVariants.length === 1 ? "" : "s"}`;
-
-            return (
-              // Step 50 (revised): collapsed by default — a merchant with
-              // many products previously had every product's full editor
-              // (media gallery, stock, options, variant table) expanded
-              // and stacked at once, making the list unusable past a
-              // handful of products. <details>/<summary> needs no client
-              // JS and keeps each product's full edit form exactly as it
-              // was, just hidden until opened.
-              <details key={product.id} className="group rounded-lg border border-border bg-surface text-sm">
-                <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
-                  <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted">
-                    {primaryMedia ? (
-                      primaryMedia.type === "image" ? (
-                        // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see storefront ProductList.tsx
-                        <img src={primaryMedia.url} alt="" className="h-full w-full object-cover" />
-                      ) : (
-                        <video src={primaryMedia.url} muted className="h-full w-full object-cover" />
-                      )
-                    ) : (
-                      <span className="text-xs text-muted-foreground">—</span>
-                    )}
+          <div className="flex flex-col gap-3">
+            {shippingMethods.map((method) => (
+              <div key={method.id} className={adminCardClassName}>
+                <div className="flex items-center justify-between">
+                  <h3 className="font-medium">{method.name}</h3>
+                  <span className="text-xs text-muted-foreground">
+                    {method.enabled ? 'Enabled' : 'Disabled'} {method.isDefault && '· Default'}
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{product.name}</span>
-                  <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">{summaryPrice}</span>
-                  <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">{product.status}</span>
-                  <span className="text-muted-foreground transition-transform group-open:rotate-90">›</span>
-                </summary>
-
-                <div className="flex flex-col gap-3 border-t border-border p-4">
-                <ActionForm action={updateProductAction} submitLabel="Save" className="flex flex-wrap items-end gap-2">
-                  <input type="hidden" name="productId" value={product.id} />
+                </div>
+                <ActionForm action={updateShippingMethodAction} submitLabel="Save">
+                  <input type="hidden" name="methodId" value={method.id} />
                   <label className={adminLabelClassName}>
                     Name
-                    <input name="name" defaultValue={product.name} className={adminInputClassName} />
+                    <input name="name" defaultValue={method.name} className={adminInputClassName} />
                   </label>
-                  {simpleVariant ? (
-                    <label className={adminLabelClassName}>
-                      Price (VND)
-                      <input
-                        name="price"
-                        inputMode="numeric"
-                        defaultValue={String(simpleVariant.price)}
-                        className={adminInputClassName}
-                      />
-                    </label>
-                  ) : (
-                    // updateProduct() only edits price for a simple product
-                    // (Step 21) — for a variant-bearing product, per-variant
-                    // prices are shown read-only in the table below instead.
-                    // validateProductInput still requires a numeric string,
-                    // so a harmless placeholder is submitted and ignored.
-                    <input type="hidden" name="price" value="0" />
-                  )}
                   <label className={adminLabelClassName}>
-                    Status
-                    <select name="status" defaultValue={product.status} className={adminInputClassName}>
-                      {PRODUCT_STATUSES.map((status) => (
-                        <option key={status} value={status}>
-                          {status}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
-                  <label className={`w-full ${adminLabelClassName}`}>
-                    Description (optional)
-                    <textarea
-                      name="description"
-                      rows={2}
-                      defaultValue={product.description ?? ""}
+                    Amount (VND, 0 = free)
+                    <input
+                      name="amount"
+                      inputMode="numeric"
+                      defaultValue={String(method.amount)}
                       className={adminInputClassName}
                     />
                   </label>
+                  <label className="flex items-center gap-2 text-xs">
+                    <input type="checkbox" name="enabled" defaultChecked={method.enabled} />
+                    Enabled
+                  </label>
+                  <label className="flex items-center gap-2 text-xs">
+                    <input type="checkbox" name="isDefault" defaultChecked={method.isDefault} />
+                    Default method
+                  </label>
                 </ActionForm>
+                <ActionForm action={deleteShippingMethodAction} submitLabel="Delete">
+                  <input type="hidden" name="methodId" value={method.id} />
+                </ActionForm>
+              </div>
+            ))}
+          </div>
 
-                <div className="border-t border-border pt-3">
-                  <ProductMediaGallery
-                    productId={product.id}
-                    initialMedia={product.media.map((m) => ({ id: m.id, type: m.type, url: m.url }))}
-                  />
-                </div>
+          <ActionForm
+            action={createShippingMethodAction}
+            submitLabel="Add shipping method"
+            className="flex max-w-md flex-col gap-3"
+          >
+            <label className={adminLabelClassName}>
+              Name
+              <input name="name" placeholder="Standard" className={adminInputClassName} />
+            </label>
+            <label className={adminLabelClassName}>
+              Amount (VND, 0 = free)
+              <input
+                name="amount"
+                inputMode="numeric"
+                placeholder="20000"
+                className={adminInputClassName}
+              />
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" name="enabled" />
+              Enabled
+            </label>
+            <label className="flex items-center gap-2 text-xs">
+              <input type="checkbox" name="isDefault" />
+              Default method
+            </label>
+          </ActionForm>
+        </section>
 
-                {simpleVariant && (
-                  <div className="border-t border-border pt-3">
-                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Stock</h4>
-                    <StockControl productVariantId={simpleVariant.id} inventory={inventoryByVariant.get(simpleVariant.id)} />
+        <section id="catalog" className={`${adminSectionClassName} scroll-mt-16`}>
+          <div className="flex flex-col gap-1">
+            <h2 className="text-lg font-medium tracking-tight">Variant Options</h2>
+            <p className="text-xs text-muted-foreground">
+              Reusable option types (e.g. Color, Size) shared across every product for this store.
+            </p>
+          </div>
+
+          <ActionForm
+            action={createVariantOptionAction}
+            submitLabel="Add option"
+            className="flex max-w-md flex-col gap-3"
+          >
+            <label className={adminLabelClassName}>
+              Option name
+              <input name="name" placeholder="Color" className={adminInputClassName} />
+            </label>
+          </ActionForm>
+
+          <div className="flex flex-col gap-3">
+            {variantOptions.map((option) => {
+              const values = valuesByOption.get(option.id) ?? [];
+              return (
+                <div key={option.id} className={adminCardClassName}>
+                  <h3 className="font-medium">{option.name}</h3>
+                  <div className="flex flex-col gap-1">
+                    {values.map((value) => (
+                      <div
+                        key={value.id}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
+                      >
+                        <span>{value.value}</span>
+                        <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete">
+                          <input type="hidden" name="variantOptionValueId" value={value.id} />
+                        </ActionForm>
+                      </div>
+                    ))}
+                    {values.length === 0 && (
+                      <p className="text-xs text-muted-foreground">No values yet.</p>
+                    )}
                   </div>
-                )}
-
-                <div className="flex flex-col gap-2 border-t border-border pt-3">
-                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Options</h4>
-                  {assignedOptions.length === 0 ? (
-                    <p className="text-xs text-muted-foreground">No options assigned — simple product.</p>
-                  ) : (
-                    <div className="flex flex-col gap-1">
-                      {assignedOptions.map((po) => (
-                        <div
-                          key={po.id}
-                          className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
-                        >
-                          <span>{optionNameById.get(po.variantOptionId) ?? "(unknown option)"}</span>
-                          <ActionForm action={removeProductOptionAction} submitLabel="Remove">
-                            <input type="hidden" name="productOptionId" value={po.id} />
-                          </ActionForm>
-                        </div>
-                      ))}
-                      <p className="text-xs text-amber-700 dark:text-amber-500">
-                        Removing an option also removes any variant associations built from it.
-                      </p>
-                    </div>
+                  {values.length > 0 && (
+                    <p className="text-xs text-amber-700 dark:text-amber-500">
+                      Deleting a value also removes it from any product variants that used it.
+                    </p>
                   )}
-                  {availableOptions.length > 0 && (
+                  <ActionForm
+                    action={createVariantOptionValueAction}
+                    submitLabel="Add value"
+                    className="flex items-end gap-2"
+                  >
+                    <input type="hidden" name="variantOptionId" value={option.id} />
+                    <label className={adminLabelClassName}>
+                      Value
+                      <input name="value" placeholder="White" className={adminInputClassName} />
+                    </label>
+                  </ActionForm>
+                </div>
+              );
+            })}
+            {variantOptions.length === 0 && (
+              <p className="text-sm text-muted-foreground">No variant options yet.</p>
+            )}
+          </div>
+        </section>
+
+        <section className={adminSectionClassName}>
+          <h2 className="text-lg font-medium tracking-tight">Products</h2>
+
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
+            <h3 className="text-sm font-medium">Import Products (CSV)</h3>
+            <p className="text-xs text-muted-foreground">
+              CSV import supports: name, price, status (optional, defaults to draft). Max 500 rows,
+              1 MB. Media can be added after import from the product editor below.
+            </p>
+            <ImportProductsForm action={importProductsAction} />
+          </div>
+
+          <CreateProductForm />
+
+          <div className="flex flex-col gap-3">
+            {products.map((product) => {
+              const activeVariants = product.variants.filter((v) => v.status !== 'archived');
+              // Simple-product path: every product created without options
+              // has exactly one variant with combinationKey === "", the same
+              // sentinel product-mutations.ts and the v4.1 migration backfill
+              // both use to mean "the" variant. Once real combinations exist,
+              // this is no longer true — see product-mutations.ts's
+              // updateProduct() doc comment for why price editing below is
+              // gated on this same check (Step 21).
+              const simpleVariant =
+                activeVariants.length === 1 && activeVariants[0].combinationKey === ''
+                  ? activeVariants[0]
+                  : null;
+
+              const assignedOptions = productOptionsByProduct.get(product.id) ?? [];
+              const assignedOptionIds = new Set(assignedOptions.map((po) => po.variantOptionId));
+              const availableOptions = variantOptions.filter((o) => !assignedOptionIds.has(o.id));
+
+              const primaryMedia = product.media[0];
+              const summaryPrice = simpleVariant
+                ? formatVnd(simpleVariant.price)
+                : `${activeVariants.length} variant${activeVariants.length === 1 ? '' : 's'}`;
+
+              return (
+                // Step 50 (revised): collapsed by default — a merchant with
+                // many products previously had every product's full editor
+                // (media gallery, stock, options, variant table) expanded
+                // and stacked at once, making the list unusable past a
+                // handful of products. <details>/<summary> needs no client
+                // JS and keeps each product's full edit form exactly as it
+                // was, just hidden until opened.
+                <details
+                  key={product.id}
+                  className="group rounded-lg border border-border bg-surface text-sm"
+                >
+                  <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
+                    <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted">
+                      {primaryMedia ? (
+                        primaryMedia.type === 'image' ? (
+                          // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see storefront ProductList.tsx
+                          <img
+                            src={primaryMedia.url}
+                            alt=""
+                            className="h-full w-full object-cover"
+                          />
+                        ) : (
+                          <video
+                            src={primaryMedia.url}
+                            muted
+                            className="h-full w-full object-cover"
+                          />
+                        )
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{product.name}</span>
+                    <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                      {summaryPrice}
+                    </span>
+                    <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">
+                      {product.status}
+                    </span>
+                    <span className="text-muted-foreground transition-transform group-open:rotate-90">
+                      ›
+                    </span>
+                  </summary>
+
+                  <div className="flex flex-col gap-3 border-t border-border p-4">
                     <ActionForm
-                      action={assignProductOptionAction}
-                      submitLabel="Assign option"
-                      className="flex items-end gap-2"
+                      action={updateProductAction}
+                      submitLabel="Save"
+                      className="flex flex-wrap items-end gap-2"
                     >
                       <input type="hidden" name="productId" value={product.id} />
                       <label className={adminLabelClassName}>
-                        Option
-                        <select name="variantOptionId" className={adminInputClassName}>
-                          {availableOptions.map((o) => (
-                            <option key={o.id} value={o.id}>
-                              {o.name}
+                        Name
+                        <input
+                          name="name"
+                          defaultValue={product.name}
+                          className={adminInputClassName}
+                        />
+                      </label>
+                      {simpleVariant ? (
+                        <label className={adminLabelClassName}>
+                          Price (VND)
+                          <input
+                            name="price"
+                            inputMode="numeric"
+                            defaultValue={String(simpleVariant.price)}
+                            className={adminInputClassName}
+                          />
+                        </label>
+                      ) : (
+                        // updateProduct() only edits price for a simple product
+                        // (Step 21) — for a variant-bearing product, per-variant
+                        // prices are shown read-only in the table below instead.
+                        // validateProductInput still requires a numeric string,
+                        // so a harmless placeholder is submitted and ignored.
+                        <input type="hidden" name="price" value="0" />
+                      )}
+                      <label className={adminLabelClassName}>
+                        Status
+                        <select
+                          name="status"
+                          defaultValue={product.status}
+                          className={adminInputClassName}
+                        >
+                          {PRODUCT_STATUSES.map((status) => (
+                            <option key={status} value={status}>
+                              {status}
                             </option>
                           ))}
                         </select>
                       </label>
-                    </ActionForm>
-                  )}
-                </div>
-
-                {assignedOptions.length > 0 && (
-                  <div className="flex flex-col gap-2 border-t border-border pt-3">
-                    <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Variants</h4>
-                    <ActionForm
-                      action={generateVariantsAction}
-                      submitLabel="Generate variants"
-                      className="flex items-end gap-2"
-                    >
-                      <input type="hidden" name="productId" value={product.id} />
-                      <label className={adminLabelClassName}>
-                        Starting price (VND)
-                        <input name="defaultPrice" inputMode="numeric" placeholder="100000" className={adminInputClassName} />
+                      <label className={`w-full ${adminLabelClassName}`}>
+                        Description (optional)
+                        <textarea
+                          name="description"
+                          rows={2}
+                          defaultValue={product.description ?? ''}
+                          className={adminInputClassName}
+                        />
                       </label>
                     </ActionForm>
 
-                    {!simpleVariant && activeVariants.length > 0 && (
-                      <div className="overflow-x-auto">
-                        <table className="w-full text-left text-xs">
-                          <thead>
-                            <tr className="border-b border-border">
-                              <th className="py-1.5 pr-2 font-medium">Combination</th>
-                              <th className="py-1.5 pr-2 font-medium">SKU</th>
-                              <th className="py-1.5 pr-2 font-medium">Price</th>
-                              <th className="py-1.5 pr-2 font-medium">Status</th>
-                              <th className="py-1.5 font-medium">Actions</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {activeVariants.map((variant) => (
-                              <tr key={variant.id} className="border-b border-border last:border-0">
-                                <td className="py-1.5 pr-2 align-top">
-                                  {formatCombination(variant, optionNameById, valueLabelById)}
-                                </td>
-                                <td colSpan={4} className="py-1.5">
-                                  <ActionForm
-                                    action={updateProductVariantAction}
-                                    submitLabel="Save"
-                                    className="flex flex-wrap items-end gap-2"
-                                  >
-                                    <input type="hidden" name="productVariantId" value={variant.id} />
-                                    <label className={adminLabelClassName}>
-                                      SKU
-                                      <input
-                                        name="sku"
-                                        defaultValue={variant.sku ?? ""}
-                                        placeholder="(none)"
-                                        className={`w-32 ${adminInputClassName}`}
-                                      />
-                                    </label>
-                                    <label className={adminLabelClassName}>
-                                      Price (VND)
-                                      <input
-                                        name="price"
-                                        inputMode="numeric"
-                                        defaultValue={String(variant.price)}
-                                        className={`w-28 ${adminInputClassName}`}
-                                      />
-                                    </label>
-                                    <span className="pb-1.5 text-muted-foreground">{variant.status}</span>
-                                  </ActionForm>
-                                  <div className="mt-1">
-                                    <StockControl productVariantId={variant.id} inventory={inventoryByVariant.get(variant.id)} />
-                                  </div>
-                                </td>
-                              </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                    <div className="border-t border-border pt-3">
+                      <ProductMediaGallery
+                        productId={product.id}
+                        initialMedia={product.media.map((m) => ({
+                          id: m.id,
+                          type: m.type,
+                          url: m.url,
+                        }))}
+                      />
+                    </div>
+
+                    {simpleVariant && (
+                      <div className="border-t border-border pt-3">
+                        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                          Stock
+                        </h4>
+                        <StockControl
+                          productVariantId={simpleVariant.id}
+                          inventory={inventoryByVariant.get(simpleVariant.id)}
+                        />
                       </div>
                     )}
 
-                    {archivedVariantsByProduct.get(product.id)?.length ? (
-                      <details className="mt-1">
-                        <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
-                          Archived variants ({archivedVariantsByProduct.get(product.id)?.length})
-                        </summary>
-                        <div className="mt-1 overflow-x-auto">
-                          <table className="w-full text-left text-xs">
-                            <thead>
-                              <tr className="border-b border-border">
-                                <th className="py-1.5 pr-2 font-medium">Combination</th>
-                                <th className="py-1.5 pr-2 font-medium">SKU</th>
-                                <th className="py-1.5 pr-2 font-medium">Price</th>
-                                <th className="py-1.5 font-medium">Status</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {archivedVariantsByProduct.get(product.id)?.map((variant) => (
-                                <tr key={variant.id} className="border-b border-border text-muted-foreground last:border-0">
-                                  <td className="py-1.5 pr-2">{formatCombination(variant, optionNameById, valueLabelById)}</td>
-                                  <td className="py-1.5 pr-2">{variant.sku ?? "(none)"}</td>
-                                  <td className="py-1.5 pr-2">{variant.price.toLocaleString("vi-VN")} ₫</td>
-                                  <td className="py-1.5">Archived</td>
-                                </tr>
-                              ))}
-                            </tbody>
-                          </table>
+                    <div className="flex flex-col gap-2 border-t border-border pt-3">
+                      <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                        Options
+                      </h4>
+                      {assignedOptions.length === 0 ? (
+                        <p className="text-xs text-muted-foreground">
+                          No options assigned — simple product.
+                        </p>
+                      ) : (
+                        <div className="flex flex-col gap-1">
+                          {assignedOptions.map((po) => (
+                            <div
+                              key={po.id}
+                              className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
+                            >
+                              <span>
+                                {optionNameById.get(po.variantOptionId) ?? '(unknown option)'}
+                              </span>
+                              <ActionForm action={removeProductOptionAction} submitLabel="Remove">
+                                <input type="hidden" name="productOptionId" value={po.id} />
+                              </ActionForm>
+                            </div>
+                          ))}
+                          <p className="text-xs text-amber-700 dark:text-amber-500">
+                            Removing an option also removes any variant associations built from it.
+                          </p>
                         </div>
-                      </details>
-                    ) : null}
+                      )}
+                      {availableOptions.length > 0 && (
+                        <ActionForm
+                          action={assignProductOptionAction}
+                          submitLabel="Assign option"
+                          className="flex items-end gap-2"
+                        >
+                          <input type="hidden" name="productId" value={product.id} />
+                          <label className={adminLabelClassName}>
+                            Option
+                            <select name="variantOptionId" className={adminInputClassName}>
+                              {availableOptions.map((o) => (
+                                <option key={o.id} value={o.id}>
+                                  {o.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                        </ActionForm>
+                      )}
+                    </div>
+
+                    {assignedOptions.length > 0 && (
+                      <div className="flex flex-col gap-2 border-t border-border pt-3">
+                        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                          Variants
+                        </h4>
+                        <ActionForm
+                          action={generateVariantsAction}
+                          submitLabel="Generate variants"
+                          className="flex items-end gap-2"
+                        >
+                          <input type="hidden" name="productId" value={product.id} />
+                          <label className={adminLabelClassName}>
+                            Starting price (VND)
+                            <input
+                              name="defaultPrice"
+                              inputMode="numeric"
+                              placeholder="100000"
+                              className={adminInputClassName}
+                            />
+                          </label>
+                        </ActionForm>
+
+                        {!simpleVariant && activeVariants.length > 0 && (
+                          <div className="overflow-x-auto">
+                            <table className="w-full text-left text-xs">
+                              <thead>
+                                <tr className="border-b border-border">
+                                  <th className="py-1.5 pr-2 font-medium">Combination</th>
+                                  <th className="py-1.5 pr-2 font-medium">SKU</th>
+                                  <th className="py-1.5 pr-2 font-medium">Price</th>
+                                  <th className="py-1.5 pr-2 font-medium">Status</th>
+                                  <th className="py-1.5 font-medium">Actions</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {activeVariants.map((variant) => (
+                                  <tr
+                                    key={variant.id}
+                                    className="border-b border-border last:border-0"
+                                  >
+                                    <td className="py-1.5 pr-2 align-top">
+                                      {formatCombination(variant, optionNameById, valueLabelById)}
+                                    </td>
+                                    <td colSpan={4} className="py-1.5">
+                                      <ActionForm
+                                        action={updateProductVariantAction}
+                                        submitLabel="Save"
+                                        className="flex flex-wrap items-end gap-2"
+                                      >
+                                        <input
+                                          type="hidden"
+                                          name="productVariantId"
+                                          value={variant.id}
+                                        />
+                                        <label className={adminLabelClassName}>
+                                          SKU
+                                          <input
+                                            name="sku"
+                                            defaultValue={variant.sku ?? ''}
+                                            placeholder="(none)"
+                                            className={`w-32 ${adminInputClassName}`}
+                                          />
+                                        </label>
+                                        <label className={adminLabelClassName}>
+                                          Price (VND)
+                                          <input
+                                            name="price"
+                                            inputMode="numeric"
+                                            defaultValue={String(variant.price)}
+                                            className={`w-28 ${adminInputClassName}`}
+                                          />
+                                        </label>
+                                        <span className="pb-1.5 text-muted-foreground">
+                                          {variant.status}
+                                        </span>
+                                      </ActionForm>
+                                      <div className="mt-1">
+                                        <StockControl
+                                          productVariantId={variant.id}
+                                          inventory={inventoryByVariant.get(variant.id)}
+                                        />
+                                      </div>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        )}
+
+                        {archivedVariantsByProduct.get(product.id)?.length ? (
+                          <details className="mt-1">
+                            <summary className="cursor-pointer text-xs font-medium text-muted-foreground">
+                              Archived variants ({archivedVariantsByProduct.get(product.id)?.length}
+                              )
+                            </summary>
+                            <div className="mt-1 overflow-x-auto">
+                              <table className="w-full text-left text-xs">
+                                <thead>
+                                  <tr className="border-b border-border">
+                                    <th className="py-1.5 pr-2 font-medium">Combination</th>
+                                    <th className="py-1.5 pr-2 font-medium">SKU</th>
+                                    <th className="py-1.5 pr-2 font-medium">Price</th>
+                                    <th className="py-1.5 font-medium">Status</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {archivedVariantsByProduct.get(product.id)?.map((variant) => (
+                                    <tr
+                                      key={variant.id}
+                                      className="border-b border-border text-muted-foreground last:border-0"
+                                    >
+                                      <td className="py-1.5 pr-2">
+                                        {formatCombination(variant, optionNameById, valueLabelById)}
+                                      </td>
+                                      <td className="py-1.5 pr-2">{variant.sku ?? '(none)'}</td>
+                                      <td className="py-1.5 pr-2">
+                                        {variant.price.toLocaleString('vi-VN')} ₫
+                                      </td>
+                                      <td className="py-1.5">Archived</td>
+                                    </tr>
+                                  ))}
+                                </tbody>
+                              </table>
+                            </div>
+                          </details>
+                        ) : null}
+                      </div>
+                    )}
                   </div>
-                )}
-                </div>
-              </details>
-            );
-          })}
-          {products.length === 0 && <p className="text-sm text-muted-foreground">No products yet.</p>}
-        </div>
-      </section>
+                </details>
+              );
+            })}
+            {products.length === 0 && (
+              <p className="text-sm text-muted-foreground">No products yet.</p>
+            )}
+          </div>
+        </section>
 
-      <section id="orders" className={`${adminSectionClassName} scroll-mt-16`}>
-        <h2 className="text-lg font-medium tracking-tight">Orders</h2>
+        <section id="orders" className={`${adminSectionClassName} scroll-mt-16`}>
+          <h2 className="text-lg font-medium tracking-tight">Orders</h2>
 
-        <div className="flex flex-col gap-3">
-          {orders.map((order) => (
-            <div key={order.id} className="rounded-lg border border-border bg-surface p-4 text-sm">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="font-mono text-xs">Order {order.id}</span>
-                <span
-                  className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? "border-border"}`}
-                >
-                  {order.status}
-                </span>
-                <span className="text-xs text-muted-foreground">
-                  {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
-                </span>
-                {/* Step 49: business-level payment state — null for
+          <div className="flex flex-col gap-3">
+            {orders.map((order) => (
+              <div
+                key={order.id}
+                className="rounded-lg border border-border bg-surface p-4 text-sm"
+              >
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="font-mono text-xs">Order {order.id}</span>
+                  <span
+                    className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? 'border-border'}`}
+                  >
+                    {order.status}
+                  </span>
+                  <span className="text-xs text-muted-foreground">
+                    {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+                  </span>
+                  {/* Step 49: business-level payment state — null for
                     cod/bank_transfer (no Payment row exists for those, see
                     order-queries.ts). Independent of order.status; never
                     merged into that badge — two separate lifecycles, two
                     separate color-coded badges. */}
-                {order.paymentStatus && (
-                  <span
-                    className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? "border-border"}`}
-                  >
-                    Payment: {order.paymentStatus}
-                  </span>
-                )}
-                {/* Manual bank transfer never gets a webhook — this is the
+                  {order.paymentStatus && (
+                    <span
+                      className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? 'border-border'}`}
+                    >
+                      Payment: {order.paymentStatus}
+                    </span>
+                  )}
+                  {/* Manual bank transfer never gets a webhook — this is the
                     only way its Payment ever leaves "pending". Never shown
                     for bank_transfer_sepay_va: SePay's own webhook is the
                     sole source of truth for that provider. */}
-                {order.paymentProvider === "bank_transfer_manual" && order.paymentStatus === "pending" && (
-                  <ActionForm action={markManualPaymentReceivedAction} submitLabel="Mark as paid" className="inline-flex">
-                    <input type="hidden" name="orderId" value={order.id} />
-                  </ActionForm>
-                )}
-                <span className="text-xs text-muted-foreground">
-                  {order.itemCount} item{order.itemCount === 1 ? "" : "s"}
-                </span>
-                <span className="font-mono text-xs">{formatVnd(order.total)}</span>
-                {order.status === "pending" && (
-                  <div className="ml-auto flex items-center gap-1">
-                    <OrderStatusForm
-                      action={updateOrderStatusAction}
-                      orderId={order.id}
-                      nextStatus="fulfilled"
-                      label="Mark fulfilled"
-                    />
-                    <OrderStatusForm
-                      action={updateOrderStatusAction}
-                      orderId={order.id}
-                      nextStatus="cancelled"
-                      label="Cancel"
-                    />
-                  </div>
-                )}
-              </div>
-              <p className="mt-1 text-xs text-muted-foreground">
-                {order.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-              </p>
+                  {order.paymentProvider === 'bank_transfer_manual' &&
+                    order.paymentStatus === 'pending' && (
+                      <ActionForm
+                        action={markManualPaymentReceivedAction}
+                        submitLabel="Mark as paid"
+                        className="inline-flex"
+                      >
+                        <input type="hidden" name="orderId" value={order.id} />
+                      </ActionForm>
+                    )}
+                  <span className="text-xs text-muted-foreground">
+                    {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
+                  </span>
+                  <span className="font-mono text-xs">{formatVnd(order.total)}</span>
+                  {order.status === 'pending' && (
+                    <div className="ml-auto flex items-center gap-1">
+                      <OrderStatusForm
+                        action={updateOrderStatusAction}
+                        orderId={order.id}
+                        nextStatus="fulfilled"
+                        label="Mark fulfilled"
+                      />
+                      <OrderStatusForm
+                        action={updateOrderStatusAction}
+                        orderId={order.id}
+                        nextStatus="cancelled"
+                        label="Cancel"
+                      />
+                    </div>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">
+                  {order.createdAt.toLocaleString('en-US', {
+                    dateStyle: 'medium',
+                    timeStyle: 'short',
+                  })}
+                </p>
 
-              <div className="mt-3 border-t border-border pt-3">
-                <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Customer</h4>
-                <p className="mt-1 text-xs">{order.customer.name}</p>
-                <p className="text-xs text-muted-foreground">{order.customer.email}</p>
-                <p className="text-xs text-muted-foreground">{order.customer.phone}</p>
-              </div>
+                <div className="mt-3 border-t border-border pt-3">
+                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Customer
+                  </h4>
+                  <p className="mt-1 text-xs">{order.customer.name}</p>
+                  <p className="text-xs text-muted-foreground">{order.customer.email}</p>
+                  <p className="text-xs text-muted-foreground">{order.customer.phone}</p>
+                </div>
 
-              <div className="mt-3 border-t border-border pt-3">
-                <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
-                <p className="mt-1 text-xs">{order.shippingAddress}</p>
-                <p className="text-xs text-muted-foreground">{order.shippingWard}</p>
-                {/* District is no longer collected (Vietnam's 2025 2-tier
+                <div className="mt-3 border-t border-border pt-3">
+                  <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                    Shipping address
+                  </h4>
+                  <p className="mt-1 text-xs">{order.shippingAddress}</p>
+                  <p className="text-xs text-muted-foreground">{order.shippingWard}</p>
+                  {/* District is no longer collected (Vietnam's 2025 2-tier
                     reform dropped it) — shown only for orders placed
                     before that change, which still have a real value. */}
-                {order.shippingDistrict && (
-                  <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
-                )}
-                <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
-                {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
-              </div>
+                  {order.shippingDistrict && (
+                    <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
+                  )}
+                  <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
+                  {order.shippingNote && (
+                    <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>
+                  )}
+                </div>
 
-              <div className="mt-3 overflow-x-auto border-t border-border pt-3">
-                <table className="w-full text-left text-xs">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="py-1.5 pr-2 font-medium">Item</th>
-                      <th className="py-1.5 pr-2 font-medium">Qty</th>
-                      <th className="py-1.5 pr-2 font-medium">Unit price</th>
-                      <th className="py-1.5 font-medium">Line total</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {order.items.map((item) => (
-                      <tr key={item.id} className="border-b border-border last:border-0">
-                        <td className="py-1.5 pr-2">
-                          {item.productName}
-                          {item.combinationLabel && (
-                            <span className="text-muted-foreground"> — {item.combinationLabel}</span>
-                          )}
-                        </td>
-                        <td className="py-1.5 pr-2">{item.quantity}</td>
-                        <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
-                        <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                <div className="mt-3 overflow-x-auto border-t border-border pt-3">
+                  <table className="w-full text-left text-xs">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="py-1.5 pr-2 font-medium">Item</th>
+                        <th className="py-1.5 pr-2 font-medium">Qty</th>
+                        <th className="py-1.5 pr-2 font-medium">Unit price</th>
+                        <th className="py-1.5 font-medium">Line total</th>
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
-                {/* V1 Configurable Shipping: breakdown, never a second
+                    </thead>
+                    <tbody>
+                      {order.items.map((item) => (
+                        <tr key={item.id} className="border-b border-border last:border-0">
+                          <td className="py-1.5 pr-2">
+                            {item.productName}
+                            {item.combinationLabel && (
+                              <span className="text-muted-foreground">
+                                {' '}
+                                — {item.combinationLabel}
+                              </span>
+                            )}
+                          </td>
+                          <td className="py-1.5 pr-2">{item.quantity}</td>
+                          <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+                          <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {/* V1 Configurable Shipping: breakdown, never a second
                     computation of `total` — subtotal + shippingAmount is
                     the exact same sum order-queries.ts already returned as
                     `total` above; showing it broken out here must not
                     double-count it. */}
-                <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-xs">
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Subtotal</span>
-                    <span className="font-mono">{formatVnd(order.subtotal)}</span>
-                  </div>
-                  <div className="flex items-center justify-between text-muted-foreground">
-                    <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}</span>
-                    <span className="font-mono">{order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}</span>
-                  </div>
-                  <div className="flex items-center justify-between font-medium">
-                    <span>Total</span>
-                    <span className="font-mono">{formatVnd(order.total)}</span>
+                  <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-xs">
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>Subtotal</span>
+                      <span className="font-mono">{formatVnd(order.subtotal)}</span>
+                    </div>
+                    <div className="flex items-center justify-between text-muted-foreground">
+                      <span>
+                        Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}
+                      </span>
+                      <span className="font-mono">
+                        {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
+                      </span>
+                    </div>
+                    <div className="flex items-center justify-between font-medium">
+                      <span>Total</span>
+                      <span className="font-mono">{formatVnd(order.total)}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          ))}
-          {orders.length === 0 && <p className="text-sm text-muted-foreground">No orders yet.</p>}
-        </div>
-      </section>
-    </main>
+            ))}
+            {orders.length === 0 && <p className="text-sm text-muted-foreground">No orders yet.</p>}
+          </div>
+        </section>
+      </main>
+    </TenantTheme>
   );
 }

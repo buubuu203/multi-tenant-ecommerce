@@ -1,5 +1,6 @@
-import { getScopedDb } from "./db/tenant-db";
-import type { ActionResult } from "./action-result";
+import { getScopedDb } from './db/tenant-db';
+import type { ActionResult } from './action-result';
+import type { DesignTokenConfig } from './design-tokens';
 
 const URL_PATTERN = /^https?:\/\//i;
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
@@ -24,7 +25,7 @@ export type BrandingInput = {
  */
 function trimToNull(raw: string): string | null {
   const trimmed = raw.trim();
-  return trimmed === "" ? null : trimmed;
+  return trimmed === '' ? null : trimmed;
 }
 
 function validateUrlField(raw: string, label: string): { value: string | null; error?: string } {
@@ -54,14 +55,18 @@ function validateColorField(raw: string, label: string): { value: string | null;
  * requireTenantAdmin() — never accepted from form input. Uses
  * getScopedDb(tenantId) exclusively, never platformDb or raw prisma.
  */
-export async function updateBranding(tenantId: string, input: BrandingInput): Promise<ActionResult> {
+export async function updateBranding(
+  tenantId: string,
+  input: BrandingInput,
+): Promise<ActionResult> {
   const storeName = trimToNull(input.storeName);
-  const logoUrl = validateUrlField(input.logoUrl, "Logo URL");
-  const faviconUrl = validateUrlField(input.faviconUrl, "Favicon URL");
-  const primaryColor = validateColorField(input.primaryColor, "Primary color");
-  const secondaryColor = validateColorField(input.secondaryColor, "Secondary color");
+  const logoUrl = validateUrlField(input.logoUrl, 'Logo URL');
+  const faviconUrl = validateUrlField(input.faviconUrl, 'Favicon URL');
+  const primaryColor = validateColorField(input.primaryColor, 'Primary color');
+  const secondaryColor = validateColorField(input.secondaryColor, 'Secondary color');
 
-  const firstError = logoUrl.error ?? faviconUrl.error ?? primaryColor.error ?? secondaryColor.error;
+  const firstError =
+    logoUrl.error ?? faviconUrl.error ?? primaryColor.error ?? secondaryColor.error;
   if (firstError) {
     return { success: false, error: firstError };
   }
@@ -86,7 +91,41 @@ export async function updateBranding(tenantId: string, input: BrandingInput): Pr
     });
     return { success: true, data: undefined };
   } catch (e) {
-    console.error("updateBranding failed:", e);
-    return { success: false, error: "Something went wrong saving branding." };
+    console.error('updateBranding failed:', e);
+    return { success: false, error: 'Something went wrong saving branding.' };
+  }
+}
+
+export async function updateDesignTokens(
+  tenantId: string,
+  designTokens: DesignTokenConfig,
+): Promise<ActionResult> {
+  try {
+    await getScopedDb(tenantId).branding.upsert({
+      where: { tenantId },
+      create: { tenantId, designTokens },
+      update: { designTokens },
+    });
+    return { success: true, data: undefined };
+  } catch (e) {
+    console.error('updateDesignTokens failed:', e);
+    return { success: false, error: 'Something went wrong saving design tokens.' };
+  }
+}
+
+export async function updateBrandingLogoUrl(
+  tenantId: string,
+  logoUrl: string,
+): Promise<ActionResult> {
+  try {
+    await getScopedDb(tenantId).branding.upsert({
+      where: { tenantId },
+      create: { tenantId, logoUrl },
+      update: { logoUrl },
+    });
+    return { success: true, data: undefined };
+  } catch (e) {
+    console.error('updateBrandingLogoUrl failed:', e);
+    return { success: false, error: 'Something went wrong saving the logo.' };
   }
 }

@@ -1,24 +1,46 @@
-"use server";
+'use server';
 
-import { revalidatePath } from "next/cache";
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { updateBranding } from "@/lib/branding-mutations";
-import { createProduct, updateProduct } from "@/lib/product-mutations";
-import { uploadProductMediaFile, deleteProductMediaFile, type MediaKind } from "@/lib/blob-storage";
-import { addProductMedia, removeProductMedia, reorderProductMedia } from "@/lib/product-media-mutations";
-import { importProductsFromCsv, type ImportSummary } from "@/lib/product-csv";
-import { createVariantOption } from "@/lib/variant-option-mutations";
-import { createVariantOptionValue, deleteVariantOptionValue } from "@/lib/variant-option-value-mutations";
-import { createProductOption, deleteProductOption } from "@/lib/product-option-mutations";
-import { generateProductVariants, type GenerationResult } from "@/lib/variant-generation";
-import { updateProductVariant } from "@/lib/product-variant-mutations";
-import { updateOrderStatus } from "@/lib/order-mutations";
-import { adjustInventoryOnHand } from "@/lib/inventory-mutations";
-import { updateTenantPaymentMethod } from "@/lib/tenant-payment-mutations";
-import { markManualPaymentReceived } from "@/lib/payments/payment-service";
-import { createShippingMethod, updateShippingMethod, deleteShippingMethod } from "@/lib/shipping-mutations";
-import type { PaymentMethod, PaymentProviderType } from "@/generated/prisma/client";
-import type { ActionResult } from "@/lib/action-result";
+import { revalidatePath } from 'next/cache';
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import {
+  updateBranding,
+  updateBrandingLogoUrl,
+  updateDesignTokens,
+} from '@/lib/branding-mutations';
+import { createProduct, updateProduct } from '@/lib/product-mutations';
+import {
+  uploadProductMediaFile,
+  deleteProductMediaFile,
+  uploadBrandingLogoFile,
+  deleteBrandingLogoFile,
+  type MediaKind,
+} from '@/lib/blob-storage';
+import { DESIGN_TOKEN_FILE_MAX_BYTES, parseDesignTokens } from '@/lib/design-tokens';
+import {
+  addProductMedia,
+  removeProductMedia,
+  reorderProductMedia,
+} from '@/lib/product-media-mutations';
+import { importProductsFromCsv, type ImportSummary } from '@/lib/product-csv';
+import { createVariantOption } from '@/lib/variant-option-mutations';
+import {
+  createVariantOptionValue,
+  deleteVariantOptionValue,
+} from '@/lib/variant-option-value-mutations';
+import { createProductOption, deleteProductOption } from '@/lib/product-option-mutations';
+import { generateProductVariants, type GenerationResult } from '@/lib/variant-generation';
+import { updateProductVariant } from '@/lib/product-variant-mutations';
+import { updateOrderStatus } from '@/lib/order-mutations';
+import { adjustInventoryOnHand } from '@/lib/inventory-mutations';
+import { updateTenantPaymentMethod } from '@/lib/tenant-payment-mutations';
+import { markManualPaymentReceived } from '@/lib/payments/payment-service';
+import {
+  createShippingMethod,
+  updateShippingMethod,
+  deleteShippingMethod,
+} from '@/lib/shipping-mutations';
+import type { PaymentMethod, PaymentProviderType } from '@/generated/prisma/client';
+import type { ActionResult } from '@/lib/action-result';
 
 // Independently re-checks auth + authorization before touching the
 // database — the tenant-admin/layout.tsx gate is not treated as
@@ -36,19 +58,61 @@ export async function updateBrandingAction(
   const { tenantId } = await requireTenantAdmin();
 
   const result = await updateBranding(tenantId, {
-    storeName: String(formData.get("storeName") ?? ""),
-    logoUrl: String(formData.get("logoUrl") ?? ""),
-    faviconUrl: String(formData.get("faviconUrl") ?? ""),
-    primaryColor: String(formData.get("primaryColor") ?? ""),
-    secondaryColor: String(formData.get("secondaryColor") ?? ""),
-    bankName: String(formData.get("bankName") ?? ""),
-    bankAccountNumber: String(formData.get("bankAccountNumber") ?? ""),
-    bankAccountHolder: String(formData.get("bankAccountHolder") ?? ""),
+    storeName: String(formData.get('storeName') ?? ''),
+    logoUrl: String(formData.get('logoUrl') ?? ''),
+    faviconUrl: String(formData.get('faviconUrl') ?? ''),
+    primaryColor: String(formData.get('primaryColor') ?? ''),
+    secondaryColor: String(formData.get('secondaryColor') ?? ''),
+    bankName: String(formData.get('bankName') ?? ''),
+    bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
+    bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
+  return result;
+}
+
+export async function uploadBrandingLogoAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) return { success: false, error: 'No logo file provided.' };
+
+  const result = await uploadBrandingLogoFile(tenantId, file);
+  if ('error' in result) return { success: false, error: result.error };
+  const saved = await updateBrandingLogoUrl(tenantId, result.url);
+  if (!saved.success) {
+    try {
+      await deleteBrandingLogoFile(tenantId, result.url);
+    } catch (error) {
+      console.error('uploadBrandingLogoAction: orphaned blob cleanup failed:', error);
+    }
+    return saved as ActionResult<{ url: string }>;
+  }
+  revalidatePath('/tenant-admin');
+  return { success: true, data: result };
+}
+
+export async function uploadDesignTokensAction(formData: FormData): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) return { success: false, error: 'No design-token file provided.' };
+  if (!file.name.toLowerCase().endsWith('.md')) {
+    return { success: false, error: 'Upload a Markdown (.md) design-token file.' };
+  }
+  if (file.size > DESIGN_TOKEN_FILE_MAX_BYTES) {
+    return { success: false, error: 'Design-token files must be 1MB or smaller.' };
+  }
+
+  const parsed = parseDesignTokens(await file.text());
+  if (!parsed.config)
+    return { success: false, error: parsed.error ?? 'No supported design tokens found.' };
+
+  const result = await updateDesignTokens(tenantId, parsed.config);
+  if (result.success) revalidatePath('/tenant-admin');
   return result;
 }
 
@@ -67,24 +131,24 @@ export async function createProductAction(
   // manual-form action does).
   let media: { url: string; type: MediaKind }[];
   try {
-    media = JSON.parse(String(formData.get("media") ?? "[]"));
+    media = JSON.parse(String(formData.get('media') ?? '[]'));
   } catch {
-    return { success: false, error: "Invalid media payload." };
+    return { success: false, error: 'Invalid media payload.' };
   }
   if (media.length === 0) {
-    return { success: false, error: "At least one product image or video is required." };
+    return { success: false, error: 'At least one product image or video is required.' };
   }
 
   const result = await createProduct(tenantId, {
-    name: String(formData.get("name") ?? ""),
-    price: String(formData.get("price") ?? ""),
-    status: String(formData.get("status") ?? ""),
-    description: String(formData.get("description") ?? ""),
+    name: String(formData.get('name') ?? ''),
+    price: String(formData.get('price') ?? ''),
+    status: String(formData.get('status') ?? ''),
+    description: String(formData.get('description') ?? ''),
     media,
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   } else {
     // The media files named in `media` were already uploaded to Blob by
     // earlier uploadProductMediaAction calls (before this form was ever
@@ -97,7 +161,7 @@ export async function createProductAction(
       try {
         await deleteProductMediaFile(tenantId, item.url);
       } catch (e) {
-        console.error("createProductAction: orphaned blob cleanup failed:", e);
+        console.error('createProductAction: orphaned blob cleanup failed:', e);
       }
     }
   }
@@ -115,13 +179,13 @@ export async function uploadProductMediaAction(
 ): Promise<ActionResult<{ url: string; type: MediaKind }>> {
   const { tenantId } = await requireTenantAdmin();
 
-  const file = formData.get("file");
+  const file = formData.get('file');
   if (!(file instanceof File)) {
-    return { success: false, error: "No file provided." };
+    return { success: false, error: 'No file provided.' };
   }
 
   const result = await uploadProductMediaFile(tenantId, file);
-  if ("error" in result) {
+  if ('error' in result) {
     return { success: false, error: result.error };
   }
   return { success: true, data: result };
@@ -133,14 +197,14 @@ export async function uploadProductMediaAction(
 // deleteProductMediaFile() already scopes by tenantId in the blob path.
 export async function deleteUploadedProductMediaAction(formData: FormData): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const url = String(formData.get("url") ?? "");
+  const url = String(formData.get('url') ?? '');
   if (!url) {
-    return { success: false, error: "No URL provided." };
+    return { success: false, error: 'No URL provided.' };
   }
   try {
     await deleteProductMediaFile(tenantId, url);
   } catch (e) {
-    console.error("deleteUploadedProductMediaAction: blob delete failed:", e);
+    console.error('deleteUploadedProductMediaAction: blob delete failed:', e);
   }
   return { success: true, data: undefined };
 }
@@ -152,18 +216,20 @@ export async function deleteUploadedProductMediaAction(formData: FormData): Prom
 // tenant ownership of both the product and the media row before writing
 // anything.
 
-export async function addProductMediaAction(formData: FormData): Promise<ActionResult<{ ids: string[] }>> {
+export async function addProductMediaAction(
+  formData: FormData,
+): Promise<ActionResult<{ ids: string[] }>> {
   const { tenantId } = await requireTenantAdmin();
-  const productId = String(formData.get("productId") ?? "");
+  const productId = String(formData.get('productId') ?? '');
   let media: { url: string; type: MediaKind }[];
   try {
-    media = JSON.parse(String(formData.get("media") ?? "[]"));
+    media = JSON.parse(String(formData.get('media') ?? '[]'));
   } catch {
-    return { success: false, error: "Invalid media payload." };
+    return { success: false, error: 'Invalid media payload.' };
   }
   const result = await addProductMedia(tenantId, productId, media);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   } else {
     // Same orphaned-blob concern as createProductAction above: `media`
     // was already uploaded to Blob before this call (imperatively, per
@@ -174,7 +240,7 @@ export async function addProductMediaAction(formData: FormData): Promise<ActionR
       try {
         await deleteProductMediaFile(tenantId, item.url);
       } catch (e) {
-        console.error("addProductMediaAction: orphaned blob cleanup failed:", e);
+        console.error('addProductMediaAction: orphaned blob cleanup failed:', e);
       }
     }
   }
@@ -186,27 +252,27 @@ export async function removeProductMediaAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const productId = String(formData.get("productId") ?? "");
-  const mediaId = String(formData.get("mediaId") ?? "");
+  const productId = String(formData.get('productId') ?? '');
+  const mediaId = String(formData.get('mediaId') ?? '');
   const result = await removeProductMedia(tenantId, productId, mediaId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
 
 export async function reorderProductMediaAction(formData: FormData): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const productId = String(formData.get("productId") ?? "");
+  const productId = String(formData.get('productId') ?? '');
   let orderedMediaIds: string[];
   try {
-    orderedMediaIds = JSON.parse(String(formData.get("orderedMediaIds") ?? "[]"));
+    orderedMediaIds = JSON.parse(String(formData.get('orderedMediaIds') ?? '[]'));
   } catch {
-    return { success: false, error: "Invalid order payload." };
+    return { success: false, error: 'Invalid order payload.' };
   }
   const result = await reorderProductMedia(tenantId, productId, orderedMediaIds);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -220,16 +286,16 @@ export async function importProductsAction(
 ): Promise<ActionResult<ImportSummary>> {
   const { tenantId } = await requireTenantAdmin();
 
-  const file = formData.get("file");
+  const file = formData.get('file');
   if (!(file instanceof File)) {
-    return { success: false, error: "No file selected." };
+    return { success: false, error: 'No file selected.' };
   }
 
   const csvText = await file.text();
   const result = await importProductsFromCsv(tenantId, csvText);
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -240,16 +306,16 @@ export async function updateProductAction(
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
 
-  const productId = String(formData.get("productId") ?? "");
+  const productId = String(formData.get('productId') ?? '');
   const result = await updateProduct(tenantId, productId, {
-    name: String(formData.get("name") ?? ""),
-    price: String(formData.get("price") ?? ""),
-    status: String(formData.get("status") ?? ""),
-    description: String(formData.get("description") ?? ""),
+    name: String(formData.get('name') ?? ''),
+    price: String(formData.get('price') ?? ''),
+    status: String(formData.get('status') ?? ''),
+    description: String(formData.get('description') ?? ''),
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -266,9 +332,9 @@ export async function createVariantOptionAction(
   formData: FormData,
 ): Promise<ActionResult<{ variantOptionId: string }>> {
   const { tenantId } = await requireTenantAdmin();
-  const result = await createVariantOption(tenantId, String(formData.get("name") ?? ""));
+  const result = await createVariantOption(tenantId, String(formData.get('name') ?? ''));
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -278,10 +344,14 @@ export async function createVariantOptionValueAction(
   formData: FormData,
 ): Promise<ActionResult<{ variantOptionValueId: string }>> {
   const { tenantId } = await requireTenantAdmin();
-  const variantOptionId = String(formData.get("variantOptionId") ?? "");
-  const result = await createVariantOptionValue(tenantId, variantOptionId, String(formData.get("value") ?? ""));
+  const variantOptionId = String(formData.get('variantOptionId') ?? '');
+  const result = await createVariantOptionValue(
+    tenantId,
+    variantOptionId,
+    String(formData.get('value') ?? ''),
+  );
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -291,10 +361,10 @@ export async function deleteVariantOptionValueAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const variantOptionValueId = String(formData.get("variantOptionValueId") ?? "");
+  const variantOptionValueId = String(formData.get('variantOptionValueId') ?? '');
   const result = await deleteVariantOptionValue(tenantId, variantOptionValueId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -306,11 +376,11 @@ export async function assignProductOptionAction(
   formData: FormData,
 ): Promise<ActionResult<{ productOptionId: string }>> {
   const { tenantId } = await requireTenantAdmin();
-  const productId = String(formData.get("productId") ?? "");
-  const variantOptionId = String(formData.get("variantOptionId") ?? "");
+  const productId = String(formData.get('productId') ?? '');
+  const variantOptionId = String(formData.get('variantOptionId') ?? '');
   const result = await createProductOption(tenantId, productId, variantOptionId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -320,10 +390,10 @@ export async function removeProductOptionAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const productOptionId = String(formData.get("productOptionId") ?? "");
+  const productOptionId = String(formData.get('productOptionId') ?? '');
   const result = await deleteProductOption(tenantId, productOptionId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -339,20 +409,20 @@ export async function generateVariantsAction(
   formData: FormData,
 ): Promise<ActionResult<GenerationResult>> {
   const { tenantId } = await requireTenantAdmin();
-  const productId = String(formData.get("productId") ?? "");
-  const priceRaw = String(formData.get("defaultPrice") ?? "").trim();
+  const productId = String(formData.get('productId') ?? '');
+  const priceRaw = String(formData.get('defaultPrice') ?? '').trim();
 
   if (!/^\d+$/.test(priceRaw)) {
-    return { success: false, error: "Starting price must be a whole number of VND (no decimals)." };
+    return { success: false, error: 'Starting price must be a whole number of VND (no decimals).' };
   }
   const defaultPrice = Number(priceRaw);
   if (!Number.isSafeInteger(defaultPrice) || defaultPrice < 0) {
-    return { success: false, error: "Starting price must be a non-negative whole number." };
+    return { success: false, error: 'Starting price must be a non-negative whole number.' };
   }
 
   const result = await generateProductVariants(tenantId, productId, defaultPrice);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -367,20 +437,20 @@ export async function updateProductVariantAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const productVariantId = String(formData.get("productVariantId") ?? "");
-  const priceRaw = String(formData.get("price") ?? "").trim();
-  const skuRaw = formData.get("sku");
+  const productVariantId = String(formData.get('productVariantId') ?? '');
+  const priceRaw = String(formData.get('price') ?? '').trim();
+  const skuRaw = formData.get('sku');
 
   if (!/^\d+$/.test(priceRaw)) {
-    return { success: false, error: "Price must be a whole number of VND (no decimals)." };
+    return { success: false, error: 'Price must be a whole number of VND (no decimals).' };
   }
 
   const result = await updateProductVariant(tenantId, productVariantId, {
     price: Number(priceRaw),
-    sku: typeof skuRaw === "string" ? skuRaw : null,
+    sku: typeof skuRaw === 'string' ? skuRaw : null,
   });
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -397,12 +467,12 @@ export async function updateOrderStatusAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const orderId = String(formData.get("orderId") ?? "");
-  const nextStatus = String(formData.get("nextStatus") ?? "");
+  const orderId = String(formData.get('orderId') ?? '');
+  const nextStatus = String(formData.get('nextStatus') ?? '');
 
   const result = await updateOrderStatus(tenantId, orderId, nextStatus);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -416,11 +486,11 @@ export async function markManualPaymentReceivedAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const orderId = String(formData.get("orderId") ?? "");
+  const orderId = String(formData.get('orderId') ?? '');
 
   const result = await markManualPaymentReceived(tenantId, orderId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -438,16 +508,16 @@ export async function adjustInventoryOnHandAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const productVariantId = String(formData.get("productVariantId") ?? "");
-  const adjustmentRaw = String(formData.get("adjustment") ?? "").trim();
+  const productVariantId = String(formData.get('productVariantId') ?? '');
+  const adjustmentRaw = String(formData.get('adjustment') ?? '').trim();
 
   if (!/^-?\d+$/.test(adjustmentRaw)) {
-    return { success: false, error: "Adjustment must be a whole number." };
+    return { success: false, error: 'Adjustment must be a whole number.' };
   }
 
   const result = await adjustInventoryOnHand(tenantId, productVariantId, Number(adjustmentRaw));
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -463,17 +533,17 @@ export async function updateTenantPaymentMethodAction(
   const { tenantId } = await requireTenantAdmin();
 
   const result = await updateTenantPaymentMethod(tenantId, {
-    method: String(formData.get("method") ?? "") as PaymentMethod,
-    provider: String(formData.get("provider") ?? "") as PaymentProviderType,
-    enabled: formData.get("enabled") === "on",
-    bankName: String(formData.get("bankName") ?? ""),
-    bankAccountNumber: String(formData.get("bankAccountNumber") ?? ""),
-    bankAccountHolder: String(formData.get("bankAccountHolder") ?? ""),
-    sepayBaUuid: String(formData.get("sepayBaUuid") ?? ""),
+    method: String(formData.get('method') ?? '') as PaymentMethod,
+    provider: String(formData.get('provider') ?? '') as PaymentProviderType,
+    enabled: formData.get('enabled') === 'on',
+    bankName: String(formData.get('bankName') ?? ''),
+    bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
+    bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
+    sepayBaUuid: String(formData.get('sepayBaUuid') ?? ''),
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -489,14 +559,14 @@ export async function createShippingMethodAction(
   const { tenantId } = await requireTenantAdmin();
 
   const result = await createShippingMethod(tenantId, {
-    name: String(formData.get("name") ?? ""),
-    amount: String(formData.get("amount") ?? ""),
-    enabled: formData.get("enabled") === "on",
-    isDefault: formData.get("isDefault") === "on",
+    name: String(formData.get('name') ?? ''),
+    amount: String(formData.get('amount') ?? ''),
+    enabled: formData.get('enabled') === 'on',
+    isDefault: formData.get('isDefault') === 'on',
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -506,17 +576,17 @@ export async function updateShippingMethodAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const methodId = String(formData.get("methodId") ?? "");
+  const methodId = String(formData.get('methodId') ?? '');
 
   const result = await updateShippingMethod(tenantId, methodId, {
-    name: String(formData.get("name") ?? ""),
-    amount: String(formData.get("amount") ?? ""),
-    enabled: formData.get("enabled") === "on",
-    isDefault: formData.get("isDefault") === "on",
+    name: String(formData.get('name') ?? ''),
+    amount: String(formData.get('amount') ?? ''),
+    enabled: formData.get('enabled') === 'on',
+    isDefault: formData.get('isDefault') === 'on',
   });
 
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }
@@ -526,11 +596,11 @@ export async function deleteShippingMethodAction(
   formData: FormData,
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
-  const methodId = String(formData.get("methodId") ?? "");
+  const methodId = String(formData.get('methodId') ?? '');
 
   const result = await deleteShippingMethod(tenantId, methodId);
   if (result.success) {
-    revalidatePath("/tenant-admin");
+    revalidatePath('/tenant-admin');
   }
   return result;
 }

@@ -1,11 +1,11 @@
-"use client";
+'use client';
 
-import { useActionState, useState } from "react";
-import { lookupOrderAction, lookupOrderHistoryAction } from "./actions";
-import type { CustomerOrderView } from "@/lib/order-queries";
+import { useActionState, useState } from 'react';
+import { lookupOrderAction, lookupOrderHistoryAction } from './actions';
+import type { CustomerOrderView } from '@/lib/order-queries';
 
 function formatVnd(price: number): string {
-  return `${price.toLocaleString("vi-VN")} ₫`;
+  return `${price.toLocaleString('vi-VN')} ₫`;
 }
 
 // Mirrors tenant-admin/page.tsx's own PAYMENT_METHOD_LABELS convention —
@@ -13,9 +13,9 @@ function formatVnd(price: number): string {
 // already treats formatVnd/payment-label maps as per-file conveniences
 // (see CartWidget.tsx) rather than a shared utils module.
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: "Cash on delivery",
-  momo: "MoMo",
-  bank_transfer: "Bank transfer",
+  cod: 'Cash on delivery',
+  momo: 'MoMo',
+  bank_transfer: 'Bank transfer',
 };
 
 // Mirrors tenant-admin/page.tsx's ORDER_STATUS_BADGE/PAYMENT_STATUS_BADGE —
@@ -24,126 +24,145 @@ const PAYMENT_METHOD_LABELS: Record<string, string> = {
 // per-file convention rather than a shared constants module.
 const ORDER_STATUS_BADGE: Record<string, string> = {
   pending:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   fulfilled:
-    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
-  cancelled: "border-border bg-surface-muted text-muted-foreground",
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
+  cancelled: 'border-border bg-surface-muted text-muted-foreground',
 };
 
 const PAYMENT_STATUS_BADGE: Record<string, string> = {
   pending:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   succeeded:
-    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
   failed:
-    "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
+    'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
 };
 
 function OrderDetails({ order }: { order: CustomerOrderView }) {
   return (
-    <div className="mt-4 rounded-lg border border-border bg-surface p-4 text-sm">
-      <div className="flex flex-wrap items-center gap-2">
-        <span className="font-mono text-xs">Order {order.id}</span>
-        <span
-          className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? "border-border"}`}
-        >
-          {order.status}
-        </span>
-        <span className="text-xs text-muted-foreground">
-          {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
-        </span>
-        {/* Step 49: lets the customer tell whether they still need to pay
+    <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface text-sm shadow-sm">
+      <div className="border-b border-border bg-surface-muted px-4 py-4 sm:px-6">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="font-mono text-xs">Order {order.id}</span>
+          <span
+            className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? 'border-border'}`}
+          >
+            {order.status}
+          </span>
+          <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
+            {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+          </span>
+          {/* Step 49: lets the customer tell whether they still need to pay
             (or their payment failed) without guessing — null for
             cod/bank_transfer, which never have a Payment record. */}
-        {order.paymentStatus && (
-          <span
-            className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? "border-border"}`}
-          >
-            Payment: {order.paymentStatus}
-          </span>
-        )}
+          {order.paymentStatus && (
+            <span
+              className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? 'border-border'}`}
+            >
+              Payment: {order.paymentStatus}
+            </span>
+          )}
+        </div>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {order.createdAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+        </p>
       </div>
-      <p className="mt-1 text-xs text-muted-foreground">
-        {order.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
-      </p>
 
-      <div className="mt-3 border-t border-border pt-3">
-        <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-          Shipping address
-        </h4>
-        <p className="mt-1 text-xs">{order.shippingAddress}</p>
-        <p className="text-xs text-muted-foreground">
-          {/* District is no longer collected (Vietnam's 2025 2-tier reform
+      <div className="grid gap-6 p-4 sm:p-6">
+        <div>
+          <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+            Shipping address
+          </h4>
+          <div className="mt-2 rounded-xl border border-border p-3">
+            <p>{order.shippingAddress}</p>
+            <p className="text-xs text-muted-foreground">
+              {/* District is no longer collected (Vietnam's 2025 2-tier reform
               dropped it) — only shown for orders placed before that change,
               which still have a real value on file. */}
-          {[order.shippingWard, order.shippingDistrict, order.shippingCity]
-            .filter(Boolean)
-            .join(", ")}
-        </p>
-        {order.shippingNote && (
-          <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>
-        )}
-      </div>
+              {[order.shippingWard, order.shippingDistrict, order.shippingCity]
+                .filter(Boolean)
+                .join(', ')}
+            </p>
+            {order.shippingNote && (
+              <p className="mt-1 text-xs text-muted-foreground">Note: {order.shippingNote}</p>
+            )}
+          </div>
+        </div>
 
-      <div className="mt-3 overflow-x-auto rounded-md border border-border">
-        <table className="w-full min-w-[520px] text-left text-xs">
-          <thead>
-            <tr className="border-b border-border">
-              <th className="py-1.5 pr-2 font-medium">Item</th>
-              <th className="py-1.5 pr-2 font-medium">Qty</th>
-              <th className="py-1.5 pr-2 font-medium">Unit price</th>
-              <th className="py-1.5 font-medium">Line total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {order.items.map((item, i) => (
-              <tr key={i} className="border-b border-border last:border-0">
-                <td className="py-1.5 pr-2">
-                  <div className="flex items-center gap-2">
-                    {/* Step 47: same display-only posture as the rest of this
+        <div>
+          <div className="flex items-center justify-between">
+            <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+              Items
+            </h4>
+            <span className="text-xs text-muted-foreground">
+              {order.items.length} item{order.items.length === 1 ? '' : 's'}
+            </span>
+          </div>
+          <div className="mt-2 overflow-x-auto rounded-xl border border-border">
+            <table className="w-full min-w-[520px] text-left text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="py-1.5 pr-2 font-medium">Item</th>
+                  <th className="py-1.5 pr-2 font-medium">Qty</th>
+                  <th className="py-1.5 pr-2 font-medium">Unit price</th>
+                  <th className="py-1.5 font-medium">Line total</th>
+                </tr>
+              </thead>
+              <tbody>
+                {order.items.map((item, i) => (
+                  <tr key={i} className="border-b border-border last:border-0">
+                    <td className="py-1.5 pr-2">
+                      <div className="flex items-center gap-2">
+                        {/* Step 47: same display-only posture as the rest of this
                       row — the product's current image, not a snapshot. */}
-                    {item.imageUrl && (
-                      // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-                      <img
-                        src={item.imageUrl}
-                        alt={item.productName}
-                        className="h-8 w-8 rounded-md object-cover"
-                      />
-                    )}
-                    <span>
-                      {item.productName}
-                      {item.combinationLabel && (
-                        <span className="text-muted-foreground"> — {item.combinationLabel}</span>
-                      )}
-                    </span>
-                  </div>
-                </td>
-                <td className="py-1.5 pr-2">{item.quantity}</td>
-                <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
-                <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      </div>
+                        {item.imageUrl && (
+                          // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
+                          <img
+                            src={item.imageUrl}
+                            alt={item.productName}
+                            className="h-12 w-12 rounded-lg object-cover"
+                          />
+                        )}
+                        <span>
+                          {item.productName}
+                          {item.combinationLabel && (
+                            <span className="text-muted-foreground">
+                              {' '}
+                              — {item.combinationLabel}
+                            </span>
+                          )}
+                        </span>
+                      </div>
+                    </td>
+                    <td className="py-1.5 pr-2">{item.quantity}</td>
+                    <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+                    <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
 
-      {/* V1 Configurable Shipping: breakdown only — never a second
+        {/* V1 Configurable Shipping: breakdown only — never a second
           computation of `total`, which is already subtotal + shippingAmount
           from order-queries.ts. */}
-      <div className="mt-2 flex flex-col gap-1 border-t border-border pt-3 text-xs">
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span>Subtotal</span>
-          <span className="font-mono">{formatVnd(order.subtotal)}</span>
-        </div>
-        <div className="flex items-center justify-between text-muted-foreground">
-          <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}</span>
-          <span className="font-mono">
-            {order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}
-          </span>
-        </div>
-        <div className="flex items-center justify-between font-medium text-foreground">
-          <span>Total</span>
-          <span className="font-mono">{formatVnd(order.total)}</span>
+        <div className="rounded-xl bg-surface-muted p-4">
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span>Subtotal</span>
+            <span className="font-mono">{formatVnd(order.subtotal)}</span>
+          </div>
+          <div className="flex items-center justify-between text-muted-foreground">
+            <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}</span>
+            <span className="font-mono">
+              {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
+            </span>
+          </div>
+          <div className="mt-3 flex items-center justify-between border-t border-border pt-3 font-medium text-foreground">
+            <span>Total</span>
+            <span className="font-mono text-lg">{formatVnd(order.total)}</span>
+          </div>
         </div>
       </div>
 
@@ -153,8 +172,8 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
           reconstructed read-only from the persisted Payment row (see
           payment-service.ts's getStoredPaymentInstructions). Never
           branches on provider name. */}
-      {order.paymentInstructions?.type === "bank_transfer" && (
-        <div className="mt-3 rounded-md border border-border bg-surface-muted p-3 text-xs">
+      {order.paymentInstructions?.type === 'bank_transfer' && (
+        <div className="border-t border-border bg-amber-50/60 p-4 text-sm sm:p-6">
           <p className="font-medium">{order.paymentInstructions.title}</p>
           {order.paymentInstructions.bankName && (
             <p className="mt-1">{order.paymentInstructions.bankName}</p>
@@ -174,22 +193,22 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
             <img
               src={order.paymentInstructions.qrCodeUrl}
               alt="Payment QR code"
-              className="mt-2 h-32 w-32"
+              className="mt-3 h-40 w-40 rounded-lg border border-border bg-white p-2"
             />
           )}
           {order.paymentInstructions.expiresAt && (
             <p className="mt-1 text-muted-foreground">
-              Expires:{" "}
-              {new Date(order.paymentInstructions.expiresAt).toLocaleString("en-US", {
-                dateStyle: "medium",
-                timeStyle: "short",
+              Expires:{' '}
+              {new Date(order.paymentInstructions.expiresAt).toLocaleString('en-US', {
+                dateStyle: 'medium',
+                timeStyle: 'short',
               })}
             </p>
           )}
           <p className="mt-2 text-muted-foreground">{order.paymentInstructions.nextAction}</p>
         </div>
       )}
-      {order.paymentInstructions?.type === "none" && order.status !== "cancelled" && (
+      {order.paymentInstructions?.type === 'none' && order.status !== 'cancelled' && (
         <p className="mt-3 text-xs text-muted-foreground">{order.paymentInstructions.nextAction}</p>
       )}
     </div>
@@ -197,7 +216,7 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
 }
 
 const inputClassName =
-  "w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+  'w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
 
 // A single order lookup by ID + email (unchanged behavior). Split out so
 // OrderLookupForm can switch between this and the history view below
@@ -234,7 +253,7 @@ function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
           disabled={pending}
           className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {pending ? "Looking up…" : "View order"}
+          {pending ? 'Looking up…' : 'View order'}
         </button>
       </form>
 
@@ -269,7 +288,7 @@ function OrderHistoryLookup() {
           disabled={pending}
           className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
         >
-          {pending ? "Looking up…" : "View my orders"}
+          {pending ? 'Looking up…' : 'View my orders'}
         </button>
       </form>
 
@@ -291,7 +310,7 @@ function OrderHistoryLookup() {
 // (a customer arriving with nothing but their email can pick either a
 // single lookup or their full history).
 export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
-  const [mode, setMode] = useState<"single" | "history">("single");
+  const [mode, setMode] = useState<'single' | 'history'>('single');
 
   if (fixedOrderId) {
     return <SingleOrderLookup fixedOrderId={fixedOrderId} />;
@@ -302,21 +321,21 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
       <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-sm">
         <button
           type="button"
-          onClick={() => setMode("single")}
-          className={`rounded px-3 py-1 transition-colors ${mode === "single" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setMode('single')}
+          className={`rounded px-3 py-1 transition-colors ${mode === 'single' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Look up an order
         </button>
         <button
           type="button"
-          onClick={() => setMode("history")}
-          className={`rounded px-3 py-1 transition-colors ${mode === "history" ? "bg-foreground text-background" : "text-muted-foreground hover:text-foreground"}`}
+          onClick={() => setMode('history')}
+          className={`rounded px-3 py-1 transition-colors ${mode === 'history' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           My order history
         </button>
       </div>
 
-      {mode === "single" ? <SingleOrderLookup /> : <OrderHistoryLookup />}
+      {mode === 'single' ? <SingleOrderLookup /> : <OrderHistoryLookup />}
     </div>
   );
 }
