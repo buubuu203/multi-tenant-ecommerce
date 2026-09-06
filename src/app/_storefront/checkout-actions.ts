@@ -67,6 +67,7 @@ export async function checkoutAction(
   paymentMethod: string,
   customer: CheckoutCustomerInput,
   shipping: CheckoutShippingInput,
+  shippingMethodId: string,
 ): Promise<ActionResult<{ orderId: string; instructions: PaymentInstructions }>> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
@@ -96,14 +97,23 @@ export async function checkoutAction(
     note: shipping.note,
   };
 
-  const result = await createOrder(tenantId, sanitizedItems, paymentMethod, sanitizedCustomer, sanitizedShipping);
+  const result = await createOrder(
+    tenantId,
+    sanitizedItems,
+    paymentMethod,
+    sanitizedCustomer,
+    sanitizedShipping,
+    shippingMethodId,
+  );
   if (!result.success) {
     return result;
   }
 
   // Server-computed total from the just-created, server-snapshotted order
-  // items — never a client-supplied amount.
-  const total = result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0);
+  // items PLUS the server-resolved shipping amount (V1 Configurable
+  // Shipping) — never a client-supplied amount for either term.
+  const total =
+    result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0) + result.data.shippingAmount;
   const paymentResult = await createPaymentForOrder(
     tenantId,
     result.data.orderId,

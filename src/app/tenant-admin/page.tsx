@@ -16,6 +16,9 @@ import {
   markManualPaymentReceivedAction,
   adjustInventoryOnHandAction,
   updateTenantPaymentMethodAction,
+  createShippingMethodAction,
+  updateShippingMethodAction,
+  deleteShippingMethodAction,
 } from "./actions";
 import { ImportProductsForm } from "./ImportProductsForm";
 import { ProductMediaGallery } from "./ProductMediaGallery";
@@ -132,6 +135,10 @@ export default async function TenantAdminHomePage() {
   // Step 51: one row per PaymentMethod at most, keyed by method — see
   // TenantPaymentMethod.@@unique([tenantId, method]).
   const tenantPaymentMethods = await db.tenantPaymentMethod.findMany({ where: { tenantId } });
+  // V1 Configurable Shipping — a tenant-authored list, ordered for display
+  // (see TenantShippingMethod's doc comment for why this is a list rather
+  // than one row per fixed method like TenantPaymentMethod above).
+  const shippingMethods = await db.tenantShippingMethod.findMany({ where: { tenantId }, orderBy: { sortOrder: "asc" } });
   const paymentMethodByMethod = new Map(tenantPaymentMethods.map((row) => [row.method, row]));
   const products = await db.product.findMany({
     where: { tenantId },
@@ -200,7 +207,38 @@ export default async function TenantAdminHomePage() {
         )}
       </div>
 
-      <section className={adminSectionClassName}>
+      {/* Sticky quick-nav — this page stacks five sizeable sections in one
+          long scroll (Branding/Payments/Catalog/Orders can each run to
+          hundreds of rows), so a persistent jump-to bar with live counts
+          replaces "scroll and hope" with "see what needs attention, jump
+          straight there." Plain anchor links + scroll-mt on each section
+          (below) — no client JS needed for this part. */}
+      <nav className="sticky top-0 z-10 -mx-6 flex flex-wrap gap-1 border-b border-border bg-background/95 px-6 py-2 backdrop-blur-sm sm:-mx-0 sm:rounded-lg sm:border sm:px-2">
+        {[
+          { href: "#branding", label: "Branding" },
+          { href: "#payments", label: "Payments" },
+          { href: "#shipping", label: `Shipping (${shippingMethods.length})` },
+          { href: "#catalog", label: `Catalog (${products.length})` },
+          {
+            href: "#orders",
+            label: `Orders (${orders.length}${
+              orders.filter((o) => o.status === "pending").length > 0
+                ? ` · ${orders.filter((o) => o.status === "pending").length} pending`
+                : ""
+            })`,
+          },
+        ].map((item) => (
+          <a
+            key={item.href}
+            href={item.href}
+            className="rounded-md px-3 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+          >
+            {item.label}
+          </a>
+        ))}
+      </nav>
+
+      <section id="branding" className={`${adminSectionClassName} scroll-mt-16`}>
         <h2 className="text-lg font-medium tracking-tight">Branding</h2>
         <ActionForm
           action={updateBrandingAction}
@@ -291,7 +329,7 @@ export default async function TenantAdminHomePage() {
         </ActionForm>
       </section>
 
-      <section className={adminSectionClassName}>
+      <section id="payments" className={`${adminSectionClassName} scroll-mt-16`}>
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-medium tracking-tight">Payments</h2>
           <p className="text-xs text-muted-foreground">
@@ -417,7 +455,80 @@ export default async function TenantAdminHomePage() {
         </div>
       </section>
 
-      <section className={adminSectionClassName}>
+      <section id="shipping" className={`${adminSectionClassName} scroll-mt-16`}>
+        <div className="flex flex-col gap-1">
+          <h2 className="text-lg font-medium tracking-tight">Shipping</h2>
+          <p className="text-xs text-muted-foreground">
+            Only enabled methods appear at checkout. If no method is enabled, checkout is blocked entirely — same
+            rule as payment methods above. At most one method can be the default (pre-selected at checkout).
+          </p>
+        </div>
+
+        {shippingMethods.length === 0 && (
+          <p className="text-xs text-red-600">No shipping methods yet — checkout is currently blocked for this store.</p>
+        )}
+
+        <div className="flex flex-col gap-3">
+          {shippingMethods.map((method) => (
+            <div key={method.id} className={adminCardClassName}>
+              <div className="flex items-center justify-between">
+                <h3 className="font-medium">{method.name}</h3>
+                <span className="text-xs text-muted-foreground">
+                  {method.enabled ? "Enabled" : "Disabled"} {method.isDefault && "· Default"}
+                </span>
+              </div>
+              <ActionForm action={updateShippingMethodAction} submitLabel="Save">
+                <input type="hidden" name="methodId" value={method.id} />
+                <label className={adminLabelClassName}>
+                  Name
+                  <input name="name" defaultValue={method.name} className={adminInputClassName} />
+                </label>
+                <label className={adminLabelClassName}>
+                  Amount (VND, 0 = free)
+                  <input
+                    name="amount"
+                    inputMode="numeric"
+                    defaultValue={String(method.amount)}
+                    className={adminInputClassName}
+                  />
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" name="enabled" defaultChecked={method.enabled} />
+                  Enabled
+                </label>
+                <label className="flex items-center gap-2 text-xs">
+                  <input type="checkbox" name="isDefault" defaultChecked={method.isDefault} />
+                  Default method
+                </label>
+              </ActionForm>
+              <ActionForm action={deleteShippingMethodAction} submitLabel="Delete">
+                <input type="hidden" name="methodId" value={method.id} />
+              </ActionForm>
+            </div>
+          ))}
+        </div>
+
+        <ActionForm action={createShippingMethodAction} submitLabel="Add shipping method" className="flex max-w-md flex-col gap-3">
+          <label className={adminLabelClassName}>
+            Name
+            <input name="name" placeholder="Standard" className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            Amount (VND, 0 = free)
+            <input name="amount" inputMode="numeric" placeholder="20000" className={adminInputClassName} />
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="enabled" />
+            Enabled
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="isDefault" />
+            Default method
+          </label>
+        </ActionForm>
+      </section>
+
+      <section id="catalog" className={`${adminSectionClassName} scroll-mt-16`}>
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-medium tracking-tight">Variant Options</h2>
           <p className="text-xs text-muted-foreground">
@@ -756,7 +867,7 @@ export default async function TenantAdminHomePage() {
         </div>
       </section>
 
-      <section className={adminSectionClassName}>
+      <section id="orders" className={`${adminSectionClassName} scroll-mt-16`}>
         <h2 className="text-lg font-medium tracking-tight">Orders</h2>
 
         <div className="flex flex-col gap-3">
@@ -829,7 +940,12 @@ export default async function TenantAdminHomePage() {
                 <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Shipping address</h4>
                 <p className="mt-1 text-xs">{order.shippingAddress}</p>
                 <p className="text-xs text-muted-foreground">{order.shippingWard}</p>
-                <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
+                {/* District is no longer collected (Vietnam's 2025 2-tier
+                    reform dropped it) — shown only for orders placed
+                    before that change, which still have a real value. */}
+                {order.shippingDistrict && (
+                  <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
+                )}
                 <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
                 {order.shippingNote && <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>}
               </div>
@@ -860,6 +976,25 @@ export default async function TenantAdminHomePage() {
                     ))}
                   </tbody>
                 </table>
+                {/* V1 Configurable Shipping: breakdown, never a second
+                    computation of `total` — subtotal + shippingAmount is
+                    the exact same sum order-queries.ts already returned as
+                    `total` above; showing it broken out here must not
+                    double-count it. */}
+                <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-xs">
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Subtotal</span>
+                    <span className="font-mono">{formatVnd(order.subtotal)}</span>
+                  </div>
+                  <div className="flex items-center justify-between text-muted-foreground">
+                    <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}</span>
+                    <span className="font-mono">{order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}</span>
+                  </div>
+                  <div className="flex items-center justify-between font-medium">
+                    <span>Total</span>
+                    <span className="font-mono">{formatVnd(order.total)}</span>
+                  </div>
+                </div>
               </div>
             </div>
           ))}
