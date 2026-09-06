@@ -25,7 +25,7 @@ export function StorefrontHeader({
 
   return (
     <header
-      className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/80 px-6 py-4 backdrop-blur-sm"
+      className="sticky top-0 z-10 flex items-center gap-3 border-b border-border bg-background/80 px-6 py-4"
       style={{ borderBottomColor: branding.secondaryColor }}
     >
       {backHref && (
