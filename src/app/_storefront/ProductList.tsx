@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import type { TenantProduct, TenantProductVariant } from "./get-tenant-products";
 import { useCart } from "./cart-context";
@@ -169,7 +169,14 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
 
   const optionIds = useMemo(() => options.map((o) => o.variantOptionId), [options]);
   const [selection, setSelection] = useState<Record<string, string>>({});
+  const [showAddedFeedback, setShowAddedFeedback] = useState(false);
   const { items, addItem } = useCart();
+
+  useEffect(() => {
+    if (!showAddedFeedback) return;
+    const timeout = window.setTimeout(() => setShowAddedFeedback(false), 1800);
+    return () => window.clearTimeout(timeout);
+  }, [showAddedFeedback]);
 
   const resolvedVariant = simpleVariant ?? resolveVariant(product.variants, selection, optionIds);
   const hasCompleteSelection = optionIds.length > 0 && optionIds.every((id) => selection[id]);
@@ -243,6 +250,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       price: resolvedVariant.price,
       imageUrl: primaryMedia?.url,
     });
+    setShowAddedFeedback(true);
   }
 
   // Step 50 (revised): variant options get their own labeled block on the
@@ -294,7 +302,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           : "w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
       }
     >
-      {addToCartLabel}
+      {showAddedFeedback ? "Added to cart" : addToCartLabel}
     </button>
   );
 
