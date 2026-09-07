@@ -12,7 +12,12 @@ import {
 const MAX_MEDIA_ITEMS = 10;
 const MAX_IMAGES = 8;
 const MAX_VIDEOS = 2;
-const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,video/mp4,video/webm";
+// HEIC/HEIF accepted here for the file PICKER only — they are never sent
+// to the server as-is. Some phones report an empty/generic MIME type for
+// .heic files, so the extensions are listed too, not just the MIME types.
+const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm";
+// MOV is deliberately NOT in this list — see classifyFile()'s explicit
+// rejection message below (Phase 4: no MOV support, no transcoding).
 
 type MediaItem = {
   // In "create" mode this is a client-generated key (nothing persisted
@@ -21,8 +26,40 @@ type MediaItem = {
   type: "image" | "video";
   url: string;
   uploading?: boolean;
+  // Distinguishes the brief client-side HEIC->JPEG conversion step from
+  // the actual network upload that follows it — same visual "busy" state
+  // (the overlay), different label, so a merchant isn't confused about
+  // why a HEIC file takes longer to appear than a JPEG.
+  converting?: boolean;
   error?: string;
 };
+
+function isHeic(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return file.type === "image/heic" || file.type === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
+}
+
+function isMov(file: File): boolean {
+  const name = file.name.toLowerCase();
+  return file.type === "video/quicktime" || name.endsWith(".mov");
+}
+
+/**
+ * Browser-side HEIC/HEIF -> JPEG conversion via heic2any (WASM libheif,
+ * dynamically imported so its ~2.7MB payload is only ever fetched when a
+ * merchant actually selects a HEIC file — everyone uploading JPG/PNG/WebP
+ * pays zero extra bundle cost). The server (blob-storage.ts) never sees or
+ * stores the original HEIC bytes — only the converted JPEG, which is what
+ * every browser can already display via a plain <img>, exactly like the
+ * existing JPG/PNG/WebP path, no new storefront rendering logic needed.
+ */
+async function convertHeicToJpeg(file: File): Promise<File> {
+  const heic2any = (await import("heic2any")).default;
+  const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+  const blob = Array.isArray(converted) ? converted[0] : converted;
+  const newName = file.name.replace(/\.(heic|heif)$/i, "") + ".jpg";
+  return new File([blob], newName, { type: "image/jpeg" });
+}
 
 // Step 50: one shared gallery component for both contexts —
 //   - "create": productId is undefined; media lives only in local state
@@ -62,14 +99,14 @@ export function ProductMediaGallery({
   const imageCount = items.filter((i) => i.type === "image" && !i.error).length;
   const videoCount = items.filter((i) => i.type === "video" && !i.error).length;
   const totalCount = items.filter((i) => !i.error).length;
-  const anyUploading = items.some((i) => i.uploading);
+  const anyUploading = items.some((i) => i.uploading || i.converting);
 
   useEffect(() => {
     onUploadingChange?.(anyUploading);
   }, [anyUploading, onUploadingChange]);
 
   function classifyFile(file: File): "image" | "video" | null {
-    if (["image/jpeg", "image/png", "image/webp"].includes(file.type)) return "image";
+    if (["image/jpeg", "image/png", "image/webp"].includes(file.type) || isHeic(file)) return "image";
     if (["video/mp4", "video/webm"].includes(file.type)) return "video";
     return null;
   }
@@ -87,6 +124,10 @@ export function ProductMediaGallery({
     let nextTotal = totalCount;
     const accepted: File[] = [];
     for (const file of files) {
+      if (isMov(file)) {
+        setFormError("MOV isn't supported yet. Please upload MP4 or WebM.");
+        continue;
+      }
       const kind = classifyFile(file);
       if (!kind) {
         setFormError(`${file.name}: unsupported file type.`);
@@ -114,10 +155,37 @@ export function ProductMediaGallery({
       const key = `${file.name}-${crypto.randomUUID()}`;
       const kind = classifyFile(file) as "image" | "video";
       const objectUrl = URL.createObjectURL(file);
-      setItems((prev) => [...prev, { key, type: kind, url: objectUrl, uploading: true }]);
+      const needsConversion = isHeic(file);
+      setItems((prev) => [
+        ...prev,
+        { key, type: kind, url: objectUrl, uploading: !needsConversion, converting: needsConversion },
+      ]);
+
+      // HEIC/HEIF -> JPEG happens entirely in the browser, BEFORE the file
+      // ever reaches uploadProductMediaAction — the server (blob-storage.ts)
+      // is never given HEIC bytes and its MIME allowlist needed no change.
+      // Converting first, uploading second means a failed conversion never
+      // calls the upload action at all, so no ProductMedia row (or orphan
+      // Blob object) can ever result from it.
+      let fileToUpload = file;
+      if (needsConversion) {
+        try {
+          fileToUpload = await convertHeicToJpeg(file);
+        } catch {
+          setItems((prev) =>
+            prev.map((i) =>
+              i.key === key
+                ? { ...i, converting: false, error: "Couldn't convert this HEIC image — try exporting it as JPEG first." }
+                : i,
+            ),
+          );
+          continue;
+        }
+        setItems((prev) => prev.map((i) => (i.key === key ? { ...i, converting: false, uploading: true } : i)));
+      }
 
       const formData = new FormData();
-      formData.append("file", file);
+      formData.append("file", fileToUpload);
       const result = await uploadProductMediaAction(formData);
 
       if (!result.success) {
@@ -190,7 +258,7 @@ export function ProductMediaGallery({
         Upload up to {MAX_MEDIA_ITEMS} files — Max {MAX_IMAGES} images · Max {MAX_VIDEOS} videos
       </p>
       <p className="text-xs text-muted-foreground">
-        Images: JPG, PNG, WebP (max 10MB) · Videos: MP4, WebM (max 100MB)
+        Images: JPG, PNG, WebP, HEIC/HEIF (max 10MB) · Videos: MP4, WebM (max 100MB)
       </p>
 
       {/* Only meaningful in "create" mode — the enclosing <ActionForm>'s
@@ -213,9 +281,9 @@ export function ProductMediaGallery({
                   <span className="absolute inset-0 flex items-center justify-center text-lg text-white">▶</span>
                 </div>
               )}
-              {item.uploading && (
+              {(item.uploading || item.converting) && (
                 <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50 text-[10px] text-white">
-                  Uploading…
+                  {item.converting ? "Converting…" : "Uploading…"}
                 </span>
               )}
               {item.error && (

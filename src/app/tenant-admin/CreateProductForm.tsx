@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { ActionForm } from "@/components/ActionForm";
 import { ProductMediaGallery } from "./ProductMediaGallery";
+import { DescriptionEditor } from "./DescriptionEditor";
 import { createProductAction } from "./actions";
 import { PRODUCT_STATUSES } from "./product-status";
 import { adminInputClassName, adminLabelClassName } from "./styles";
@@ -36,7 +37,7 @@ export function CreateProductForm() {
         </label>
         <label className={adminLabelClassName}>
           Description (optional)
-          <textarea name="description" rows={3} className={adminInputClassName} />
+          <DescriptionEditor />
         </label>
         <ProductMediaGallery onUploadingChange={setUploading} />
         {uploading && <p className="text-xs text-muted-foreground">Waiting for media to finish uploading…</p>}

@@ -330,13 +330,17 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
             </div>
           </div>
 
-          {/* Step 43: plain-text only, rendered as-is — no Markdown/HTML.
-              whitespace-pre-line preserves the merchant's own line breaks
-              (still no Markdown/HTML rendering — just literal newlines). */}
-          {product.description && (
-            <p className="max-w-prose text-sm leading-relaxed whitespace-pre-line text-foreground/80">
-              {product.description}
-            </p>
+          {/* Product Description Rich Text: descriptionHtml is ALREADY
+              sanitized server-side (get-tenant-products.ts, via
+              renderDescriptionMarkdown()) — this is the one deliberate
+              dangerouslySetInnerHTML in the app, and only ever renders
+              output that has already passed through that pipeline, never
+              the raw Product.description Markdown/any other string. */}
+          {product.descriptionHtml && (
+            <div
+              className="max-w-prose text-sm leading-relaxed text-foreground/80 [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
+              dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
+            />
           )}
 
           {optionsBlock}
@@ -371,10 +375,12 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         </div>
       </div>
 
-      {/* Step 43: plain-text only, rendered as-is — no Markdown/HTML. Only
-          when a description is actually set; renders nothing otherwise. */}
-      {product.description && (
-        <p className="line-clamp-2 text-xs text-muted-foreground">{product.description}</p>
+      {/* Card teaser: plain-text excerpt (tags stripped from the already-
+          sanitized HTML) — a line-clamped card has no room for real
+          Markdown formatting, so this is deliberately not the same
+          dangerouslySetInnerHTML block as the PDP's full description. */}
+      {product.descriptionExcerpt && (
+        <p className="line-clamp-2 text-xs text-muted-foreground">{product.descriptionExcerpt}</p>
       )}
 
       {optionsBlock}

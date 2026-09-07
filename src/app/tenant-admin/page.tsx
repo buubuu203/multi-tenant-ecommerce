@@ -24,6 +24,7 @@ import {
 import { ImportProductsForm } from './ImportProductsForm';
 import { ProductMediaGallery } from './ProductMediaGallery';
 import { CreateProductForm } from './CreateProductForm';
+import { DescriptionEditor } from './DescriptionEditor';
 import { BrandingUploadControls } from './BrandingUploadControls';
 import { AdminTabs } from './AdminTabs';
 import { OrderStatusForm } from './OrderStatusForm';
@@ -794,12 +795,7 @@ export default async function TenantAdminHomePage() {
                       </label>
                       <label className={`w-full ${adminLabelClassName}`}>
                         Description (optional)
-                        <textarea
-                          name="description"
-                          rows={2}
-                          defaultValue={product.description ?? ''}
-                          className={adminInputClassName}
-                        />
+                        <DescriptionEditor defaultValue={product.description ?? ''} />
                       </label>
                     </ActionForm>
 

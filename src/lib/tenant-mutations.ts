@@ -41,6 +41,19 @@ export async function createTenant(input: {
       await tx.domain.create({
         data: { tenantId: createdTenant.id, hostname, type: "subdomain", isPrimary: true },
       });
+      // Every tenant needs exactly one default Location before it can ever
+      // create a product (createProduct() in product-mutations.ts requires
+      // one and never creates one itself). This used to be provisioned only
+      // by a one-time migration backfill (20260829120000_add_variant_inventory_foundation),
+      // which covered every tenant existing at that moment but nothing
+      // created afterward — the actual root cause of "Something went wrong
+      // creating the product" for any newly-created tenant. Same field
+      // values the original backfill used ("Default Location", isDefault:
+      // true, isActive: true), created atomically with the Tenant/Domain
+      // above so a tenant can never exist without one.
+      await tx.location.create({
+        data: { tenantId: createdTenant.id, name: "Default Location", isDefault: true, isActive: true },
+      });
       return createdTenant;
     });
 
