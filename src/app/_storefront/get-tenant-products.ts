@@ -1,5 +1,6 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
+import { renderDescriptionMarkdown } from "@/lib/markdown";
 
 export type TenantProductVariantOption = {
   variantOptionId: string;
@@ -41,9 +42,20 @@ export type TenantProductMedia = {
 export type TenantProduct = {
   id: string;
   name: string;
-  // Step 43: optional plain-text description, rendered as-is (no
-  // Markdown/HTML). null means the merchant hasn't set one.
-  description: string | null;
+  // Product Description Rich Text: Product.description is stored as plain
+  // Markdown in the database (no schema change), but this purpose-built
+  // read shape hands the storefront ALREADY-SANITIZED HTML, never the raw
+  // Markdown string — rendered once here (server-side, via
+  // renderDescriptionMarkdown()) rather than in ProductList.tsx, which is a
+  // Client Component and must never bundle the Markdown parser/sanitizer
+  // into client JS. null means the merchant hasn't set a description.
+  descriptionHtml: string | null;
+  // Plain-text teaser for the product CARD (line-clamped, no room for real
+  // formatting) — derived from the already-sanitized descriptionHtml by
+  // stripping tags, never from the raw Markdown directly. Safe to do this
+  // way (not a second security boundary) since the input has already
+  // passed through renderDescriptionMarkdown()'s sanitizer by this point.
+  descriptionExcerpt: string | null;
   // Step 50: ordered media gallery (replaces Step 44's single imageUrl
   // field — there is no separate "primary image" field: the first item
   // (sortOrder 0) IS the primary media everywhere the app needs one, per
@@ -134,7 +146,10 @@ function mapTenantProduct(
   return {
     id: product.id,
     name: product.name,
-    description: product.description,
+    descriptionHtml: product.description ? renderDescriptionMarkdown(product.description) : null,
+    descriptionExcerpt: product.description
+      ? renderDescriptionMarkdown(product.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
+      : null,
     media: product.media.map((m) => ({ id: m.id, type: m.type as "image" | "video", url: m.url, sortOrder: m.sortOrder })),
     variants: product.variants.map((variant) => ({
       id: variant.id,
