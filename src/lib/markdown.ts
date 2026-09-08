@@ -21,9 +21,20 @@ function escapeHtml(value: string): string {
   );
 }
 
-renderer.link = ({ href, title, tokens }) => {
+// A plain `function`, not an arrow function, is required here: marked's
+// use() does not adopt this renderer object directly — it copies each
+// method onto its OWN internal renderer instance and invokes it via
+// `fn.apply(internalRenderer, args)` (see node_modules/marked's `use()`).
+// An arrow function ignores that `this` binding entirely and would keep
+// closing over this module's `renderer` const, whose `.parser` is never
+// populated by marked (only the internal renderer's `.parser` is set,
+// inside Parser.parse()/parseInline()) — that mismatch is exactly what
+// previously crashed on any Markdown link with "Cannot read properties of
+// undefined (reading 'parseInline')". Using a plain function + `this.parser`
+// matches marked's own built-in link() implementation exactly.
+renderer.link = function ({ href, title, tokens }) {
   const safeHref = /^(?:https?:|mailto:)/i.test(href) ? href : '';
-  const text = renderer.parser!.parseInline(tokens);
+  const text = this.parser.parseInline(tokens);
   if (!safeHref) return text;
 
   const escapedTitle = title ? ` title="${escapeHtml(title)}"` : '';
