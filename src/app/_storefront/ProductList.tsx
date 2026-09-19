@@ -204,6 +204,15 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       ? `Only ${resolvedVariant.available} left`
       : null;
 
+  // Product Discount (V1): resolvedVariant.price is ALREADY the discounted
+  // price (see get-tenant-products.ts's applyDiscount() call) — this is
+  // purely a display addition (strikethrough original + a "-X%" badge),
+  // never a second price calculation. originalPrice/discountPercent are
+  // only ever non-null together, when a discount is currently active.
+  const showDiscount = Boolean(resolvedVariant && !outOfStock && resolvedVariant.discountPercent !== null);
+  const originalPriceDisplay =
+    resolvedVariant?.originalPrice != null ? formatVnd(resolvedVariant.originalPrice) : null;
+
   let priceDisplay: string;
   let addToCartLabel: string;
   if (resolvedVariant && outOfStock) {
@@ -248,6 +257,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       productName: product.name,
       variantLabel,
       price: resolvedVariant.price,
+      ...(resolvedVariant.originalPrice != null && resolvedVariant.discountPercent != null
+        ? { originalPrice: resolvedVariant.originalPrice, discountPercent: resolvedVariant.discountPercent }
+        : {}),
       imageUrl: primaryMedia?.url,
     });
     setShowAddedFeedback(true);
@@ -324,8 +336,16 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <div className="flex flex-1 flex-col gap-5">
           <div className="flex flex-col gap-2">
             <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{product.name}</h1>
-            <div className="flex items-baseline gap-3">
+            <div className="flex flex-wrap items-baseline gap-2">
+              {showDiscount && originalPriceDisplay && (
+                <span className="font-mono text-sm text-muted-foreground line-through">{originalPriceDisplay}</span>
+              )}
               <span className="font-mono text-xl font-semibold">{priceDisplay}</span>
+              {showDiscount && resolvedVariant?.discountPercent != null && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                  −{resolvedVariant.discountPercent}%
+                </span>
+              )}
               {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
             </div>
           </div>
@@ -369,8 +389,18 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium hover:underline">
           {product.name}
         </Link>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-mono text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <div className="flex items-baseline gap-1.5">
+            {showDiscount && originalPriceDisplay && (
+              <span className="font-mono text-xs text-muted-foreground line-through">{originalPriceDisplay}</span>
+            )}
+            <span className="font-mono text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+            {showDiscount && resolvedVariant?.discountPercent != null && (
+              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                −{resolvedVariant.discountPercent}%
+              </span>
+            )}
+          </div>
           {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
         </div>
       </div>

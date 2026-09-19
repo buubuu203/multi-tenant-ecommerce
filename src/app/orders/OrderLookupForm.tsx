@@ -1,7 +1,12 @@
 'use client';
 
 import { useActionState, useState } from 'react';
-import { lookupOrderAction, lookupOrderHistoryAction } from './actions';
+import {
+  lookupOrderAction,
+  lookupOrderByPhoneAction,
+  lookupOrderHistoryAction,
+  lookupOrderHistoryByNameAndPhoneAction,
+} from './actions';
 import type { CustomerOrderView } from '@/lib/order-queries';
 
 function formatVnd(price: number): string {
@@ -136,7 +141,19 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
                       </div>
                     </td>
                     <td className="py-1.5 pr-2">{item.quantity}</td>
-                    <td className="py-1.5 pr-2 font-mono">{formatVnd(item.unitPrice)}</td>
+                    <td className="py-1.5 pr-2 font-mono">
+                      {item.originalUnitPrice != null && (
+                        <span className="mr-1 text-muted-foreground line-through">
+                          {formatVnd(item.originalUnitPrice)}
+                        </span>
+                      )}
+                      {formatVnd(item.unitPrice)}
+                      {item.discountPercent != null && (
+                        <span className="ml-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                          −{item.discountPercent}%
+                        </span>
+                      )}
+                    </td>
                     <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
                   </tr>
                 ))}
@@ -218,10 +235,10 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
 const inputClassName =
   'w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
 
-// A single order lookup by ID + email (unchanged behavior). Split out so
-// OrderLookupForm can switch between this and the history view below
-// without either mode's useActionState wiring interfering with the other.
-function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
+// Order ID + email — the strongest lookup: a high-entropy order id plus
+// the checkout email, unchanged from before Order Lookup by phone/name
+// existed.
+function SingleOrderLookupByEmail({ fixedOrderId }: { fixedOrderId?: string }) {
   const [state, formAction, pending] = useActionState(lookupOrderAction, null);
 
   return (
@@ -263,12 +280,86 @@ function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
   );
 }
 
+// Order ID + phone — the same security bar as email above (see
+// lookupOrderByPhoneAction's doc comment): for a customer who doesn't
+// remember which email they used but does remember their order id.
+function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
+  const [state, formAction, pending] = useActionState(lookupOrderByPhoneAction, null);
+
+  return (
+    <div>
+      <form action={formAction} className="flex flex-col gap-4 text-sm">
+        {fixedOrderId ? (
+          <input type="hidden" name="orderId" value={fixedOrderId} />
+        ) : (
+          <label className="flex flex-col gap-1.5">
+            Order ID
+            <input
+              name="orderId"
+              placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20"
+              className={inputClassName}
+            />
+          </label>
+        )}
+        <label className="flex flex-col gap-1.5">
+          Phone number used at checkout
+          <input type="tel" name="phone" placeholder="0912345678" className={inputClassName} />
+        </label>
+        <button
+          type="submit"
+          disabled={pending}
+          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {pending ? 'Looking up…' : 'View order'}
+        </button>
+      </form>
+
+      {state && !state.success && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
+      {state && state.success && <OrderDetails order={state.data} />}
+    </div>
+  );
+}
+
+// Order ID lookup wrapper: lets the customer pick which second factor
+// they remember (email or phone) — both are the SAME security bar (order
+// id + one checkout-time field), so this is purely "which field do you
+// have handy," never a weaker fallback.
+function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
+  const [verifyBy, setVerifyBy] = useState<'email' | 'phone'>('email');
+
+  return (
+    <div>
+      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setVerifyBy('email')}
+          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Verify by email
+        </button>
+        <button
+          type="button"
+          onClick={() => setVerifyBy('phone')}
+          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'phone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          Verify by phone
+        </button>
+      </div>
+      {verifyBy === 'email' ? (
+        <SingleOrderLookupByEmail fixedOrderId={fixedOrderId} />
+      ) : (
+        <SingleOrderLookupByPhone fixedOrderId={fixedOrderId} />
+      )}
+    </div>
+  );
+}
+
 // Every order under this tenant placed with the given email, newest
 // first — the guest-checkout equivalent of an account's "order history",
 // since there is no login to attach a real history to (see
 // lookupOrderHistoryAction's doc comment for the access-control tradeoff
 // this implies: email alone, no order id, proves ownership here).
-function OrderHistoryLookup() {
+function OrderHistoryByEmail() {
   const [state, formAction, pending] = useActionState(lookupOrderHistoryAction, null);
 
   return (
@@ -300,6 +391,81 @@ function OrderHistoryLookup() {
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+// Every order matching BOTH the given name AND phone (never either
+// alone — see getOrdersForCustomerNameAndPhone()'s doc comment). The
+// recovery path for a customer who doesn't remember their order id or
+// email but does remember what name/phone they gave at checkout.
+function OrderHistoryByNameAndPhone() {
+  const [state, formAction, pending] = useActionState(lookupOrderHistoryByNameAndPhoneAction, null);
+
+  return (
+    <div>
+      <form action={formAction} className="flex flex-col gap-4 text-sm">
+        <label className="flex flex-col gap-1.5">
+          Full name used at checkout
+          <input type="text" name="name" placeholder="Nguyen Van A" className={inputClassName} />
+        </label>
+        <label className="flex flex-col gap-1.5">
+          Phone number used at checkout
+          <input type="tel" name="phone" placeholder="0912345678" className={inputClassName} />
+        </label>
+        <p className="text-xs text-muted-foreground">
+          Both name and phone must match exactly what you gave at checkout — this is a stronger
+          check than email alone, since a name or phone number by itself isn&apos;t unique enough
+          to prove it&apos;s really your order.
+        </p>
+        <button
+          type="submit"
+          disabled={pending}
+          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        >
+          {pending ? 'Looking up…' : 'View my orders'}
+        </button>
+      </form>
+
+      {state && !state.success && <p className="mt-2 text-sm text-red-600">{state.error}</p>}
+      {state && state.success && (
+        <div className="flex flex-col gap-3">
+          {state.data.map((order) => (
+            <OrderDetails key={order.id} order={order} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// History wrapper: email-alone is the established (accepted-tradeoff)
+// default; name+phone is offered as an alternative for a customer who
+// doesn't remember their email, at a deliberately higher bar (two
+// low-entropy factors combined, never one alone — see this file's other
+// doc comments for why).
+function OrderHistoryLookup() {
+  const [verifyBy, setVerifyBy] = useState<'email' | 'namePhone'>('email');
+
+  return (
+    <div>
+      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-xs">
+        <button
+          type="button"
+          onClick={() => setVerifyBy('email')}
+          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          By email
+        </button>
+        <button
+          type="button"
+          onClick={() => setVerifyBy('namePhone')}
+          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'namePhone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
+        >
+          By name + phone
+        </button>
+      </div>
+      {verifyBy === 'email' ? <OrderHistoryByEmail /> : <OrderHistoryByNameAndPhone />}
     </div>
   );
 }
