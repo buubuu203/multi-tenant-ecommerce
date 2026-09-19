@@ -42,8 +42,44 @@ model Tenant {
   productMedia    ProductMedia[]
   paymentMethods  TenantPaymentMethod[]
   shippingMethods TenantShippingMethod[]
+  banners         Banner[]
+  discounts       Discount[]
 
   @@map("tenants")
+}
+
+// Storefront Carousel/Banner (V1). Deliberately the smallest useful
+// shape: one image + optional title/subtitle/CTA, enable/disable, and a
+// merchant-editable sort order — NOT a page builder (no arbitrary
+// HTML/blocks, no per-banner styling, no scheduling). Scheduling
+// (startAt/endAt) was considered and dropped for V1: nothing in this
+// repo's roadmap calls for time-boxed banners, and enabled/disabled
+// already covers "turn it on/off," just not "automatically" — a merchant
+// can flip the toggle by hand until real demand justifies the extra
+// fields and cron/edge-case handling that scheduling implies.
+model Banner {
+  id        String   @id @default(uuid())
+  tenantId  String
+  // Always a Vercel Blob URL under banners/<tenantId>/... — see
+  // uploadBannerImageFile() in blob-storage.ts. Never user-supplied HTML,
+  // never an arbitrary external URL.
+  imageUrl  String
+  title     String
+  subtitle  String?
+  ctaLabel  String?
+  // Restricted to http(s) or a same-site relative path ("/products/...")
+  // at write time — see validateCtaUrl() in banner-mutations.ts. Never
+  // javascript:/data:/any other scheme.
+  ctaUrl    String?
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("banners")
 }
 
 enum DomainType {
@@ -159,10 +195,56 @@ model Product {
   // not kept alongside media, to avoid two competing sources of truth for
   // "the product's picture."
   media    ProductMedia[]
+  // Product Discount (V1): at most one discount SLOT per product (see
+  // Discount's own doc comment for why this is a real @@unique, not just
+  // an application-level convention) — "one active discount per product,"
+  // never several competing/stacked discounts on the same product.
+  discount Discount?
 
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("products")
+}
+
+// Product Discount (V1) — the smallest useful scope per this repo's own
+// roadmap review: PRODUCT-level only (no collection/category-level
+// discount — there is no category concept anywhere in this schema to
+// scope one to), PERCENTAGE only (no fixed-amount — percentage composes
+// safely across any variant's price without a separate "what if the
+// fixed amount exceeds the price" edge case), and NO STACKING (the
+// `@@unique([productId])` below makes a second discount for the same
+// product an update to the same row, not a second competing one — there
+// is no code path anywhere that could apply two discounts to one line).
+//
+// Deliberately NOT implemented in V1 (revisit only if real demand shows
+// up): collection-level scope, fixed-amount discounts, minimum
+// quantity/order value thresholds, stacking multiple discounts. Adding
+// any of these later is additive (new nullable columns / a new model),
+// not a rework of this one.
+model Discount {
+  id         String    @id @default(uuid())
+  tenantId   String
+  productId  String    @unique
+  // Whole percent, 1-100 — validated in discount-mutations.ts. Never 0
+  // (that's "no discount," represented by enabled=false or no row at
+  // all) and never >100 (would make finalPrice negative).
+  percentOff Int
+  enabled    Boolean   @default(true)
+  // Both optional — a discount with neither is simply "active whenever
+  // enabled is true," no time-boxing required. When both are set,
+  // startsAt must be before endsAt (validated in discount-mutations.ts,
+  // not enforced at the DB level — same posture as other cross-field
+  // invariants in this schema, e.g. TenantShippingMethod's isDefault).
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("discounts")
 }
 
 enum ProductMediaType {
@@ -385,6 +467,14 @@ model Customer {
   @@unique([tenantId, email])
   @@unique([id, tenantId])
   @@index([tenantId])
+  // Order Lookup by phone/name (V1): both new lookup paths filter on
+  // these columns together with tenantId — without these, either query
+  // falls back to the @@index([tenantId]) alone and scans every customer
+  // row for the tenant. Never used for anything phone/name ALONE would be
+  // unsafe for (see order-queries.ts's doc comments on the new lookup
+  // functions) — this is a performance index, not a new access path.
+  @@index([tenantId, phone])
+  @@index([tenantId, name])
   @@map("customers")
 }
 
@@ -456,7 +546,18 @@ model OrderItem {
   orderId          String
   productVariantId String
   quantity         Int
-  price            Int // snapshot of ProductVariant.price at order-creation time — never live, never re-read
+  // `price` is the FINAL unit price actually charged — already
+  // discounted, if a discount applied — so every existing reader
+  // (lineTotal = price * quantity, order totals, receipts) needed zero
+  // changes when Product Discount (V1) was added. `originalUnitPrice`/
+  // `discountPercent` are purely informational snapshots of what the
+  // discount WAS at order-creation time, for display (order history,
+  // admin) — never re-derived from the live Discount row, which may
+  // since have changed or been deleted. Both null together means "no
+  // discount applied to this line" (the overwhelmingly common case).
+  price            Int // snapshot of the FINAL (post-discount) ProductVariant price at order-creation time — never live, never re-read
+  originalUnitPrice Int?
+  discountPercent   Int?
   createdAt        DateTime @default(now())
 
   order          Order          @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
