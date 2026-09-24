@@ -152,6 +152,7 @@ export async function deleteBrandingLogoFile(tenantId: string, url: string): Pro
 export async function uploadBannerImageFile(
   tenantId: string,
   file: File,
+  variant: 'desktop' | 'mobile' = 'desktop',
 ): Promise<{ url: string } | { error: string }> {
   if (!BANNER_MIME_TYPES.has(file.type)) {
     return { error: 'Unsupported image type. Use JPG, PNG, or WebP.' };
@@ -161,7 +162,8 @@ export async function uploadBannerImageFile(
   }
 
   const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-  const blob = await put(`banners/${tenantId}/${randomUUID()}-${safeName}`, file, {
+  const prefix = variant === 'mobile' ? 'mobile-' : '';
+  const blob = await put(`banners/${tenantId}/${prefix}${randomUUID()}-${safeName}`, file, {
     access: 'public',
   });
   return { url: blob.url };

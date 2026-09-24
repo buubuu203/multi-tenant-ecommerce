@@ -64,7 +64,15 @@ model Banner {
   // uploadBannerImageFile() in blob-storage.ts. Never user-supplied HTML,
   // never an arbitrary external URL.
   imageUrl  String
-  title     String
+  // Optional narrower/taller crop for small viewports — same Blob
+  // namespace and validation as imageUrl (see uploadBannerImageFile's
+  // `variant` param). Null means "no separate mobile image": the
+  // storefront falls back to imageUrl on every viewport.
+  mobileImageUrl String?
+  // Nullable: the storefront no longer renders banner text (the image is
+  // the whole visual), so Tenant Admin no longer collects these — kept
+  // only so pre-existing rows retain their historical values.
+  title     String?
   subtitle  String?
   ctaLabel  String?
   // Restricted to http(s) or a same-site relative path ("/products/...")
