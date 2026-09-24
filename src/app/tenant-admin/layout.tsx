@@ -3,6 +3,7 @@ import { requireTenantAdmin, NotTenantAdminError } from "@/lib/auth/require-tena
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { resolveBranding } from "../_storefront/resolve-branding";
 import { TenantTheme } from "@/components/TenantTheme";
+import { Toaster } from "@/components/Toast";
 import { AdminTabs } from "./AdminTabs";
 
 // Phase 1 of the admin route split: this layout now owns the chrome
@@ -37,6 +38,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
 
   return (
     <TenantTheme branding={themeBranding} className="flex flex-1 flex-col">
+      <Toaster />
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
