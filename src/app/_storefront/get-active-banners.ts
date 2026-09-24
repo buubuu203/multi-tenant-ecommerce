@@ -4,8 +4,7 @@ import { prisma } from "@/lib/prisma";
 export type StorefrontBanner = {
   id: string;
   imageUrl: string;
-  title: string;
-  subtitle: string | null;
+  mobileImageUrl: string | null;
   ctaLabel: string | null;
   ctaUrl: string | null;
 };
@@ -16,7 +15,8 @@ export type StorefrontBanner = {
 // authorization token accepted from the client. Only ENABLED banners,
 // ordered by sortOrder — this is the one place `enabled: false` banners
 // (visible in Tenant Admin) are filtered out before anything reaches the
-// browser.
+// browser. title/subtitle are intentionally not selected: the storefront
+// never renders banner text (see BannerCarousel.tsx).
 export async function getActiveBanners(): Promise<StorefrontBanner[]> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
@@ -27,7 +27,7 @@ export async function getActiveBanners(): Promise<StorefrontBanner[]> {
   const banners = await prisma.banner.findMany({
     where: { tenantId, enabled: true },
     orderBy: { sortOrder: "asc" },
-    select: { id: true, imageUrl: true, title: true, subtitle: true, ctaLabel: true, ctaUrl: true },
+    select: { id: true, imageUrl: true, mobileImageUrl: true, ctaLabel: true, ctaUrl: true },
   });
   return banners;
 }

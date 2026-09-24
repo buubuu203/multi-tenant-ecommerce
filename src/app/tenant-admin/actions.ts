@@ -690,7 +690,22 @@ export async function uploadBannerImageAction(
   if (!(file instanceof File)) {
     return { success: false, error: 'No image file provided.' };
   }
-  const result = await uploadBannerImageFile(tenantId, file);
+  const result = await uploadBannerImageFile(tenantId, file, 'desktop');
+  if ('error' in result) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result };
+}
+
+export async function uploadBannerMobileImageAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return { success: false, error: 'No image file provided.' };
+  }
+  const result = await uploadBannerImageFile(tenantId, file, 'mobile');
   if ('error' in result) {
     return { success: false, error: result.error };
   }
@@ -699,8 +714,6 @@ export async function uploadBannerImageAction(
 
 function bannerInputFromFormData(formData: FormData): BannerInput {
   return {
-    title: String(formData.get('title') ?? ''),
-    subtitle: String(formData.get('subtitle') ?? ''),
     ctaLabel: String(formData.get('ctaLabel') ?? ''),
     ctaUrl: String(formData.get('ctaUrl') ?? ''),
     enabled: formData.get('enabled') === 'on',
@@ -714,20 +727,30 @@ export async function createBannerAction(
 ): Promise<ActionResult> {
   const { tenantId } = await requireTenantAdmin();
   const imageUrl = String(formData.get('imageUrl') ?? '');
+  const mobileImageUrl = String(formData.get('mobileImageUrl') ?? '') || null;
 
-  const result = await createBanner(tenantId, imageUrl, bannerInputFromFormData(formData));
+  const result = await createBanner(tenantId, imageUrl, mobileImageUrl, bannerInputFromFormData(formData));
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
     revalidatePath('/');
-  } else if (imageUrl) {
-    // Same orphaned-blob concern as createProductAction: the image was
-    // already uploaded to Blob before this form was submitted — if the
-    // banner row itself fails to create, clean it up rather than leaving
-    // it dangling forever with nothing pointing at it.
-    try {
-      await deleteBannerImageFile(tenantId, imageUrl);
-    } catch (e) {
-      console.error('createBannerAction: orphaned blob cleanup failed:', e);
+  } else {
+    // Same orphaned-blob concern as createProductAction: the image(s)
+    // were already uploaded to Blob before this form was submitted — if
+    // the banner row itself fails to create, clean them up rather than
+    // leaving them dangling forever with nothing pointing at them.
+    if (imageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, imageUrl);
+      } catch (e) {
+        console.error('createBannerAction: orphaned desktop blob cleanup failed:', e);
+      }
+    }
+    if (mobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, mobileImageUrl);
+      } catch (e) {
+        console.error('createBannerAction: orphaned mobile blob cleanup failed:', e);
+      }
     }
   }
   return result;
@@ -740,16 +763,54 @@ export async function updateBannerAction(
   const { tenantId } = await requireTenantAdmin();
   const bannerId = String(formData.get('bannerId') ?? '');
   const newImageUrl = String(formData.get('imageUrl') ?? '') || null;
+  const newMobileImageUrl = String(formData.get('mobileImageUrl') ?? '') || null;
 
-  const result = await updateBanner(tenantId, bannerId, newImageUrl, bannerInputFromFormData(formData));
+  const result = await updateBanner(
+    tenantId,
+    bannerId,
+    newImageUrl,
+    newMobileImageUrl,
+    bannerInputFromFormData(formData),
+  );
   if (result.success) {
+    // The update succeeded, so any PREVIOUS image that was just replaced
+    // is now an orphan — delete it. Never delete a URL that's still in
+    // use (e.g. the desktop image wasn't replaced, or the mobile image
+    // was left unchanged).
+    const { previousImageUrl, previousMobileImageUrl } = result.data;
+    if (newImageUrl && newImageUrl !== previousImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, previousImageUrl);
+      } catch (e) {
+        console.error('updateBannerAction: previous desktop blob cleanup failed:', e);
+      }
+    }
+    if (previousMobileImageUrl && previousMobileImageUrl !== newMobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, previousMobileImageUrl);
+      } catch (e) {
+        console.error('updateBannerAction: previous mobile blob cleanup failed:', e);
+      }
+    }
     revalidatePath('/tenant-admin', 'layout');
     revalidatePath('/');
-  } else if (newImageUrl) {
+    return { success: true, data: undefined };
+  }
+
+  // The banner update itself failed — clean up any newly uploaded blob(s)
+  // that would otherwise be orphaned (same posture as createBannerAction).
+  if (newImageUrl) {
     try {
       await deleteBannerImageFile(tenantId, newImageUrl);
     } catch (e) {
-      console.error('updateBannerAction: orphaned blob cleanup failed:', e);
+      console.error('updateBannerAction: orphaned desktop blob cleanup failed:', e);
+    }
+  }
+  if (newMobileImageUrl) {
+    try {
+      await deleteBannerImageFile(tenantId, newMobileImageUrl);
+    } catch (e) {
+      console.error('updateBannerAction: orphaned mobile blob cleanup failed:', e);
     }
   }
   return result;
@@ -767,7 +828,14 @@ export async function deleteBannerAction(
     try {
       await deleteBannerImageFile(tenantId, result.data.imageUrl);
     } catch (e) {
-      console.error('deleteBannerAction: blob delete failed:', e);
+      console.error('deleteBannerAction: desktop blob delete failed:', e);
+    }
+    if (result.data.mobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, result.data.mobileImageUrl);
+      } catch (e) {
+        console.error('deleteBannerAction: mobile blob delete failed:', e);
+      }
     }
     revalidatePath('/tenant-admin', 'layout');
     revalidatePath('/');
