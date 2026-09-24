@@ -13,6 +13,14 @@ import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminC
 
 export const dynamic = "force-dynamic";
 
+// Matches BannerCarousel.tsx's rendered aspect ratios exactly, so what an
+// admin crops is exactly what a customer sees — never a mismatched ratio
+// that gets silently re-cropped again by the storefront's object-cover.
+const DESKTOP_ASPECT_RATIO = 21 / 9;
+const MOBILE_ASPECT_RATIO = 4 / 3;
+const DESKTOP_OUTPUT_WIDTH = 1400;
+const MOBILE_OUTPUT_WIDTH = 900;
+
 export default async function BannersPage() {
   const { tenantId } = await requireTenantAdmin();
   const banners = await listBanners(tenantId);
@@ -38,20 +46,25 @@ export default async function BannersPage() {
         <ActionForm
           action={createBannerAction}
           submitLabel="Add banner"
+          successMessage="Banner created."
           className="flex max-w-md flex-col gap-4 px-4 pb-4"
         >
           <BannerImageUpload
             fieldName="imageUrl"
             action={uploadBannerImageAction}
+            aspectRatio={DESKTOP_ASPECT_RATIO}
+            outputWidth={DESKTOP_OUTPUT_WIDTH}
             label="Desktop image"
-            helpText="JPG, PNG, or WebP — max 8MB. Shown on tablet and larger."
+            helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger."
             required
           />
           <BannerImageUpload
             fieldName="mobileImageUrl"
             action={uploadBannerMobileImageAction}
+            aspectRatio={MOBILE_ASPECT_RATIO}
+            outputWidth={MOBILE_OUTPUT_WIDTH}
             label="Mobile image (optional)"
-            helpText="A separate crop for small screens. Falls back to the desktop image if not set."
+            helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set."
             removable
           />
           <label className={adminLabelClassName}>
@@ -95,23 +108,32 @@ export default async function BannersPage() {
             </summary>
 
             <div className="mt-4 flex flex-col gap-4">
-              <ActionForm action={updateBannerAction} submitLabel="Save" className="flex flex-col gap-4">
+              <ActionForm
+                action={updateBannerAction}
+                submitLabel="Save"
+                successMessage="Banner saved."
+                className="flex flex-col gap-4"
+              >
                 <input type="hidden" name="bannerId" value={banner.id} />
                 <div className="grid gap-4 sm:grid-cols-2">
                   <BannerImageUpload
                     fieldName="imageUrl"
                     action={uploadBannerImageAction}
+                    aspectRatio={DESKTOP_ASPECT_RATIO}
+                    outputWidth={DESKTOP_OUTPUT_WIDTH}
                     initialUrl={banner.imageUrl}
                     label="Desktop image"
-                    helpText="JPG, PNG, or WebP — max 8MB. Shown on tablet and larger."
+                    helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger."
                     required
                   />
                   <BannerImageUpload
                     fieldName="mobileImageUrl"
                     action={uploadBannerMobileImageAction}
+                    aspectRatio={MOBILE_ASPECT_RATIO}
+                    outputWidth={MOBILE_OUTPUT_WIDTH}
                     initialUrl={banner.mobileImageUrl ?? undefined}
                     label="Mobile image (optional)"
-                    helpText="A separate crop for small screens. Falls back to the desktop image if not set."
+                    helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set."
                     removable
                   />
                 </div>
@@ -142,6 +164,7 @@ export default async function BannersPage() {
               <ActionForm
                 action={deleteBannerAction}
                 submitLabel="Delete banner"
+                successMessage="Banner deleted."
                 className="border-t border-border pt-3"
               >
                 <input type="hidden" name="bannerId" value={banner.id} />
