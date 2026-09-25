@@ -15,7 +15,7 @@ export type BannerInput = {
 // description link sanitizer (src/lib/markdown.ts) — a restricted scheme
 // allowlist, checked server-side, never trusting what the browser would
 // otherwise happily submit.
-function validateCtaUrl(rawUrl: string): { url: string } | { error: string } {
+export function validateCtaUrl(rawUrl: string): { url: string } | { error: string } {
   const url = rawUrl.trim();
   if (!url) {
     return { url: "" };
