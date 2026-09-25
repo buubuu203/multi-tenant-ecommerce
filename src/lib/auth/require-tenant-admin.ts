@@ -3,6 +3,33 @@ import { headers } from "next/headers";
 
 export class NotTenantAdminError extends Error {}
 
+export type TenantAdminMetadata = { role?: string; tenantId?: string } | undefined;
+
+/**
+ * The pure authorization DECISION, extracted from requireTenantAdmin() so
+ * it's testable without a Clerk/Next.js request context — this is exactly
+ * steps 3-4 of the doc comment below, with no I/O of its own. Behavior is
+ * identical to what requireTenantAdmin() always did; this refactor changes
+ * nothing about how a real request is authorized.
+ */
+export function resolveTenantAdminAuthorization(
+  metadata: TenantAdminMetadata,
+  resolvedTenantId: string | null,
+): { authorized: true; tenantId: string } | { authorized: false; reason: string } {
+  if (!resolvedTenantId) {
+    return { authorized: false, reason: "No tenant resolved from request hostname" };
+  }
+  if (metadata?.role !== "tenant_admin" || !metadata.tenantId) {
+    return { authorized: false, reason: "User is not a tenant admin" };
+  }
+  if (metadata.tenantId !== resolvedTenantId) {
+    // The Clerk metadata tenantId alone is never trusted for tenant
+    // selection — it must match the hostname-resolved tenant too.
+    return { authorized: false, reason: "Tenant admin metadata does not match the requested tenant" };
+  }
+  return { authorized: true, tenantId: resolvedTenantId };
+}
+
 /**
  * The Tenant Admin equivalent of requirePlatformAdmin(). Every Tenant
  * Admin route/action must call this independently (the layout gate is
@@ -38,25 +65,13 @@ export async function requireTenantAdmin(): Promise<{ tenantId: string }> {
     redirectToSignIn({ returnBackUrl: `${proto}://${host}/tenant-admin` });
   }
 
-  if (!resolvedTenantId) {
-    // /tenant-admin is not a platform route, so proxy.ts already 404s any
-    // hostname it can't resolve before this code ever runs. This is a
-    // defensive guard for that invariant, not an expected runtime path.
-    throw new NotTenantAdminError("No tenant resolved from request hostname");
-  }
-
   const user = await currentUser();
-  const metadata = user?.publicMetadata as { role?: string; tenantId?: string } | undefined;
+  const metadata = user?.publicMetadata as TenantAdminMetadata;
 
-  if (metadata?.role !== "tenant_admin" || !metadata.tenantId) {
-    throw new NotTenantAdminError("User is not a tenant admin");
+  const decision = resolveTenantAdminAuthorization(metadata, resolvedTenantId);
+  if (!decision.authorized) {
+    throw new NotTenantAdminError(decision.reason);
   }
 
-  if (metadata.tenantId !== resolvedTenantId) {
-    // The Clerk metadata tenantId alone is never trusted for tenant
-    // selection — it must match the hostname-resolved tenant too.
-    throw new NotTenantAdminError("Tenant admin metadata does not match the requested tenant");
-  }
-
-  return { tenantId: resolvedTenantId };
+  return { tenantId: decision.tenantId };
 }
