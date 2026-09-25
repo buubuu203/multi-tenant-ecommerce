@@ -47,7 +47,7 @@ export default async function ShippingPage() {
                 {method.enabled ? "Enabled" : "Disabled"} {method.isDefault && "· Default"}
               </span>
             </div>
-            <ActionForm action={updateShippingMethodAction} submitLabel="Save">
+            <ActionForm action={updateShippingMethodAction} submitLabel="Save" successMessage="Shipping method saved.">
               <input type="hidden" name="methodId" value={method.id} />
               <label className={adminLabelClassName}>
                 Name
@@ -71,7 +71,7 @@ export default async function ShippingPage() {
                 Default method
               </label>
             </ActionForm>
-            <ActionForm action={deleteShippingMethodAction} submitLabel="Delete">
+            <ActionForm action={deleteShippingMethodAction} submitLabel="Delete" successMessage="Shipping method deleted.">
               <input type="hidden" name="methodId" value={method.id} />
             </ActionForm>
           </div>
@@ -81,6 +81,7 @@ export default async function ShippingPage() {
       <ActionForm
         action={createShippingMethodAction}
         submitLabel="Add shipping method"
+        successMessage="Shipping method added."
         className="flex max-w-md flex-col gap-3"
       >
         <label className={adminLabelClassName}>

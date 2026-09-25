@@ -192,6 +192,7 @@ export default async function OrdersPage({
                   <ActionForm
                     action={markManualPaymentReceivedAction}
                     submitLabel="Mark as paid"
+                    successMessage="Payment marked as received."
                     className="inline-flex"
                   >
                     <input type="hidden" name="orderId" value={order.id} />
