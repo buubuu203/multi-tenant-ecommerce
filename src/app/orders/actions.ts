@@ -9,12 +9,24 @@ import {
   type CustomerOrderView,
 } from "@/lib/order-queries";
 import { isValidVietnamesePhone } from "@/lib/validation/phone";
+import { checkRateLimit } from "@/lib/rate-limit";
 import type { ActionResult } from "@/lib/action-result";
 
 const GENERIC_LOOKUP_ERROR = "We couldn't find an order matching that order ID and email.";
 const GENERIC_PHONE_LOOKUP_ERROR = "We couldn't find an order matching that order ID and phone number.";
 const NO_HISTORY_ERROR = "We couldn't find any orders placed with that email.";
 const NO_NAME_PHONE_HISTORY_ERROR = "We couldn't find any orders matching that name and phone number.";
+const RATE_LIMIT_ERROR = "Too many attempts. Please wait a few minutes and try again.";
+
+// Order Lookup abuse protection (V1, see src/lib/rate-limit.ts for the
+// full design/limitation notes): one bucket per tenant per lookup KIND —
+// coarse on purpose, so it bounds total guess volume against a given
+// tenant's endpoint without needing to fingerprint individual requesters
+// (no IP/session tracking exists in this guest-checkout flow to key on
+// more precisely). 15 attempts per 5 minutes comfortably covers a real
+// customer trying a few variations of their own info while meaningfully
+// slowing a scripted brute-force loop hitting one warm instance.
+const LOOKUP_RATE_LIMIT = { maxAttempts: 15, windowMs: 5 * 60 * 1000 };
 
 /**
  * Guest order lookup — no accounts/sessions, so Order ID + checkout email
@@ -44,6 +56,10 @@ export async function lookupOrderAction(
   const email = String(formData.get("email") ?? "").trim();
   if (!orderId || !email) {
     return { success: false, error: "Enter your order ID and the email used at checkout." };
+  }
+
+  if (!checkRateLimit(`${tenantId}:order-email`, LOOKUP_RATE_LIMIT.maxAttempts, LOOKUP_RATE_LIMIT.windowMs).allowed) {
+    return { success: false, error: RATE_LIMIT_ERROR };
   }
 
   const order = await getOrderForCustomer(tenantId, orderId, email);
@@ -76,6 +92,10 @@ export async function lookupOrderHistoryAction(
   const email = String(formData.get("email") ?? "").trim();
   if (!email) {
     return { success: false, error: "Enter the email used at checkout." };
+  }
+
+  if (!checkRateLimit(`${tenantId}:history-email`, LOOKUP_RATE_LIMIT.maxAttempts, LOOKUP_RATE_LIMIT.windowMs).allowed) {
+    return { success: false, error: RATE_LIMIT_ERROR };
   }
 
   const orders = await getOrdersForCustomerEmail(tenantId, email);
@@ -111,6 +131,10 @@ export async function lookupOrderByPhoneAction(
     return { success: false, error: "Enter a valid Vietnamese phone number." };
   }
 
+  if (!checkRateLimit(`${tenantId}:order-phone`, LOOKUP_RATE_LIMIT.maxAttempts, LOOKUP_RATE_LIMIT.windowMs).allowed) {
+    return { success: false, error: RATE_LIMIT_ERROR };
+  }
+
   const order = await getOrderForCustomerByPhone(tenantId, orderId, phone);
   if (!order) {
     return { success: false, error: GENERIC_PHONE_LOOKUP_ERROR };
@@ -144,6 +168,10 @@ export async function lookupOrderHistoryByNameAndPhoneAction(
   }
   if (!isValidVietnamesePhone(phone)) {
     return { success: false, error: "Enter a valid Vietnamese phone number." };
+  }
+
+  if (!checkRateLimit(`${tenantId}:history-name-phone`, LOOKUP_RATE_LIMIT.maxAttempts, LOOKUP_RATE_LIMIT.windowMs).allowed) {
+    return { success: false, error: RATE_LIMIT_ERROR };
   }
 
   const orders = await getOrdersForCustomerNameAndPhone(tenantId, name, phone);
