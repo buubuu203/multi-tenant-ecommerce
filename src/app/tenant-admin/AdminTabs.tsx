@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const tabs = [
+  ["/tenant-admin", "Overview"],
   ["/tenant-admin/branding", "Branding"],
   ["/tenant-admin/banners", "Banners"],
   ["/tenant-admin/payments", "Payments"],
@@ -24,7 +25,11 @@ export function AdminTabs() {
   return (
     <nav className="sticky top-0 z-10 -mx-6 flex gap-1 overflow-x-auto border-b border-border bg-background/95 px-6 py-2 backdrop-blur-sm sm:-mx-0 sm:rounded-lg sm:border sm:px-2">
       {tabs.map(([href, label]) => {
-        const active = pathname === href || pathname?.startsWith(`${href}/`);
+        // The Overview tab is the index route, so it must match EXACTLY —
+        // a startsWith check would light it up on every sub-route, since
+        // every other tab's path begins with "/tenant-admin/".
+        const active =
+          href === "/tenant-admin" ? pathname === href : pathname === href || pathname?.startsWith(`${href}/`);
         return (
           <Link
             key={href}
