@@ -44,7 +44,7 @@ export function ActionForm<T>({
   }, [state, successMessage]);
 
   return (
-    <form action={formAction} className={className}>
+    <form action={formAction} className={className} aria-busy={pending}>
       {children}
       <button
         type="submit"
@@ -53,11 +53,15 @@ export function ActionForm<T>({
         // but disabling the button is the visible half of that guarantee
         // — a user should never see a clickable button do nothing).
         disabled={pending || disabled}
-        className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
       >
         {pending ? "Working…" : submitLabel}
       </button>
-      {state && !state.success && <p className="text-sm text-red-600">{state.error}</p>}
+      {state && !state.success && (
+        <p role="alert" className="text-sm text-red-600">
+          {state.error}
+        </p>
+      )}
     </form>
   );
 }

@@ -110,7 +110,9 @@ export default async function OrdersPage({
         <table className="w-full min-w-[790px] text-left text-sm">
           <thead className="bg-surface-muted text-xs uppercase tracking-wide text-muted-foreground">
             <tr>
-              <th className="px-3 py-2 font-medium"></th>
+              <th className="px-3 py-2 font-medium">
+                <span className="sr-only">Select</span>
+              </th>
               <th className="px-3 py-2 font-medium">Order</th>
               <th className="px-3 py-2 font-medium">Customer</th>
               <th className="px-3 py-2 font-medium">Status</th>

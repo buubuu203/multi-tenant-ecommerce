@@ -88,7 +88,7 @@ export function BannerImageUpload({
           type="button"
           onClick={() => inputRef.current?.click()}
           disabled={uploading}
-          className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-muted disabled:opacity-50"
+          className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-muted disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         >
           {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
         </button>
@@ -99,7 +99,7 @@ export function BannerImageUpload({
               setUrl("");
               showToast(`${label} removed — click Save to apply.`, "success");
             }}
-            className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-surface-muted"
+            className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
             Remove
           </button>
@@ -127,7 +127,11 @@ export function BannerImageUpload({
         }}
       />
       <p className="text-xs text-muted-foreground">{helpText}</p>
-      {error && <p className="text-xs text-red-600">{error}</p>}
+      {error && (
+        <p role="alert" className="text-xs text-red-600">
+          {error}
+        </p>
+      )}
       {required && !url && <p className="text-xs text-red-600">An image is required.</p>}
 
       {pendingCropFile && (

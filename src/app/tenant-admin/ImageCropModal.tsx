@@ -125,7 +125,15 @@ export function ImageCropModal({
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4" role="dialog" aria-modal="true" aria-label="Crop image">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-label="Crop image"
+      onKeyDown={(e) => {
+        if (e.key === "Escape") onCancel();
+      }}
+    >
       <div className="flex w-full max-w-lg flex-col gap-4 rounded-lg bg-surface p-4">
         <div
           className="relative mx-auto touch-none overflow-hidden rounded-md bg-surface-muted"
@@ -173,7 +181,7 @@ export function ImageCropModal({
           <button
             type="button"
             onClick={onCancel}
-            className="rounded-md border border-border px-3.5 py-1.5 text-sm transition-colors hover:bg-surface-muted"
+            className="rounded-md border border-border px-3.5 py-1.5 text-sm transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
             Cancel
           </button>
@@ -181,7 +189,7 @@ export function ImageCropModal({
             type="button"
             onClick={handleConfirm}
             disabled={!naturalSize || confirming}
-            className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+            className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
             {confirming ? "Cropping…" : "Confirm crop"}
           </button>
