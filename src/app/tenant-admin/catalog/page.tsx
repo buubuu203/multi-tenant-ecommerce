@@ -88,6 +88,7 @@ function StockControl({
     <ActionForm
       action={adjustInventoryOnHandAction}
       submitLabel="Adjust"
+      successMessage="Inventory adjusted."
       className="flex flex-wrap items-end gap-2"
     >
       <input type="hidden" name="productVariantId" value={productVariantId} />
@@ -201,6 +202,7 @@ export default async function CatalogPage({
 
         <ActionForm
           action={createVariantOptionAction}
+          successMessage="Option added."
           submitLabel="Add option"
           className="flex max-w-md flex-col gap-3"
         >
@@ -223,7 +225,7 @@ export default async function CatalogPage({
                       className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
                     >
                       <span>{value.value}</span>
-                      <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete">
+                      <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete" successMessage="Option value deleted.">
                         <input type="hidden" name="variantOptionValueId" value={value.id} />
                       </ActionForm>
                     </div>
@@ -239,6 +241,7 @@ export default async function CatalogPage({
                 )}
                 <ActionForm
                   action={createVariantOptionValueAction}
+                  successMessage="Value added."
                   submitLabel="Add value"
                   className="flex items-end gap-2"
                 >
@@ -404,6 +407,7 @@ export default async function CatalogPage({
                   <ActionForm
                     action={updateProductAction}
                     submitLabel="Save"
+                    successMessage="Product saved."
                     className="flex max-w-2xl flex-col gap-8"
                   >
                     <input type="hidden" name="productId" value={product.id} />
@@ -466,6 +470,7 @@ export default async function CatalogPage({
                         </p>
                         <ActionForm
                           action={upsertProductDiscountAction}
+                          successMessage="Discount saved."
                           submitLabel={discount ? "Save discount" : "Add discount"}
                           className="flex flex-wrap items-end gap-2"
                         >
@@ -504,7 +509,7 @@ export default async function CatalogPage({
                           </label>
                         </ActionForm>
                         {discount && (
-                          <ActionForm action={deleteProductDiscountAction} submitLabel="Remove discount">
+                          <ActionForm action={deleteProductDiscountAction} submitLabel="Remove discount" successMessage="Discount removed.">
                             <input type="hidden" name="productId" value={product.id} />
                           </ActionForm>
                         )}
@@ -551,7 +556,7 @@ export default async function CatalogPage({
                             className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
                           >
                             <span>{optionNameById.get(po.variantOptionId) ?? "(unknown option)"}</span>
-                            <ActionForm action={removeProductOptionAction} submitLabel="Remove">
+                            <ActionForm action={removeProductOptionAction} submitLabel="Remove" successMessage="Option removed.">
                               <input type="hidden" name="productOptionId" value={po.id} />
                             </ActionForm>
                           </div>
@@ -564,6 +569,7 @@ export default async function CatalogPage({
                     {availableOptions.length > 0 && (
                       <ActionForm
                         action={assignProductOptionAction}
+                        successMessage="Option assigned."
                         submitLabel="Assign option"
                         className="flex items-end gap-2"
                       >
@@ -589,6 +595,7 @@ export default async function CatalogPage({
                       </h4>
                       <ActionForm
                         action={generateVariantsAction}
+                        successMessage="Variants generated."
                         submitLabel="Generate variants"
                         className="flex items-end gap-2"
                       >
@@ -626,6 +633,7 @@ export default async function CatalogPage({
                                     <ActionForm
                                       action={updateProductVariantAction}
                                       submitLabel="Save"
+                                      successMessage="Variant saved."
                                       className="flex flex-wrap items-end gap-2"
                                     >
                                       <input type="hidden" name="productVariantId" value={variant.id} />

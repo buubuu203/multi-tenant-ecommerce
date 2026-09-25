@@ -33,7 +33,7 @@ export default async function PaymentsPage() {
             {paymentMethodByMethod.get("cod")?.enabled ? "Enabled" : "Disabled"}
           </span>
         </div>
-        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="Cash on delivery settings saved.">
           <input type="hidden" name="method" value="cod" />
           <input type="hidden" name="provider" value="cod" />
           <label className="flex items-center gap-2 text-xs">
@@ -61,7 +61,7 @@ export default async function PaymentsPage() {
               : "Manual"}
           </span>
         </div>
-        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="Bank transfer settings saved.">
           <input type="hidden" name="method" value="bank_transfer" />
           <label className="flex items-center gap-2 text-xs">
             <input
@@ -161,7 +161,7 @@ export default async function PaymentsPage() {
             {paymentMethodByMethod.get("momo")?.enabled ? "Enabled" : "Disabled"}
           </span>
         </div>
-        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save">
+        <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="MoMo settings saved.">
           <input type="hidden" name="method" value="momo" />
           <input type="hidden" name="provider" value="momo" />
           <label className="flex items-center gap-2 text-xs">

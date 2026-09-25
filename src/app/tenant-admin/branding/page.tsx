@@ -19,6 +19,7 @@ export default async function BrandingPage() {
       <ActionForm
         action={updateBrandingAction}
         submitLabel="Save branding"
+        successMessage="Branding saved."
         className="flex max-w-md flex-col gap-3"
       >
         <label className={adminLabelClassName}>

@@ -22,6 +22,7 @@ export default async function BankTransferPage() {
       <ActionForm
         action={updateBankTransferDetailsAction}
         submitLabel="Save bank details"
+        successMessage="Bank transfer details saved."
         className="flex max-w-md flex-col gap-3"
       >
         <label className={adminLabelClassName}>
