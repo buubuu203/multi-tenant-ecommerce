@@ -29,7 +29,8 @@ export function AdminTabs() {
           <Link
             key={href}
             href={href}
-            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors ${
+            aria-current={active ? "page" : undefined}
+            className={`whitespace-nowrap rounded-md px-3 py-1.5 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
               active
                 ? "bg-foreground text-background"
                 : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"

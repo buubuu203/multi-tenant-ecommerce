@@ -30,31 +30,42 @@ export function Pagination({
     return `${basePath}?${params.toString()}`;
   }
 
+  const isFirstPage = page <= 1;
+  const isLastPage = page >= totalPages;
+  const focusRing = "focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground";
+
   return (
-    <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
+    <nav aria-label="Pagination" className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
       <span>
         Page {page} of {totalPages} · {totalCount} total
       </span>
       <div className="flex gap-1">
         <Link
           href={hrefFor(Math.max(1, page - 1))}
-          aria-disabled={page <= 1}
-          className={`rounded-md border border-border px-2.5 py-1 transition-colors ${
-            page <= 1 ? "pointer-events-none opacity-40" : "hover:bg-surface-muted hover:text-foreground"
+          aria-disabled={isFirstPage}
+          aria-label="Previous page"
+          // aria-disabled alone doesn't stop keyboard focus/activation —
+          // tabIndex removes it from the tab order entirely when disabled,
+          // matching what pointer-events-none already does for a mouse.
+          tabIndex={isFirstPage ? -1 : undefined}
+          className={`rounded-md border border-border px-2.5 py-1 transition-colors ${focusRing} ${
+            isFirstPage ? "pointer-events-none opacity-40" : "hover:bg-surface-muted hover:text-foreground"
           }`}
         >
           ‹ Prev
         </Link>
         <Link
           href={hrefFor(Math.min(totalPages, page + 1))}
-          aria-disabled={page >= totalPages}
-          className={`rounded-md border border-border px-2.5 py-1 transition-colors ${
-            page >= totalPages ? "pointer-events-none opacity-40" : "hover:bg-surface-muted hover:text-foreground"
+          aria-disabled={isLastPage}
+          aria-label="Next page"
+          tabIndex={isLastPage ? -1 : undefined}
+          className={`rounded-md border border-border px-2.5 py-1 transition-colors ${focusRing} ${
+            isLastPage ? "pointer-events-none opacity-40" : "hover:bg-surface-muted hover:text-foreground"
           }`}
         >
           Next ›
         </Link>
       </div>
-    </div>
+    </nav>
   );
 }

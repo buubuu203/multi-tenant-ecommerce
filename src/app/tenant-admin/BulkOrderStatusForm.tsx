@@ -33,7 +33,7 @@ export function BulkOrderStatusForm({
         name="nextStatus"
         value="fulfilled"
         disabled={pending}
-        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
+        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
       >
         Mark fulfilled
       </button>
@@ -42,17 +42,19 @@ export function BulkOrderStatusForm({
         name="nextStatus"
         value="cancelled"
         disabled={pending}
-        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50"
+        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
       >
         Cancel selected
       </button>
       {state &&
         (state.success ? (
-          <span className="text-muted-foreground">
+          <span role="status" className="text-muted-foreground">
             {state.data.updated} updated{state.data.failed ? `, ${state.data.failed} failed` : ""}.
           </span>
         ) : (
-          <span className="text-red-600">{state.error}</span>
+          <span role="alert" className="text-red-600">
+            {state.error}
+          </span>
         ))}
     </form>
   );
