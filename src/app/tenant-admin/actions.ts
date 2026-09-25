@@ -1,6 +1,7 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { redirect } from 'next/navigation';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
   updateBranding,
@@ -42,6 +43,9 @@ import {
   updateShippingMethod,
   deleteShippingMethod,
 } from '@/lib/shipping-mutations';
+import { createBanner, updateBanner, deleteBanner, type BannerInput } from '@/lib/banner-mutations';
+import { uploadBannerImageFile, deleteBannerImageFile } from '@/lib/blob-storage';
+import { upsertProductDiscount, deleteProductDiscount, type DiscountInput } from '@/lib/discount-mutations';
 import type { PaymentMethod, PaymentProviderType } from '@/generated/prisma/client';
 import type { ActionResult } from '@/lib/action-result';
 
@@ -67,7 +71,7 @@ export async function updateBrandingAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -90,7 +94,7 @@ export async function uploadBrandingLogoAction(
     }
     return saved as ActionResult<{ url: string }>;
   }
-  revalidatePath('/tenant-admin');
+  revalidatePath('/tenant-admin', 'layout');
   return { success: true, data: result };
 }
 
@@ -105,7 +109,7 @@ export async function uploadBrandingFaviconAction(
   if ('error' in result) return { success: false, error: result.error };
   const saved = await updateBrandingFaviconUrl(tenantId, result.url);
   if (!saved.success) return saved as ActionResult<{ url: string }>;
-  revalidatePath('/tenant-admin');
+  revalidatePath('/tenant-admin', 'layout');
   return { success: true, data: result };
 }
 
@@ -119,7 +123,7 @@ export async function updateBankTransferDetailsAction(
     bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
     bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
   });
-  if (result.success) revalidatePath('/tenant-admin');
+  if (result.success) revalidatePath('/tenant-admin', 'layout');
   return result;
 }
 
@@ -139,7 +143,7 @@ export async function uploadDesignTokensAction(formData: FormData): Promise<Acti
     return { success: false, error: parsed.error ?? 'No supported design tokens found.' };
 
   const result = await updateDesignTokens(tenantId, parsed.config);
-  if (result.success) revalidatePath('/tenant-admin');
+  if (result.success) revalidatePath('/tenant-admin', 'layout');
   return result;
 }
 
@@ -175,7 +179,13 @@ export async function createProductAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
+    // Add Product now lives on its own page (/tenant-admin/products/new)
+    // rather than inline on the dashboard — redirect back to the Catalog
+    // tab (where the product list now lives, see Phase 1's route split)
+    // on success, same as the old inline form's implicit "stay on the
+    // page with the product list" behavior.
+    redirect('/tenant-admin/catalog');
   } else {
     // The media files named in `media` were already uploaded to Blob by
     // earlier uploadProductMediaAction calls (before this form was ever
@@ -256,7 +266,7 @@ export async function addProductMediaAction(
   }
   const result = await addProductMedia(tenantId, productId, media);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   } else {
     // Same orphaned-blob concern as createProductAction above: `media`
     // was already uploaded to Blob before this call (imperatively, per
@@ -283,7 +293,7 @@ export async function removeProductMediaAction(
   const mediaId = String(formData.get('mediaId') ?? '');
   const result = await removeProductMedia(tenantId, productId, mediaId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -299,7 +309,7 @@ export async function reorderProductMediaAction(formData: FormData): Promise<Act
   }
   const result = await reorderProductMedia(tenantId, productId, orderedMediaIds);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -322,7 +332,7 @@ export async function importProductsAction(
   const result = await importProductsFromCsv(tenantId, csvText);
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -342,7 +352,7 @@ export async function updateProductAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -361,7 +371,7 @@ export async function createVariantOptionAction(
   const { tenantId } = await requireTenantAdmin();
   const result = await createVariantOption(tenantId, String(formData.get('name') ?? ''));
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -378,7 +388,7 @@ export async function createVariantOptionValueAction(
     String(formData.get('value') ?? ''),
   );
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -391,7 +401,7 @@ export async function deleteVariantOptionValueAction(
   const variantOptionValueId = String(formData.get('variantOptionValueId') ?? '');
   const result = await deleteVariantOptionValue(tenantId, variantOptionValueId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -407,7 +417,7 @@ export async function assignProductOptionAction(
   const variantOptionId = String(formData.get('variantOptionId') ?? '');
   const result = await createProductOption(tenantId, productId, variantOptionId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -420,7 +430,7 @@ export async function removeProductOptionAction(
   const productOptionId = String(formData.get('productOptionId') ?? '');
   const result = await deleteProductOption(tenantId, productOptionId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -449,7 +459,7 @@ export async function generateVariantsAction(
 
   const result = await generateProductVariants(tenantId, productId, defaultPrice);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -477,7 +487,7 @@ export async function updateProductVariantAction(
     sku: typeof skuRaw === 'string' ? skuRaw : null,
   });
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -499,9 +509,41 @@ export async function updateOrderStatusAction(
 
   const result = await updateOrderStatus(tenantId, orderId, nextStatus);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
+}
+
+// Phase 2 (Orders at scale): applies the same status transition to
+// several orders at once (e.g. "mark all selected fulfilled" after a
+// merchant filters to pending orders and picks a batch). Reuses
+// updateOrderStatus()'s existing per-order validation/authorization
+// exactly — no bypass, no bulk-only code path — so an order that can't
+// legally make this transition (already cancelled, etc.) fails on its own
+// without blocking the rest of the batch. Reports how many succeeded so
+// the merchant isn't left guessing which ones, if any, were skipped.
+export async function bulkUpdateOrderStatusAction(
+  _prevState: ActionResult<{ updated: number; failed: number }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ updated: number; failed: number }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const orderIds = formData.getAll('orderIds').map(String).filter(Boolean);
+  const nextStatus = String(formData.get('nextStatus') ?? '');
+
+  if (orderIds.length === 0) {
+    return { success: false, error: 'No orders selected.' };
+  }
+
+  let updated = 0;
+  let failed = 0;
+  for (const orderId of orderIds) {
+    const result = await updateOrderStatus(tenantId, orderId, nextStatus);
+    if (result.success) updated++;
+    else failed++;
+  }
+
+  revalidatePath('/tenant-admin', 'layout');
+  return { success: true, data: { updated, failed } };
 }
 
 // Confirms a bank_transfer_manual Payment after the merchant has verified
@@ -517,7 +559,7 @@ export async function markManualPaymentReceivedAction(
 
   const result = await markManualPaymentReceived(tenantId, orderId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -544,7 +586,7 @@ export async function adjustInventoryOnHandAction(
 
   const result = await adjustInventoryOnHand(tenantId, productVariantId, Number(adjustmentRaw));
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -570,7 +612,7 @@ export async function updateTenantPaymentMethodAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -593,7 +635,7 @@ export async function createShippingMethodAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -613,7 +655,7 @@ export async function updateShippingMethodAction(
   });
 
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
   }
   return result;
 }
@@ -627,7 +669,216 @@ export async function deleteShippingMethodAction(
 
   const result = await deleteShippingMethod(tenantId, methodId);
   if (result.success) {
-    revalidatePath('/tenant-admin');
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+// --- Storefront Carousel/Banner (V1) --------------------------------
+// Same imperative-upload-then-create split as ProductMediaGallery: the
+// image is uploaded to Blob as soon as it's selected (so the admin sees a
+// preview before submitting the rest of the form), then its resulting URL
+// is submitted alongside the other banner fields when the form itself is
+// submitted — this action never receives a raw File for the create/update
+// step, only a URL string.
+
+export async function uploadBannerImageAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return { success: false, error: 'No image file provided.' };
+  }
+  const result = await uploadBannerImageFile(tenantId, file, 'desktop');
+  if ('error' in result) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result };
+}
+
+export async function uploadBannerMobileImageAction(
+  formData: FormData,
+): Promise<ActionResult<{ url: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return { success: false, error: 'No image file provided.' };
+  }
+  const result = await uploadBannerImageFile(tenantId, file, 'mobile');
+  if ('error' in result) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: result };
+}
+
+function bannerInputFromFormData(formData: FormData): BannerInput {
+  return {
+    ctaLabel: String(formData.get('ctaLabel') ?? ''),
+    ctaUrl: String(formData.get('ctaUrl') ?? ''),
+    enabled: formData.get('enabled') === 'on',
+    sortOrder: String(formData.get('sortOrder') ?? '0'),
+  };
+}
+
+export async function createBannerAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const imageUrl = String(formData.get('imageUrl') ?? '');
+  const mobileImageUrl = String(formData.get('mobileImageUrl') ?? '') || null;
+
+  const result = await createBanner(tenantId, imageUrl, mobileImageUrl, bannerInputFromFormData(formData));
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+    revalidatePath('/');
+  } else {
+    // Same orphaned-blob concern as createProductAction: the image(s)
+    // were already uploaded to Blob before this form was submitted — if
+    // the banner row itself fails to create, clean them up rather than
+    // leaving them dangling forever with nothing pointing at them.
+    if (imageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, imageUrl);
+      } catch (e) {
+        console.error('createBannerAction: orphaned desktop blob cleanup failed:', e);
+      }
+    }
+    if (mobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, mobileImageUrl);
+      } catch (e) {
+        console.error('createBannerAction: orphaned mobile blob cleanup failed:', e);
+      }
+    }
+  }
+  return result;
+}
+
+export async function updateBannerAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const bannerId = String(formData.get('bannerId') ?? '');
+  const newImageUrl = String(formData.get('imageUrl') ?? '') || null;
+  const newMobileImageUrl = String(formData.get('mobileImageUrl') ?? '') || null;
+
+  const result = await updateBanner(
+    tenantId,
+    bannerId,
+    newImageUrl,
+    newMobileImageUrl,
+    bannerInputFromFormData(formData),
+  );
+  if (result.success) {
+    // The update succeeded, so any PREVIOUS image that was just replaced
+    // is now an orphan — delete it. Never delete a URL that's still in
+    // use (e.g. the desktop image wasn't replaced, or the mobile image
+    // was left unchanged).
+    const { previousImageUrl, previousMobileImageUrl } = result.data;
+    if (newImageUrl && newImageUrl !== previousImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, previousImageUrl);
+      } catch (e) {
+        console.error('updateBannerAction: previous desktop blob cleanup failed:', e);
+      }
+    }
+    if (previousMobileImageUrl && previousMobileImageUrl !== newMobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, previousMobileImageUrl);
+      } catch (e) {
+        console.error('updateBannerAction: previous mobile blob cleanup failed:', e);
+      }
+    }
+    revalidatePath('/tenant-admin', 'layout');
+    revalidatePath('/');
+    return { success: true, data: undefined };
+  }
+
+  // The banner update itself failed — clean up any newly uploaded blob(s)
+  // that would otherwise be orphaned (same posture as createBannerAction).
+  if (newImageUrl) {
+    try {
+      await deleteBannerImageFile(tenantId, newImageUrl);
+    } catch (e) {
+      console.error('updateBannerAction: orphaned desktop blob cleanup failed:', e);
+    }
+  }
+  if (newMobileImageUrl) {
+    try {
+      await deleteBannerImageFile(tenantId, newMobileImageUrl);
+    } catch (e) {
+      console.error('updateBannerAction: orphaned mobile blob cleanup failed:', e);
+    }
+  }
+  return result;
+}
+
+export async function deleteBannerAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const bannerId = String(formData.get('bannerId') ?? '');
+
+  const result = await deleteBanner(tenantId, bannerId);
+  if (result.success) {
+    try {
+      await deleteBannerImageFile(tenantId, result.data.imageUrl);
+    } catch (e) {
+      console.error('deleteBannerAction: desktop blob delete failed:', e);
+    }
+    if (result.data.mobileImageUrl) {
+      try {
+        await deleteBannerImageFile(tenantId, result.data.mobileImageUrl);
+      } catch (e) {
+        console.error('deleteBannerAction: mobile blob delete failed:', e);
+      }
+    }
+    revalidatePath('/tenant-admin', 'layout');
+    revalidatePath('/');
+    return { success: true, data: undefined };
+  }
+  return result;
+}
+
+// --- Product Discount (V1) -------------------------------------------
+
+export async function upsertProductDiscountAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const productId = String(formData.get('productId') ?? '');
+
+  const input: DiscountInput = {
+    percentOff: String(formData.get('percentOff') ?? ''),
+    enabled: formData.get('enabled') === 'on',
+    startsAt: String(formData.get('startsAt') ?? ''),
+    endsAt: String(formData.get('endsAt') ?? ''),
+  };
+
+  const result = await upsertProductDiscount(tenantId, productId, input);
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+    revalidatePath('/');
+  }
+  return result;
+}
+
+export async function deleteProductDiscountAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const productId = String(formData.get('productId') ?? '');
+
+  const result = await deleteProductDiscount(tenantId, productId);
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+    revalidatePath('/');
   }
   return result;
 }

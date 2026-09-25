@@ -2,6 +2,7 @@ import { getScopedDb } from "./db/tenant-db";
 import { reserveInventoryInTx, releaseInventoryInTx, consumeReservedInventoryInTx, InventoryError } from "./inventory-mutations";
 import { isValidVietnamesePhone } from "./validation/phone";
 import { resolveShippingMethod } from "./shipping-service";
+import { applyDiscount } from "./discounts";
 import type { ActionResult } from "./action-result";
 
 // The client cart (see cart-context.tsx) is NOT authoritative — this is
@@ -298,7 +299,7 @@ export async function createOrder(
         // below.
         const variant = await tx.productVariant.findUnique({
           where: { id: item.productVariantId, tenantId },
-          include: { product: true },
+          include: { product: { include: { discount: true } } },
         });
         if (!variant) {
           throw new InventoryError("One or more items in your order could not be found.");
@@ -322,13 +323,24 @@ export async function createOrder(
 
         await reserveInventoryInTx(tx, tenantId, item.productVariantId, item.quantity);
 
+        // Product Discount (V1): computed HERE, server-side, from the
+        // Discount row just read in this same transaction — never from
+        // anything the client submitted (the client never sends a price
+        // or discount at all, see OrderItemInput's doc comment). Applies
+        // per unit; `price` becomes the final, already-discounted amount,
+        // so every downstream reader (totals, receipts, admin) needed no
+        // changes — see discounts.ts's doc comment.
+        const { finalPrice, discountPercent } = applyDiscount(variant.price, variant.product.discount);
+
         const orderItem = await tx.orderItem.create({
           data: {
             tenantId,
             orderId: order.id,
             productVariantId: item.productVariantId,
             quantity: item.quantity,
-            price: variant.price, // snapshot — see doc comment above
+            price: finalPrice, // snapshot — see doc comment above
+            originalUnitPrice: discountPercent !== null ? variant.price : null,
+            discountPercent,
           },
         });
         createdItems.push({ productVariantId: orderItem.productVariantId, quantity: orderItem.quantity, price: orderItem.price });

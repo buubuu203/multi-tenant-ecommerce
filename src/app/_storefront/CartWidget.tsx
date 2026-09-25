@@ -422,7 +422,19 @@ export function CartWidget({
                               {item.variantLabel && (
                                 <span className="block break-words text-xs text-muted-foreground">{item.variantLabel}</span>
                               )}
-                              <span className="mt-0.5 block font-mono text-xs">{formatVnd(item.price)}</span>
+                              <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+                                {item.originalPrice != null && (
+                                  <span className="font-mono text-[11px] text-muted-foreground line-through">
+                                    {formatVnd(item.originalPrice)}
+                                  </span>
+                                )}
+                                <span className="font-mono text-xs">{formatVnd(item.price)}</span>
+                                {item.discountPercent != null && (
+                                  <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                                    −{item.discountPercent}%
+                                  </span>
+                                )}
+                              </span>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-1.5">
