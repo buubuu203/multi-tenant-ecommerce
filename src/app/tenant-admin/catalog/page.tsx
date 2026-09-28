@@ -2,6 +2,7 @@ import Link from "next/link";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
+import { ConfirmActionForm } from "@/components/ConfirmActionForm";
 import {
   updateProductAction,
   importProductsAction,
@@ -225,9 +226,15 @@ export default async function CatalogPage({
                       className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
                     >
                       <span>{value.value}</span>
-                      <ActionForm action={deleteVariantOptionValueAction} submitLabel="Delete" successMessage="Option value deleted.">
+                      <ConfirmActionForm
+                        action={deleteVariantOptionValueAction}
+                        submitLabel="Delete"
+                        successMessage="Option value deleted."
+                        confirmMessage="Delete this option value? Any product variant built from it is removed too. This cannot be undone."
+                        variant="danger"
+                      >
                         <input type="hidden" name="variantOptionValueId" value={value.id} />
-                      </ActionForm>
+                      </ConfirmActionForm>
                     </div>
                   ))}
                   {values.length === 0 && (
@@ -556,9 +563,15 @@ export default async function CatalogPage({
                             className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
                           >
                             <span>{optionNameById.get(po.variantOptionId) ?? "(unknown option)"}</span>
-                            <ActionForm action={removeProductOptionAction} submitLabel="Remove" successMessage="Option removed.">
+                            <ConfirmActionForm
+                              action={removeProductOptionAction}
+                              submitLabel="Remove"
+                              successMessage="Option removed."
+                              confirmMessage="Remove this option from the product? Variants generated from it are removed too. This cannot be undone."
+                              variant="danger"
+                            >
                               <input type="hidden" name="productOptionId" value={po.id} />
-                            </ActionForm>
+                            </ConfirmActionForm>
                           </div>
                         ))}
                         <p className="text-xs text-amber-700 dark:text-amber-500">

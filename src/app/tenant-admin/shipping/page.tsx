@@ -1,6 +1,7 @@
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
+import { ConfirmActionForm } from "@/components/ConfirmActionForm";
 import {
   createShippingMethodAction,
   updateShippingMethodAction,
@@ -71,9 +72,15 @@ export default async function ShippingPage() {
                 Default method
               </label>
             </ActionForm>
-            <ActionForm action={deleteShippingMethodAction} submitLabel="Delete" successMessage="Shipping method deleted.">
+            <ConfirmActionForm
+              action={deleteShippingMethodAction}
+              submitLabel="Delete"
+              successMessage="Shipping method deleted."
+              confirmMessage={`Delete “${method.name}”? Customers will no longer be able to choose it at checkout. Orders already placed with it keep their own snapshot and are unaffected.`}
+              variant="danger"
+            >
               <input type="hidden" name="methodId" value={method.id} />
-            </ActionForm>
+            </ConfirmActionForm>
           </div>
         ))}
       </div>
