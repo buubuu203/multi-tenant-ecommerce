@@ -16,10 +16,19 @@ export const dynamic = 'force-dynamic';
 
 export default async function OrderConfirmationPage({
   params,
+  searchParams,
 }: {
   params: Promise<{ orderId: string }>;
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orderId } = await params;
+  // Phase 5 (post-purchase friction): only ever used to prefill the email
+  // input below — see CartWidget.tsx's "View your order" link, the only
+  // place that ever sets this param. Never trusted as proof of anything;
+  // OrderLookupForm still requires an explicit submit, and
+  // getOrderForCustomer() is still the sole access-control check.
+  const { email } = await searchParams;
+  const prefillEmail = typeof email === "string" ? email : undefined;
   const tenant = await getCurrentTenant();
   const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
 
@@ -32,7 +41,7 @@ export default async function OrderConfirmationPage({
           rightSlot={
             <Link
               href="/orders"
-              className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
+              className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             >
               Track another order
             </Link>
@@ -58,7 +67,7 @@ export default async function OrderConfirmationPage({
             </p>
           </div>
           <div className="mt-7 border-t border-border pt-6">
-            <OrderLookupForm fixedOrderId={orderId} />
+            <OrderLookupForm fixedOrderId={orderId} defaultEmail={prefillEmail} />
           </div>
         </div>
       </main>

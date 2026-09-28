@@ -233,12 +233,12 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
 }
 
 const inputClassName =
-  'w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
+  'w-full rounded-lg border border-border bg-background px-3.5 py-3 text-sm transition-colors placeholder:text-muted-foreground/70 focus:border-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
 
 // Order ID + email — the strongest lookup: a high-entropy order id plus
 // the checkout email, unchanged from before Order Lookup by phone/name
 // existed.
-function SingleOrderLookupByEmail({ fixedOrderId }: { fixedOrderId?: string }) {
+function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId?: string; defaultEmail?: string }) {
   const [state, formAction, pending] = useActionState(lookupOrderAction, null);
 
   return (
@@ -261,6 +261,7 @@ function SingleOrderLookupByEmail({ fixedOrderId }: { fixedOrderId?: string }) {
           <input
             type="email"
             name="email"
+            defaultValue={defaultEmail}
             placeholder="you@example.com"
             className={inputClassName}
           />
@@ -268,7 +269,7 @@ function SingleOrderLookupByEmail({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
           {pending ? 'Looking up…' : 'View order'}
         </button>
@@ -308,7 +309,7 @@ function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
           {pending ? 'Looking up…' : 'View order'}
         </button>
@@ -324,7 +325,7 @@ function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
 // they remember (email or phone) — both are the SAME security bar (order
 // id + one checkout-time field), so this is purely "which field do you
 // have handy," never a weaker fallback.
-function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
+function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: string; defaultEmail?: string }) {
   const [verifyBy, setVerifyBy] = useState<'email' | 'phone'>('email');
 
   return (
@@ -333,6 +334,7 @@ function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="button"
           onClick={() => setVerifyBy('email')}
+          aria-pressed={verifyBy === 'email'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Verify by email
@@ -340,13 +342,14 @@ function SingleOrderLookup({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="button"
           onClick={() => setVerifyBy('phone')}
+          aria-pressed={verifyBy === 'phone'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'phone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Verify by phone
         </button>
       </div>
       {verifyBy === 'email' ? (
-        <SingleOrderLookupByEmail fixedOrderId={fixedOrderId} />
+        <SingleOrderLookupByEmail fixedOrderId={fixedOrderId} defaultEmail={defaultEmail} />
       ) : (
         <SingleOrderLookupByPhone fixedOrderId={fixedOrderId} />
       )}
@@ -377,7 +380,7 @@ function OrderHistoryByEmail() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
           {pending ? 'Looking up…' : 'View my orders'}
         </button>
@@ -421,7 +424,7 @@ function OrderHistoryByNameAndPhone() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
           {pending ? 'Looking up…' : 'View my orders'}
         </button>
@@ -453,6 +456,7 @@ function OrderHistoryLookup() {
         <button
           type="button"
           onClick={() => setVerifyBy('email')}
+          aria-pressed={verifyBy === 'email'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           By email
@@ -460,6 +464,7 @@ function OrderHistoryLookup() {
         <button
           type="button"
           onClick={() => setVerifyBy('namePhone')}
+          aria-pressed={verifyBy === 'namePhone'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'namePhone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           By name + phone
@@ -475,11 +480,17 @@ function OrderHistoryLookup() {
 // customer already followed a link to one specific order) and /orders
 // (a customer arriving with nothing but their email can pick either a
 // single lookup or their full history).
-export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
+export function OrderLookupForm({
+  fixedOrderId,
+  defaultEmail,
+}: {
+  fixedOrderId?: string;
+  defaultEmail?: string;
+}) {
   const [mode, setMode] = useState<'single' | 'history'>('single');
 
   if (fixedOrderId) {
-    return <SingleOrderLookup fixedOrderId={fixedOrderId} />;
+    return <SingleOrderLookup fixedOrderId={fixedOrderId} defaultEmail={defaultEmail} />;
   }
 
   return (
@@ -488,6 +499,7 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="button"
           onClick={() => setMode('single')}
+          aria-pressed={mode === 'single'}
           className={`rounded px-3 py-1 transition-colors ${mode === 'single' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           Look up an order
@@ -495,6 +507,7 @@ export function OrderLookupForm({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="button"
           onClick={() => setMode('history')}
+          aria-pressed={mode === 'history'}
           className={`rounded px-3 py-1 transition-colors ${mode === 'history' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           My order history
