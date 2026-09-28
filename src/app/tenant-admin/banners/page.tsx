@@ -8,6 +8,7 @@ import {
   uploadBannerImageAction,
   uploadBannerMobileImageAction,
 } from "../actions";
+import { ConfirmActionForm } from "@/components/ConfirmActionForm";
 import { BannerImageUpload } from "../BannerImageUpload";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
 
@@ -161,14 +162,16 @@ export default async function BannersPage() {
                   </label>
                 </div>
               </ActionForm>
-              <ActionForm
+              <ConfirmActionForm
                 action={deleteBannerAction}
                 submitLabel="Delete banner"
                 successMessage="Banner deleted."
+                confirmMessage="Delete this banner? Its images are removed from storage and this cannot be undone."
+                variant="danger"
                 className="border-t border-border pt-3"
               >
                 <input type="hidden" name="bannerId" value={banner.id} />
-              </ActionForm>
+              </ConfirmActionForm>
             </div>
           </details>
         ))}
