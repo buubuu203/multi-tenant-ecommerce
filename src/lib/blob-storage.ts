@@ -13,12 +13,23 @@ export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
 export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
 export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
 export const MAX_FAVICON_BYTES = 1 * 1024 * 1024;
+// Storefront Carousel/Banner (V1): a hero-sized photo, so a slightly
+// higher cap than the logo/favicon (small UI chrome) but the same order
+// of magnitude — not raster/video's 10-100MB product-media ceiling, which
+// would be excessive for a banner.
+export const MAX_BANNER_IMAGE_BYTES = 8 * 1024 * 1024;
 
 export type MediaKind = 'image' | 'video';
 
 const IMAGE_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const VIDEO_MIME_TYPES = new Set(['video/mp4', 'video/webm']);
 const LOGO_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/svg+xml']);
+// Deliberately NOT including SVG — unlike a logo (small, often
+// vector-authored), a banner is a photographic hero image; excluding SVG
+// here means this upload path never needs the SVG-sanitization concerns
+// LOGO_MIME_TYPES/FAVICON_MIME_TYPES carry, keeping this V1's attack
+// surface smaller.
+const BANNER_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const FAVICON_MIME_TYPES = new Set([
   'image/x-icon',
   'image/vnd.microsoft.icon',
@@ -134,6 +145,33 @@ export async function uploadBrandingFaviconFile(
 export async function deleteBrandingLogoFile(tenantId: string, url: string): Promise<void> {
   if (!url.includes(`/branding/${tenantId}/`)) {
     throw new Error("Refusing to delete a blob outside this tenant's branding namespace.");
+  }
+  await del(url);
+}
+
+export async function uploadBannerImageFile(
+  tenantId: string,
+  file: File,
+  variant: 'desktop' | 'mobile' = 'desktop',
+): Promise<{ url: string } | { error: string }> {
+  if (!BANNER_MIME_TYPES.has(file.type)) {
+    return { error: 'Unsupported image type. Use JPG, PNG, or WebP.' };
+  }
+  if (file.size > MAX_BANNER_IMAGE_BYTES) {
+    return { error: 'Banner image exceeds the 8MB limit.' };
+  }
+
+  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const prefix = variant === 'mobile' ? 'mobile-' : '';
+  const blob = await put(`banners/${tenantId}/${prefix}${randomUUID()}-${safeName}`, file, {
+    access: 'public',
+  });
+  return { url: blob.url };
+}
+
+export async function deleteBannerImageFile(tenantId: string, url: string): Promise<void> {
+  if (!url.includes(`/banners/${tenantId}/`)) {
+    throw new Error("Refusing to delete a blob outside this tenant's banner namespace.");
   }
   await del(url);
 }

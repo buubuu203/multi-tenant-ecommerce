@@ -4,6 +4,8 @@ import { getTenantProducts } from './_storefront/get-tenant-products';
 import { resolveBranding } from './_storefront/resolve-branding';
 import { StorefrontHeader } from './_storefront/StorefrontHeader';
 import { StorefrontHero } from './_storefront/StorefrontHero';
+import { BannerCarousel } from './_storefront/BannerCarousel';
+import { getActiveBanners } from './_storefront/get-active-banners';
 import { ProductList } from './_storefront/ProductList';
 import { PlatformMessage } from './_storefront/PlatformMessage';
 import { CartProvider } from './_storefront/cart-context';
@@ -58,6 +60,10 @@ export default async function StorefrontHomePage() {
   );
   const enabledPaymentMethods = await getEnabledPaymentMethods(tenant.id);
   const enabledShippingMethods = await getEnabledShippingMethods(tenant.id);
+  // Storefront Carousel/Banner (V1): tenant-curated banners replace the
+  // generic StorefrontHero when at least one exists — a "coming soon"
+  // store never shows banners regardless (it has nothing to promote yet).
+  const banners = comingSoon ? [] : await getActiveBanners();
 
   return (
     <TenantTheme branding={branding} className="flex flex-1 flex-col">
@@ -81,7 +87,11 @@ export default async function StorefrontHomePage() {
               </>
             }
           />
-          <StorefrontHero branding={branding} comingSoon={comingSoon} />
+          {banners.length > 0 ? (
+            <BannerCarousel banners={banners} />
+          ) : (
+            <StorefrontHero branding={branding} comingSoon={comingSoon} />
+          )}
           {!comingSoon && (
             <div className="mx-auto w-full max-w-6xl">
               <ProductList products={products} />
