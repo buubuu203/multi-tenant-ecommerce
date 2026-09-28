@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
+import { Toaster } from "@/components/Toast";
 
 // AUTHENTICATION — "who is this request from?"
 // Entirely Clerk's responsibility. A missing userId means no signed-in
@@ -35,12 +36,36 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
     return (
       <main className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-24 text-center">
         <h1 className="text-2xl font-semibold">Not authorized</h1>
-        <p className="max-w-md text-black/70 dark:text-white/70">
+        <p className="max-w-md text-sm text-muted-foreground">
           Your account does not have access to Platform Admin.
         </p>
       </main>
     );
   }
 
-  return <>{children}</>;
+  // Platform Admin is deliberately NOT wrapped in TenantTheme: it belongs
+  // to the platform, not to any one tenant, so it must never pick up a
+  // tenant's branding tokens. It uses the same base token set as
+  // everything else (bg-background / text-foreground / border-border),
+  // which is what keeps it consistent with Tenant Admin without being
+  // themed by a tenant.
+  return (
+    <div className="flex flex-1 flex-col">
+      <Toaster />
+      <header className="border-b border-border bg-surface">
+        <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 px-6 py-6">
+          <div className="flex items-center gap-2">
+            <h1 className="text-xl font-semibold tracking-tight">Platform Admin</h1>
+            <span className="rounded-full border border-border px-2 py-0.5 text-xs text-muted-foreground">
+              Platform
+            </span>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            Every tenant on this platform. Changes here affect whole storefronts.
+          </p>
+        </div>
+      </header>
+      <div className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</div>
+    </div>
+  );
 }
