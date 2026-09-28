@@ -329,13 +329,14 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     // grow as products carry more of that information — not visual polish
     // for its own sake.
     return (
-      <li className="flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="sm:w-[420px] sm:flex-shrink-0">
+      <li className="grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12">
+        <div className="overflow-hidden rounded-2xl border border-border bg-surface-muted shadow-sm">
           <ProductMediaCarousel media={product.media} productName={product.name} />
         </div>
-        <div className="flex flex-1 flex-col gap-5">
+        <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{product.name}</h1>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Product details</p>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-2">
               {showDiscount && originalPriceDisplay && (
                 <span className="font-mono text-sm text-muted-foreground line-through">{originalPriceDisplay}</span>
@@ -358,7 +359,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
               the raw Product.description Markdown/any other string. */}
           {product.descriptionHtml && (
             <div
-              className="max-w-prose text-sm leading-relaxed text-foreground/80 [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
+              className="max-w-prose text-sm leading-7 text-muted-foreground [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
               dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
             />
           )}
@@ -372,7 +373,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   }
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 text-sm transition-shadow hover:shadow-sm">
+    <li className="group flex flex-col gap-3 rounded-2xl border border-border bg-surface p-3 text-sm shadow-sm transition-shadow hover:shadow-md">
       {/* Step 50: on the product list card show only the primary (first)
           media item as a thumbnail, linked to the detail page — the full
           carousel belongs on the detail page itself, where every media
@@ -380,13 +381,13 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           number never duplicated here: this reads product.media directly,
           not a separate "primary image" field. */}
       {primaryMedia && (
-        <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-md bg-surface-muted">
+        <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-xl bg-surface-muted">
           <MediaThumbnail media={primaryMedia} alt={product.name} />
         </Link>
       )}
 
       <div className="flex flex-col gap-1">
-        <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium hover:underline">
+        <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline">
           {product.name}
         </Link>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
@@ -420,16 +421,66 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   );
 }
 
+// Phase 4 (storefront discovery): a product carries no single price once
+// it has variants — the "starting from" convention (the lowest variant
+// price) is what every price-sort option below actually sorts by, same
+// idea as how the card/PDP price display already reads for a
+// variant-bearing product before any option is selected.
+function startingPrice(product: TenantProduct): number {
+  return product.variants.reduce(
+    (min, variant) => Math.min(min, variant.price),
+    Number.POSITIVE_INFINITY,
+  );
+}
+
+type SortOption = "featured" | "price_asc" | "price_desc";
+const SORT_LABELS: Record<SortOption, string> = {
+  featured: "Featured",
+  price_asc: "Price: Low to High",
+  price_desc: "Price: High to Low",
+};
+
 export function ProductList({ products }: { products: TenantProduct[] }) {
+  const [sort, setSort] = useState<SortOption>("featured");
+
+  const sortedProducts = useMemo(() => {
+    if (sort === "featured") return products;
+    const withDirection = sort === "price_asc" ? 1 : -1;
+    // A fresh array — never mutates the `products` prop, since the same
+    // array reference is also used to build availabilityByVariant in the
+    // parent page.
+    return [...products].sort((a, b) => (startingPrice(a) - startingPrice(b)) * withDirection);
+  }, [products, sort]);
+
   if (products.length === 0) {
     return null;
   }
 
   return (
-    <section className="flex flex-col gap-4 px-6 py-12 sm:py-16">
-      <h2 className="text-lg font-medium tracking-tight">Products</h2>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-        {products.map((product) => (
+    <section className="flex flex-col gap-5 px-4 py-10 sm:px-6 sm:py-16">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Shop the collection</p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Products</h2>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          Sort by
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortOption)}
+            aria-label="Sort products"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+          >
+            {(Object.entries(SORT_LABELS) as [SortOption, string][]).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+        {sortedProducts.map((product) => (
           <ProductRow key={product.id} product={product} />
         ))}
       </ul>
