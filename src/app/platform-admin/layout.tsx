@@ -50,7 +50,7 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
   // which is what keeps it consistent with Tenant Admin without being
   // themed by a tenant.
   return (
-    <div className="flex flex-1 flex-col">
+    <div className="admin-chrome flex flex-1 flex-col">
       <Toaster />
       <header className="border-b border-border bg-surface">
         <div className="mx-auto flex w-full max-w-5xl flex-col gap-1 px-6 py-6">
