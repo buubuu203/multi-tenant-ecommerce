@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from "react";
 import { useCart } from "./cart-context";
-import { checkoutAction } from "./checkout-actions";
+import { checkoutAction, getCurrentCartPrices } from "./checkout-actions";
+import { reconcileCartPrices, PRICE_CHANGE_NOTICE } from "@/lib/cart-reconcile";
 import { isValidVietnamesePhone } from "@/lib/validation/phone";
 import type { PaymentInstructions } from "@/lib/payments/provider";
 import type { ShippingMethodOption } from "@/lib/shipping-service";
@@ -127,10 +128,14 @@ export function CartWidget({
   // isDefault: true — see the fallback selection logic below.
   enabledShippingMethods: ShippingMethodOption[];
 }) {
-  const { items, itemCount, updateQuantity, removeItem, clearCart } = useCart();
+  const { items, itemCount, updateQuantity, removeItem, clearCart, replacePrices } = useCart();
   const [open, setOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
   const [step, setStep] = useState<CheckoutStep>("cart");
+  // Cart Price Reconciliation: set when the pre-submit price check found
+  // a line whose price had moved. Its presence both shows the notice and
+  // records that the customer has not yet re-confirmed the new prices.
+  const [priceNotice, setPriceNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [paymentMethod, setPaymentMethod] = useState<string>(enabledPaymentMethods[0] ?? "cod");
   // Default to the enabled method flagged isDefault; if none is (see doc
@@ -253,6 +258,41 @@ export function CartWidget({
       return;
     }
 
+    // Cart Price Reconciliation: the cart's line prices are a
+    // display-only localStorage snapshot (see cart-context.tsx), so they
+    // can be stale — a discount that started or expired since the item
+    // was added, an admin price edit — or tampered with outright. The
+    // server has always been the one deciding what to charge, so this
+    // was never a money bug; it was a consent bug, where the amount the
+    // customer saw while clicking "Place order" was not the amount the
+    // order would be written for. So re-read the authoritative prices
+    // here and, if any moved, write them into the cart and send the
+    // customer back to review it rather than submitting. The price the
+    // order is actually written for is still the one createOrder()
+    // re-reads for itself a moment later — this check never supplies it.
+    const priceCheck = await getCurrentCartPrices(
+      items.map((item) => ({ productVariantId: item.productVariantId, quantity: item.quantity })),
+    );
+    if (!priceCheck.success) {
+      setCheckout({ status: "error", message: priceCheck.error });
+      return;
+    }
+    const reconciliation = reconcileCartPrices(items, priceCheck.data);
+    if (reconciliation.changed) {
+      replacePrices(reconciliation.items);
+      setPriceNotice(PRICE_CHANGE_NOTICE);
+      setCheckout({ status: "idle" });
+      // Back to the cart step, because that is the only step that shows
+      // the per-line prices the customer is being asked to review.
+      setStep("cart");
+      return;
+    }
+    // Lines the server declined to price (archived/removed since they
+    // were added) are deliberately NOT handled here: createOrder()
+    // already refuses them with its own customer-facing message, and
+    // duplicating that rule client-side would let the two drift.
+    setPriceNotice(null);
+
     setCheckout({ status: "submitting" });
     const result = await checkoutAction(
       items.map((item) => ({ productVariantId: item.productVariantId, quantity: item.quantity })),
@@ -280,6 +320,9 @@ export function CartWidget({
       if (checkout.status !== "idle" && checkout.status !== "submitting") {
         setCheckout({ status: "idle" });
       }
+      // Touching the cart after a price change is the customer reviewing
+      // it — the notice has done its job and must not linger.
+      setPriceNotice(null);
       fn(...args);
     };
   }
@@ -476,6 +519,19 @@ export function CartWidget({
                 <div className="flex flex-col gap-6">
                   {step === "cart" && (
                   <>
+                  {/* Cart Price Reconciliation: sits above the lines it is
+                      asking the customer to look at. role="status" rather
+                      than "alert" — nothing has gone wrong, and the prices
+                      shown below are already correct by the time this
+                      renders. */}
+                  {priceNotice && (
+                    <p
+                      role="status"
+                      className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-foreground"
+                    >
+                      {priceNotice}
+                    </p>
+                  )}
                   <ul className="flex flex-col gap-4">
                     {items.map((item) => {
                       const available = availabilityByVariant[item.productVariantId];

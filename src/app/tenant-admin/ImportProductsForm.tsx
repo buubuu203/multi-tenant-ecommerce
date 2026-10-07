@@ -22,7 +22,14 @@ export function ImportProductsForm({
 
   return (
     <form action={formAction} className="flex flex-col gap-2">
-      <input type="file" name="file" accept=".csv,text/csv" required className="text-sm" />
+      <input
+        type="file"
+        name="file"
+        accept=".csv,text/csv"
+        required
+        aria-label="Product CSV file"
+        className="text-sm"
+      />
       <button
         type="submit"
         disabled={pending}
