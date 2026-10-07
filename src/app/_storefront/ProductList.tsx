@@ -5,6 +5,7 @@ import Link from "next/link";
 import type { TenantProduct, TenantProductVariant } from "./get-tenant-products";
 import { useCart } from "./cart-context";
 import { ProductMediaCarousel } from "./ProductMediaCarousel";
+import { compareByStartingPrice } from "@/lib/product-sort";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
@@ -359,7 +360,13 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
               the raw Product.description Markdown/any other string. */}
           {product.descriptionHtml && (
             <div
-              className="max-w-prose text-sm leading-7 text-muted-foreground [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
+              // Body copy stays on `foreground` (at 85%) rather than
+              // `muted-foreground`: muted computes to ~4.5:1 on the
+              // default surface, i.e. exactly the AA floor for normal
+              // text, and a tenant can override that token to anything.
+              // The product description is the main thing a buyer reads,
+              // so it should not sit on the threshold.
+              className="max-w-prose text-sm leading-7 text-foreground/85 [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
               dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
             />
           )}
@@ -421,18 +428,6 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   );
 }
 
-// Phase 4 (storefront discovery): a product carries no single price once
-// it has variants — the "starting from" convention (the lowest variant
-// price) is what every price-sort option below actually sorts by, same
-// idea as how the card/PDP price display already reads for a
-// variant-bearing product before any option is selected.
-function startingPrice(product: TenantProduct): number {
-  return product.variants.reduce(
-    (min, variant) => Math.min(min, variant.price),
-    Number.POSITIVE_INFINITY,
-  );
-}
-
 type SortOption = "featured" | "price_asc" | "price_desc";
 const SORT_LABELS: Record<SortOption, string> = {
   featured: "Featured",
@@ -445,11 +440,11 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
 
   const sortedProducts = useMemo(() => {
     if (sort === "featured") return products;
-    const withDirection = sort === "price_asc" ? 1 : -1;
+    const withDirection: 1 | -1 = sort === "price_asc" ? 1 : -1;
     // A fresh array — never mutates the `products` prop, since the same
     // array reference is also used to build availabilityByVariant in the
     // parent page.
-    return [...products].sort((a, b) => (startingPrice(a) - startingPrice(b)) * withDirection);
+    return [...products].sort((a, b) => compareByStartingPrice(a, b, withDirection));
   }, [products, sort]);
 
   if (products.length === 0) {
