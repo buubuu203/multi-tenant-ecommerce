@@ -22,6 +22,13 @@ export type CartItem = {
   // or "" for a simple product's single variant. Never combinationKey.
   variantLabel: string;
   price: number;
+  // Product Discount (V1): display-only, same non-authoritative posture
+  // as `price` itself — set only when the item was added while a
+  // discount was active. Never used for calculation; `price` above is
+  // already the final (possibly discounted) amount used everywhere a
+  // total is computed.
+  originalPrice?: number;
+  discountPercent?: number;
   quantity: number;
   // Step 45: the product's externally-hosted image URL at the moment this
   // item was added (see get-tenant-products.ts/ProductList.tsx) — display

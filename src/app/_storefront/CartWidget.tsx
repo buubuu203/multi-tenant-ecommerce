@@ -56,6 +56,19 @@ type CheckoutState =
   | { status: "success"; orderId: string; instructions: PaymentInstructions }
   | { status: "error"; message: string };
 
+// Phase 3 (checkout as a sequence): the drawer's content used to be one
+// long scroll — cart, contact, address, shipping method, and payment all
+// visible/scrollable at once. The fields and validation are unchanged;
+// only how much is shown at a time changed. "success" isn't a step here —
+// it's still driven by `checkout.status === "success"`, same as before.
+type CheckoutStep = "cart" | "shipping" | "payment";
+const STEP_LABELS: Record<CheckoutStep, string> = {
+  cart: "Cart",
+  shipping: "Shipping & contact",
+  payment: "Payment",
+};
+const STEP_ORDER: CheckoutStep[] = ["cart", "shipping", "payment"];
+
 // Small, self-contained "copy to clipboard" button — used for the order id
 // and bank/VA account number in the success panel, where a customer is
 // very likely to need to paste the value elsewhere (their banking app).
@@ -117,6 +130,7 @@ export function CartWidget({
   const { items, itemCount, updateQuantity, removeItem, clearCart } = useCart();
   const [open, setOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
+  const [step, setStep] = useState<CheckoutStep>("cart");
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
   const [paymentMethod, setPaymentMethod] = useState<string>(enabledPaymentMethods[0] ?? "cod");
   // Default to the enabled method flagged isDefault; if none is (see doc
@@ -166,7 +180,11 @@ export function CartWidget({
   // authoritatively in createOrder()/checkoutAction() (V1 Configurable
   // Shipping); this value is never sent to the server as data, only the
   // selected method's id is (see handleCheckout below).
-  const selectedShippingAmount = enabledShippingMethods.find((m) => m.id === shippingMethodId)?.amount ?? 0;
+  // Keep the METHOD, not just its amount: "no method chosen yet" and "a
+  // method that happens to cost 0" both collapse to 0 and must not be
+  // shown the same way — see the summary row below.
+  const selectedShippingMethod = enabledShippingMethods.find((m) => m.id === shippingMethodId);
+  const selectedShippingAmount = selectedShippingMethod?.amount ?? 0;
   const total = subtotal + selectedShippingAmount;
 
   // Escape-to-close, and lock page scroll while the drawer is open — a
@@ -198,6 +216,24 @@ export function CartWidget({
     if (!ward.trim()) errors.ward = "Please select a ward.";
     if (!shippingMethodId) errors.shippingMethod = "Please select a shipping method.";
     return errors;
+  }
+
+  // "Continue" from Shipping & contact re-uses the exact same validate()
+  // used by the final submit — this step now happens to be where every
+  // one of those fields lives, so gating advancement on it means a
+  // customer can never reach Payment with an invalid address/contact,
+  // without duplicating the validation rules.
+  function handleContinueToPayment() {
+    const errors = validate();
+    setFieldErrors(errors);
+    if (Object.keys(errors).length > 0) return;
+    setStep("payment");
+  }
+
+  function handleBack() {
+    const currentIndex = STEP_ORDER.indexOf(step);
+    if (currentIndex > 0) setStep(STEP_ORDER[currentIndex - 1]);
+    if (checkout.status === "error") setCheckout({ status: "idle" });
   }
 
   async function handleCheckout() {
@@ -253,7 +289,7 @@ export function CartWidget({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
+        className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         aria-expanded={open}
       >
         Cart ({itemCount})
@@ -270,11 +306,14 @@ export function CartWidget({
           />
 
           {/* Drawer */}
-          <div className="relative z-10 flex h-full min-w-0 w-full max-w-md flex-col bg-surface shadow-xl">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4">
-              <h2 className="text-base font-medium">
+          <div className="relative z-10 flex h-full min-w-0 w-full max-w-md flex-col bg-surface shadow-xl sm:my-3 sm:mr-3 sm:h-[calc(100%-1.5rem)] sm:rounded-2xl sm:border sm:border-border">
+            <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6">
+              <div>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Checkout</p>
+                <h2 className="mt-1 text-base font-semibold">
                 {checkout.status === "success" ? "Order confirmed" : "Your cart"}
-              </h2>
+                </h2>
+              </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -284,6 +323,41 @@ export function CartWidget({
                 ✕
               </button>
             </div>
+
+            {checkout.status !== "success" && items.length > 0 && (
+              <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-5 py-3 sm:px-6">
+                {STEP_ORDER.map((s, index) => {
+                  const currentIndex = STEP_ORDER.indexOf(step);
+                  const isActive = s === step;
+                  const isDone = index < currentIndex;
+                  return (
+                    <div key={s} className="flex flex-1 items-center gap-2">
+                      <div className="flex items-center gap-1.5">
+                        <span
+                          className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium ${
+                            isActive
+                              ? "bg-foreground text-background"
+                              : isDone
+                                ? "bg-foreground/80 text-background"
+                                : "bg-surface-muted text-muted-foreground"
+                          }`}
+                        >
+                          {isDone ? "✓" : index + 1}
+                        </span>
+                        <span
+                          className={`text-xs whitespace-nowrap ${isActive ? "font-medium text-foreground" : "text-muted-foreground"}`}
+                        >
+                          {STEP_LABELS[s]}
+                        </span>
+                      </div>
+                      {index < STEP_ORDER.length - 1 && (
+                        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
 
             <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
               {checkout.status === "success" ? (
@@ -400,6 +474,8 @@ export function CartWidget({
                 </div>
               ) : (
                 <div className="flex flex-col gap-6">
+                  {step === "cart" && (
+                  <>
                   <ul className="flex flex-col gap-4">
                     {items.map((item) => {
                       const available = availabilityByVariant[item.productVariantId];
@@ -422,7 +498,19 @@ export function CartWidget({
                               {item.variantLabel && (
                                 <span className="block break-words text-xs text-muted-foreground">{item.variantLabel}</span>
                               )}
-                              <span className="mt-0.5 block font-mono text-xs">{formatVnd(item.price)}</span>
+                              <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
+                                {item.originalPrice != null && (
+                                  <span className="font-mono text-[11px] text-muted-foreground line-through">
+                                    {formatVnd(item.originalPrice)}
+                                  </span>
+                                )}
+                                <span className="font-mono text-xs">{formatVnd(item.price)}</span>
+                                {item.discountPercent != null && (
+                                  <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                                    −{item.discountPercent}%
+                                  </span>
+                                )}
+                              </span>
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -459,11 +547,11 @@ export function CartWidget({
                     })}
                   </ul>
 
-                  <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2.5 text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-mono font-medium">{formatVnd(subtotal)}</span>
-                  </div>
+                  </>
+                  )}
 
+                  {step === "shipping" && (
+                  <>
                   <fieldset className="flex flex-col gap-3">
                     <legend className="mb-1 text-sm font-medium">Contact info</legend>
                     <label className="flex flex-col gap-1 text-xs">
@@ -601,7 +689,11 @@ export function CartWidget({
                     )}
                     {fieldErrors.shippingMethod && <span className="text-xs text-red-600">{fieldErrors.shippingMethod}</span>}
                   </fieldset>
+                  </>
+                  )}
 
+                  {step === "payment" && (
+                  <>
                   <fieldset className="flex flex-col gap-2">
                     <legend className="mb-1 text-sm font-medium">Payment method</legend>
                     {enabledPaymentMethods.length === 0 ? (
@@ -640,6 +732,8 @@ export function CartWidget({
                       {checkout.message}
                     </p>
                   )}
+                  </>
+                  )}
                 </div>
               )}
             </div>
@@ -652,32 +746,85 @@ export function CartWidget({
                 </div>
                 <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
                   <span>Shipping</span>
-                  <span className="font-mono">{selectedShippingAmount === 0 ? "Free" : formatVnd(selectedShippingAmount)}</span>
+                  {/* Only a chosen method can be "Free". With none chosen
+                      — including a store that has enabled none at all,
+                      where checkout is blocked entirely — this used to
+                      read "Free", promising free delivery the shop had
+                      not actually offered. */}
+                  <span className="font-mono">
+                    {selectedShippingMethod ? (
+                      selectedShippingMethod.amount === 0 ? (
+                        "Free"
+                      ) : (
+                        formatVnd(selectedShippingMethod.amount)
+                      )
+                    ) : (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span className="sr-only">Not selected yet</span>
+                      </>
+                    )}
+                  </span>
                 </div>
                 <div className="mb-3 flex items-center justify-between border-t border-border pt-2 text-sm">
                   <span className="text-muted-foreground">Total</span>
                   <span className="font-mono text-base font-semibold">{formatVnd(total)}</span>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleCheckout}
-                  disabled={
-                    checkout.status === "submitting" ||
-                    checkout.status === "validating" ||
-                    enabledPaymentMethods.length === 0 ||
-                    enabledShippingMethods.length === 0
-                  }
-                  className="w-full rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-                >
-                  {checkout.status === "submitting" ? "Placing order…" : "Checkout"}
-                </button>
-                <button
-                  type="button"
-                  onClick={handleCartAction(clearCart)}
-                  className="mt-2 w-full text-center text-xs text-muted-foreground underline hover:text-foreground"
-                >
-                  Clear cart
-                </button>
+                <div className="flex gap-2">
+                  {step !== "cart" && (
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      disabled={checkout.status === "submitting"}
+                      className="rounded-md border border-border px-4 py-3 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-40"
+                    >
+                      Back
+                    </button>
+                  )}
+                  {step === "cart" && (
+                    <button
+                      type="button"
+                      onClick={() => setStep("shipping")}
+                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                    >
+                      Continue to shipping
+                    </button>
+                  )}
+                  {step === "shipping" && (
+                    <button
+                      type="button"
+                      onClick={handleContinueToPayment}
+                      disabled={enabledPaymentMethods.length === 0 || enabledShippingMethods.length === 0}
+                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      Continue to payment
+                    </button>
+                  )}
+                  {step === "payment" && (
+                    <button
+                      type="button"
+                      onClick={handleCheckout}
+                      disabled={
+                        checkout.status === "submitting" ||
+                        checkout.status === "validating" ||
+                        enabledPaymentMethods.length === 0 ||
+                        enabledShippingMethods.length === 0
+                      }
+                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+                    >
+                      {checkout.status === "submitting" ? "Placing order…" : "Place order"}
+                    </button>
+                  )}
+                </div>
+                {step === "cart" && (
+                  <button
+                    type="button"
+                    onClick={handleCartAction(clearCart)}
+                    className="mt-2 w-full text-center text-xs text-muted-foreground underline hover:text-foreground"
+                  >
+                    Clear cart
+                  </button>
+                )}
               </div>
             )}
 
@@ -685,7 +832,14 @@ export function CartWidget({
               <div className="border-t border-border px-5 py-4">
                 <div className="flex gap-2">
                   <a
-                    href={`/orders/${checkout.orderId}`}
+                    // Phase 5 (post-purchase friction): the email is only
+                    // ever used to PREFILL the lookup form's input below —
+                    // the customer still has to submit it themselves
+                    // (order-queries.ts's getOrderForCustomer() remains the
+                    // sole authority). This just saves retyping an email
+                    // they entered seconds ago, in their own browser tab,
+                    // right after submitting it themselves.
+                    href={`/orders/${checkout.orderId}?email=${encodeURIComponent(email)}`}
                     className="flex-1 rounded-md border border-border px-4 py-2.5 text-center text-sm font-medium transition-colors hover:bg-surface-muted"
                   >
                     View your order
@@ -694,6 +848,7 @@ export function CartWidget({
                     type="button"
                     onClick={() => {
                       setCheckout({ status: "idle" });
+                      setStep("cart");
                       setOpen(false);
                     }}
                     className="flex-1 rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"

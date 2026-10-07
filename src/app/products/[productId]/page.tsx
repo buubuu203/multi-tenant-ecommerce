@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { getTenantProduct } from '../../_storefront/get-tenant-products';
+import { getTenantProduct, getTenantProducts } from '../../_storefront/get-tenant-products';
 import { getCurrentTenant } from '../../_storefront/get-current-tenant';
 import { resolveBranding } from '../../_storefront/resolve-branding';
 import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
@@ -38,6 +38,17 @@ export default async function ProductDetailPage({
   const availabilityByVariant = Object.fromEntries(
     product.variants.map((variant) => [variant.id, variant.available]),
   );
+
+  // Phase 4 (storefront discovery): "you might also like" — this store has
+  // no category/tagging data (schema-free by design for this MVP), so
+  // "related" honestly means "other active products from the same store,"
+  // not a similarity match. Reuses the same getTenantProducts() the
+  // homepage already calls — no new query — filtered to exclude the
+  // current product and capped at 4 so the rail never dwarfs the product
+  // itself.
+  const relatedProducts = (await getTenantProducts())
+    .filter((p) => p.id !== product.id)
+    .slice(0, 4);
   const headerList = await headers();
   const tenantId = headerList.get('x-tenant-id') ?? '';
   const enabledPaymentMethods = tenantId ? await getEnabledPaymentMethods(tenantId) : [];
@@ -107,10 +118,24 @@ export default async function ProductDetailPage({
               </div>
             </div>
           )}
-          <main className="px-6 py-10 sm:py-14">
-            <ul className="mx-auto max-w-3xl">
+          <main className="px-4 py-10 sm:px-6 sm:py-14">
+            <ul className="mx-auto max-w-5xl">
               <ProductRow product={product} linkToDetail={false} />
             </ul>
+
+            {relatedProducts.length > 0 && (
+              <section className="mx-auto mt-16 max-w-5xl border-t border-border pt-10">
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+                  Keep browsing
+                </p>
+                <h2 className="mt-1 text-xl font-semibold tracking-tight">You might also like</h2>
+                <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-5">
+                  {relatedProducts.map((related) => (
+                    <ProductRow key={related.id} product={related} />
+                  ))}
+                </ul>
+              </section>
+            )}
           </main>
         </div>
       </CartProvider>
