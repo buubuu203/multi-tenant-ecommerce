@@ -91,15 +91,20 @@ async function seedTenant(opts: {
     },
   });
 
-  // The default Location is provisioned by the v4.1 migration's own
-  // backfill (one per tenant, enforced unique by the partial index
-  // locations_one_default_per_tenant) — seed.ts does not create one.
-  const defaultLocation = await prisma.location.findFirst({
-    where: { tenantId: tenant.id, isDefault: true },
-  });
-  if (!defaultLocation) {
-    throw new Error(`seed: no default Location found for tenant ${tenant.slug} — has the v4.1 migration been applied?`);
-  }
+  // The default Location: for tenants created through the app this comes
+  // from createTenant() (tenant-mutations.ts), and for tenants that
+  // predate v4.1 it came from that migration's backfill. Neither covers
+  // a tenant that THIS script upserts into a freshly-migrated database —
+  // the migration has already run by then, and the upsert bypasses
+  // createTenant() — so seed must provision it, exactly as createTenant
+  // does. Creating it only when absent keeps the script re-runnable and
+  // respects the one-default-per-tenant partial unique index
+  // (locations_one_default_per_tenant).
+  const defaultLocation =
+    (await prisma.location.findFirst({ where: { tenantId: tenant.id, isDefault: true } })) ??
+    (await prisma.location.create({
+      data: { tenantId: tenant.id, name: "Default Location", isDefault: true, isActive: true },
+    }));
 
   await prisma.inventory.create({
     data: {

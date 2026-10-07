@@ -90,7 +90,14 @@ export default async function StorefrontHomePage() {
           {banners.length > 0 ? (
             <BannerCarousel banners={banners} />
           ) : (
-            <StorefrontHero branding={branding} comingSoon={comingSoon} />
+            <StorefrontHero
+              branding={branding}
+              comingSoon={comingSoon}
+              // The hero is the whole page only when there is no
+              // catalogue under it; ProductList renders nothing for an
+              // empty product list.
+              fillViewport={comingSoon || products.length === 0}
+            />
           )}
           {!comingSoon && (
             <div className="mx-auto w-full max-w-6xl">
