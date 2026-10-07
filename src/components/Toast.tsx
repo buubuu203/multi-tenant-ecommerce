@@ -44,8 +44,12 @@ export function Toaster() {
     };
   }, []);
 
-  if (items.length === 0) return null;
-
+  // The live region is mounted unconditionally, even with no toasts, and
+  // is NOT short-circuited to null when empty: assistive technology only
+  // announces content inserted into a region it was already observing, so
+  // a container that appears at the same instant as its first message is
+  // typically missed entirely. An empty one is inert — it has no visible
+  // box and pointer-events-none keeps it from intercepting clicks.
   return (
     <div
       className="pointer-events-none fixed inset-x-0 top-4 z-50 flex flex-col items-center gap-2 px-4"
