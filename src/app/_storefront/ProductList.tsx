@@ -217,7 +217,12 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   let priceDisplay: string;
   let addToCartLabel: string;
   if (resolvedVariant && outOfStock) {
-    priceDisplay = "Out of stock";
+    // Keep showing the real price. Overwriting it with "Out of stock"
+    // printed the same words twice in one small card (the disabled
+    // button below already says it) AND destroyed the one piece of
+    // information a shopper still wants from an unavailable item — what
+    // it costs, for deciding whether to come back for it.
+    priceDisplay = formatVnd(resolvedVariant.price);
     addToCartLabel = "Out of stock";
   } else if (resolvedVariant) {
     // Covers both the simple-product case (resolvedVariant === simpleVariant,
