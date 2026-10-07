@@ -37,7 +37,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   const primaryDomain = await db.domain.findFirst({ where: { tenantId, isPrimary: true } });
 
   return (
-    <TenantTheme branding={themeBranding} className="flex flex-1 flex-col">
+    <TenantTheme branding={themeBranding} className="admin-chrome flex flex-1 flex-col">
       <Toaster />
       <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
         <div className="flex flex-col gap-1">

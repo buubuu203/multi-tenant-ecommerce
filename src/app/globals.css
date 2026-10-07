@@ -49,3 +49,52 @@ body {
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
 }
+
+/*
+ * Admin focus baseline.
+ *
+ * Every admin form control already gets a visible focus ring from
+ * adminInputClassName / productInputClassName (see tenant-admin/styles.ts),
+ * but the admin's BUTTONS and links were inconsistent: the ones rendered
+ * through ActionForm/ConfirmActionForm carry an explicit
+ * focus-visible:outline, while thirteen hand-written ones across Branding,
+ * Catalog, Orders, Media and the CSV import had none and fell back to
+ * whatever the browser happened to draw.
+ *
+ * This is one rule rather than thirteen per-page edits, applied via the
+ * .admin-chrome class on the two admin layout roots. It only ever ADDS an
+ * outline in the :focus-visible state, so every button keeps its own
+ * background, border, size and variant.
+ *
+ * Both halves of the selector are wrapped in :where() deliberately, so
+ * the whole thing carries only the specificity of :focus-visible itself.
+ * That keeps it strictly below any Tailwind focus-visible: utility, so a
+ * button that already declares its own ring still wins — which is what
+ * preserves ConfirmActionForm's destructive variant drawing a RED outline
+ * rather than being flattened to the default foreground one. Written with
+ * :is() this rule would have outranked and overridden it.
+ *
+ * Nothing about tab order or activation changes; this is purely the
+ * visible indicator.
+ */
+:where(.admin-chrome) :where(button, a, summary, [role="button"]):focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/*
+ * The Markdown description editor (@uiw/react-md-editor, mounted by
+ * DescriptionEditor.tsx) ships its own `outline: none` on the ~78 buttons
+ * of its formatting toolbar. Those buttons ARE in the tab order and do
+ * match :focus-visible, so suppressing the outline left a keyboard user
+ * with no indication of where they were inside the toolbar at all.
+ *
+ * This needs real specificity rather than the :where() treatment above,
+ * because it is overriding a vendor declaration rather than yielding to
+ * one. Scoped to the editor's own container so it cannot affect anything
+ * else, and it sets only the focused indicator.
+ */
+.admin-chrome .w-md-editor .w-md-editor-toolbar button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
+}
