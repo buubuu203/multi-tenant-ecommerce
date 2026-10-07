@@ -180,7 +180,11 @@ export function CartWidget({
   // authoritatively in createOrder()/checkoutAction() (V1 Configurable
   // Shipping); this value is never sent to the server as data, only the
   // selected method's id is (see handleCheckout below).
-  const selectedShippingAmount = enabledShippingMethods.find((m) => m.id === shippingMethodId)?.amount ?? 0;
+  // Keep the METHOD, not just its amount: "no method chosen yet" and "a
+  // method that happens to cost 0" both collapse to 0 and must not be
+  // shown the same way — see the summary row below.
+  const selectedShippingMethod = enabledShippingMethods.find((m) => m.id === shippingMethodId);
+  const selectedShippingAmount = selectedShippingMethod?.amount ?? 0;
   const total = subtotal + selectedShippingAmount;
 
   // Escape-to-close, and lock page scroll while the drawer is open — a
@@ -746,7 +750,25 @@ export function CartWidget({
                 </div>
                 <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
                   <span>Shipping</span>
-                  <span className="font-mono">{selectedShippingAmount === 0 ? "Free" : formatVnd(selectedShippingAmount)}</span>
+                  {/* Only a chosen method can be "Free". With none chosen
+                      — including a store that has enabled none at all,
+                      where checkout is blocked entirely — this used to
+                      read "Free", promising free delivery the shop had
+                      not actually offered. */}
+                  <span className="font-mono">
+                    {selectedShippingMethod ? (
+                      selectedShippingMethod.amount === 0 ? (
+                        "Free"
+                      ) : (
+                        formatVnd(selectedShippingMethod.amount)
+                      )
+                    ) : (
+                      <>
+                        <span aria-hidden="true">—</span>
+                        <span className="sr-only">Not selected yet</span>
+                      </>
+                    )}
+                  </span>
                 </div>
                 <div className="mb-3 flex items-center justify-between border-t border-border pt-2 text-sm">
                   <span className="text-muted-foreground">Total</span>
