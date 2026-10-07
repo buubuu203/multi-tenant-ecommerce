@@ -547,10 +547,6 @@ export function CartWidget({
                     })}
                   </ul>
 
-                  <div className="flex items-center justify-between rounded-lg bg-surface-muted px-3 py-2.5 text-sm">
-                    <span className="text-muted-foreground">Subtotal</span>
-                    <span className="font-mono font-medium">{formatVnd(subtotal)}</span>
-                  </div>
                   </>
                   )}
 
