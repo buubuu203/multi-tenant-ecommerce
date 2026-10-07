@@ -184,6 +184,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // Step 50: sortOrder 0 IS the primary media everywhere the app needs
   // one — media is already returned pre-sorted by get-tenant-products.ts.
   const primaryMedia = product.media[0];
+  const hasMedia = product.media.length > 0;
 
   // Step 39: stock unavailability is a SEPARATE concept from combination
   // unavailability (Step 25) — the variant genuinely exists here
@@ -335,10 +336,23 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     // grow as products carry more of that information — not visual polish
     // for its own sake.
     return (
-      <li className="grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12">
-        <div className="overflow-hidden rounded-2xl border border-border bg-surface-muted shadow-sm">
-          <ProductMediaCarousel media={product.media} productName={product.name} />
-        </div>
+      <li
+        className={
+          // Only reserve a media column when there IS media.
+          // ProductMediaCarousel renders null for an empty gallery, so the
+          // two-column layout used to leave a bordered box collapsed to a
+          // ~1px line beside a squeezed text column — a product without
+          // images looked broken rather than simply image-less.
+          hasMedia
+            ? "grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12"
+            : "grid gap-8"
+        }
+      >
+        {hasMedia && (
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface-muted shadow-sm">
+            <ProductMediaCarousel media={product.media} productName={product.name} />
+          </div>
+        )}
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Product details</p>
