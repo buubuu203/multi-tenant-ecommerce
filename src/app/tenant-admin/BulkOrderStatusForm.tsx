@@ -1,12 +1,16 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useEffect, useState } from "react";
 import type { ActionResult } from "@/lib/action-result";
 import {
   bulkOrderStatusConfirmMessage,
   isBulkOrderStatus,
   NO_SELECTION_ERROR,
 } from "./bulk-order-status-copy";
+import {
+  adminButtonSecondaryClassName,
+  adminButtonDangerClassName,
+} from "./styles";
 
 // Phase 2 (Orders at scale): a single form, rendered once, that every
 // order row's checkbox targets via `form="bulk-orders-form"` — HTML lets
@@ -40,6 +44,29 @@ export function BulkOrderStatusForm({
   // Client-side selection error, separate from the server's ActionResult
   // error so a "nothing ticked" mistake never reaches the server at all.
   const [selectionError, setSelectionError] = useState<string | null>(null);
+  // How many orders are ticked right now, shown in the toolbar so the
+  // operator can see the size of what they are about to do BEFORE the
+  // confirm() tells them. The checkboxes live in the table rows, outside
+  // this form's DOM subtree (they are associated by the `form` attribute),
+  // so their change events never reach this element — hence a document
+  // listener rather than an onChange on the form.
+  const [selectedCount, setSelectedCount] = useState(0);
+
+  useEffect(() => {
+    const form = document.getElementById("bulk-orders-form");
+    if (!(form instanceof HTMLFormElement)) return;
+    const recount = () => {
+      const ids = new FormData(form)
+        .getAll("orderIds")
+        .filter((id) => String(id).trim().length > 0);
+      setSelectedCount(ids.length);
+      // Ticking something clears a stale "nothing selected" complaint.
+      if (ids.length > 0) setSelectionError(null);
+    };
+    recount();
+    document.addEventListener("change", recount);
+    return () => document.removeEventListener("change", recount);
+  }, []);
 
   return (
     <form
@@ -78,13 +105,24 @@ export function BulkOrderStatusForm({
       }}
       className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs"
     >
-      <span className="text-muted-foreground">Check orders below, then:</span>
+      {/* The count is the point of this toolbar: a bulk control whose
+          scope you cannot see is the one that causes accidents. role=status
+          so a screen reader hears the selection change without the focus
+          moving. */}
+      <span role="status" className="font-medium">
+        {selectedCount === 0
+          ? "No orders selected"
+          : `${selectedCount} ${selectedCount === 1 ? "order" : "orders"} selected`}
+      </span>
+      <span className="text-muted-foreground" aria-hidden="true">
+        ·
+      </span>
       <button
         type="submit"
         name="nextStatus"
         value="fulfilled"
         disabled={pending}
-        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+        className={`${adminButtonSecondaryClassName} px-2.5 py-1 text-xs`}
       >
         Mark fulfilled
       </button>
@@ -93,7 +131,10 @@ export function BulkOrderStatusForm({
         name="nextStatus"
         value="cancelled"
         disabled={pending}
-        className="rounded-md border border-border bg-surface px-2.5 py-1 transition-colors hover:bg-background disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+        // Destructive styling: cancelling releases inventory and cannot be
+        // undone, so it must not look identical to the harmless action
+        // sitting next to it.
+        className={`${adminButtonDangerClassName} px-2.5 py-1 text-xs`}
       >
         Cancel selected
       </button>
