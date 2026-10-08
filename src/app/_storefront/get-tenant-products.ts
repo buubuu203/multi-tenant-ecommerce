@@ -201,13 +201,44 @@ function mapTenantProduct(
  */
 export async function getTenantProduct(productId: string): Promise<TenantProduct | null> {
   const headerList = await headers();
+  // The ONLY source of tenant identity: the x-tenant-id header src/proxy.ts
+  // derived from the verified request hostname. Never a query param, cookie,
+  // request body or anything else client-controlled.
   const tenantId = headerList.get("x-tenant-id");
 
-  if (!tenantId || !productId.trim()) {
+  if (!tenantId) {
+    return null;
+  }
+
+  return getTenantProductForTenant(tenantId, productId);
+}
+
+/**
+ * The visibility decision itself, with tenantId passed in explicitly so it
+ * can be exercised against a real database without a request context — the
+ * same reason resolveTenantAdminAuthorization() was split out of
+ * requireTenantAdmin().
+ *
+ * Returns null, indistinguishably, for a blank or malformed id, a
+ * nonexistent id, a draft or archived product, and a product belonging to
+ * another tenant. The route turns that null into notFound(), so all four
+ * cases are one real 404 that reveals nothing about which case occurred.
+ *
+ * Callers must pass a tenantId they have already established from trusted
+ * request context; this function does not and cannot verify its provenance.
+ */
+export async function getTenantProductForTenant(
+  tenantId: string,
+  productId: string,
+): Promise<TenantProduct | null> {
+  if (!tenantId.trim() || !productId.trim()) {
     return null;
   }
 
   const product = await prisma.product.findFirst({
+    // Both id AND tenantId AND status are required to match: a correct id
+    // belonging to a different tenant, or a non-active product, resolves to
+    // null exactly as a nonexistent id does.
     where: { id: productId, tenantId, status: "active" },
     include: {
       variants: {
