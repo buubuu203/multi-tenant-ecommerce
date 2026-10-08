@@ -10,6 +10,8 @@ import { BulkOrderStatusForm } from "../BulkOrderStatusForm";
 import { Pagination } from "../Pagination";
 import { listOrders, type ListOrdersOptions } from "@/lib/order-queries";
 import { formatVnd } from "../format";
+import { getOrderTimelinesForOrders } from "@/lib/order-events";
+import { OrderTimeline } from "../OrderTimeline";
 import { adminSectionClassName, adminInputClassName } from "../styles";
 
 export const dynamic = "force-dynamic";
@@ -67,6 +69,16 @@ export default async function OrdersPage({
   // Read-only — see order-queries.ts. Nothing here writes to the database;
   // order creation/inventory reservation logic is untouched by this page.
   const { orders, totalCount } = await listOrders(tenantId, listOptions);
+
+  // Order Audit History: one batched read for every order on this page
+  // rather than one per card. Authorization already happened above via
+  // requireTenantAdmin(), and this is scoped by that trusted tenantId plus
+  // this page's own order ids, so it can only ever return this tenant's
+  // events.
+  const timelines = await getOrderTimelinesForOrders(
+    tenantId,
+    orders.map((order) => order.id),
+  );
 
   return (
     <section className={adminSectionClassName}>
@@ -315,6 +327,13 @@ export default async function OrdersPage({
                   <span>Total</span>
                   <span className="money">{formatVnd(order.total)}</span>
                 </div>
+              </div>
+
+              <div className="mt-3 border-t border-border pt-3">
+                <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                  Activity
+                </h4>
+                <OrderTimeline entries={timelines.get(order.id) ?? []} />
               </div>
             </div>
           </div>
