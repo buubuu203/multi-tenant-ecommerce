@@ -29,8 +29,12 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* One central mapping: every surface -- storefront, cart, checkout,
+     orders, both admins, dialogs, toasts, forms, tables, buttons, labels
+     and rendered Markdown -- inherits its face from body's font-sans
+     below, so the typeface is swapped here and nowhere else. */
+  --font-sans: var(--font-sans-family);
+  --font-mono: var(--font-mono-family);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,7 +51,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  /* Fallbacks ahead of generic sans-serif are ones that actually carry
+     Vietnamese diacritics, so a swap or a failed font load degrades to a
+     correct glyph rather than a tofu box. */
+  font-family: var(--font-sans), 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
 }
 
 /*
