@@ -7,6 +7,7 @@
 import { test, before, after } from "node:test";
 import assert from "node:assert/strict";
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { prisma } from "../src/lib/prisma";
 import { createOrder } from "../src/lib/order-mutations";
 import { buildProductsExport, PRODUCT_EXPORT_HEADERS } from "../src/lib/exports/products-export";
@@ -305,4 +306,52 @@ test("exports mutate nothing: no orders, payments, inventory, products or events
   // Exporting writes no audit event either: an export is a read, and one
   // event per export would bury the lifecycle entries that matter.
   assert.deepEqual(after, before);
+});
+
+// ---------- download cleanup timing ----------
+
+test("the download helper revokes its object URL on a later task, not inline", () => {
+  // There is no DOM in this runner, so the component cannot be rendered.
+  // This is asserted structurally instead, which is where the bug actually
+  // lives: revoking in the same task as anchor.click() aborts the download
+  // in Firefox and older Safari while appearing to succeed in Chrome, and
+  // the regression would be someone moving the call back inline.
+  //
+  // Line comments are stripped BEFORE block comments on purpose — a //
+  // comment mentioning a path like "/tenant-admin/*" otherwise reads as an
+  // opening /* and swallows the code under test.
+  const source = readFileSync(
+    new URL("../src/app/tenant-admin/ExportCsvButton.tsx", import.meta.url),
+    "utf8",
+  )
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+
+  const click = source.indexOf("anchor.click()");
+  const revoke = source.indexOf("revokeObjectURL");
+  assert.ok(click > -1, "the helper still triggers the download by clicking an anchor");
+  assert.ok(revoke > -1, "the object URL is still revoked somewhere — otherwise it leaks");
+  assert.ok(revoke > click, "revocation must come after the click");
+
+  // The revoke must sit inside a deferred callback rather than running in
+  // the click's own task.
+  assert.match(
+    source,
+    /setTimeout\(\s*\(\)\s*=>\s*URL\.revokeObjectURL\([^)]*\)/,
+    "revokeObjectURL must be deferred via setTimeout, not called inline",
+  );
+});
+
+test("the orders export UI warns that the file contains customer personal data", () => {
+  // The warning belongs on the screen that starts the download, so it is
+  // asserted where a future redesign would be most likely to drop it.
+  const page = readFileSync(
+    new URL("../src/app/tenant-admin/orders/page.tsx", import.meta.url),
+    "utf8",
+  );
+  assert.match(page, /Contains customer personal data/);
+  for (const field of ["name", "email", "phone", "shipping address"]) {
+    assert.ok(page.includes(field), `the warning must name ${field}`);
+  }
+  assert.match(page, /no longer protected by/, "must say the file leaves the app's protection");
 });

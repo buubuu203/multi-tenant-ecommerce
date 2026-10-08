@@ -120,7 +120,22 @@ export default async function OrdersPage({
       {/* Exports the full order list for this tenant, not just the current
           page or filter — a merchant asking for "my orders" means all of
           them. Authorization and tenant scoping live in the route handler. */}
-      <ExportCsvButton dataset="orders" label="orders" />
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
+        <h3 className="text-sm font-medium">Export Orders (CSV)</h3>
+        <p className="text-xs text-muted-foreground">
+          Every order in this store, not just the current page or filter. Opens in Excel with
+          Vietnamese text intact.
+        </p>
+        {/* Stated plainly on the screen that starts the download, because
+            this is the moment the merchant decides to take the data out of
+            the app. */}
+        <p className="text-xs text-muted-foreground">
+          <strong className="font-medium text-foreground">Contains customer personal data</strong>{" "}
+          — name, email, phone and shipping address. A downloaded file is no longer protected by
+          your store login, so store and share it carefully, and delete copies you no longer need.
+        </p>
+        <ExportCsvButton dataset="orders" label="orders" />
+      </div>
 
       <BulkOrderStatusForm action={bulkUpdateOrderStatusAction} />
 

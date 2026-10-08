@@ -19,6 +19,20 @@ import type { ExportTable } from "./products-export";
  * Customer name, email and phone, and the shipping snapshot, are included
  * because the orders page already renders all of them for this tenant's
  * own orders; a merchant needs them to actually fulfil and deliver.
+ *
+ * PERSONAL DATA, and the reason this matters more here than on the page:
+ * these columns carry customer name, email, phone and full shipping
+ * address. On screen that data stays inside the app's authorization
+ * boundary — every read goes through requireTenantAdmin() and is scoped to
+ * one tenant. A downloaded CSV does not: once it is on a laptop or in an
+ * email it is governed by nothing but whoever holds the file.
+ *
+ * So the export UI tells the merchant that explicitly (see
+ * tenant-admin/orders/page.tsx), and anyone ADDING a column here should
+ * ask whether it belongs in a file that leaves the app. Nothing beyond
+ * what the orders page already displays should be added without that
+ * question being answered — and never a payment, provider or auth field,
+ * which listOrders() does not select in the first place.
  */
 export const ORDER_EXPORT_HEADERS = [
   "order_id",
