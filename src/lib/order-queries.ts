@@ -155,7 +155,12 @@ export async function listOrders(
   const [orders, totalCount] = await Promise.all([
     db.order.findMany({
       where,
-      orderBy: { createdAt: "desc" },
+      // id is a tiebreaker, not decoration: createdAt alone is not unique
+      // (orders placed in the same millisecond tie), and a non-deterministic
+      // sort under LIMIT/OFFSET can show the same order on two pages or
+      // skip one entirely. That matters for the paginated UI and even more
+      // for the CSV export, which walks every page.
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
       skip: (page - 1) * pageSize,
       take: pageSize,
       include: {

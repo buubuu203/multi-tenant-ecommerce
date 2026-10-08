@@ -12,6 +12,7 @@ import { listOrders, type ListOrdersOptions } from "@/lib/order-queries";
 import { formatVnd } from "../format";
 import { getOrderTimelinesForOrders } from "@/lib/order-events";
 import { OrderTimeline } from "../OrderTimeline";
+import { ExportCsvButton } from "../ExportCsvButton";
 import { adminSectionClassName, adminInputClassName } from "../styles";
 
 export const dynamic = "force-dynamic";
@@ -115,6 +116,11 @@ export default async function OrdersPage({
           Filter
         </button>
       </form>
+
+      {/* Exports the full order list for this tenant, not just the current
+          page or filter — a merchant asking for "my orders" means all of
+          them. Authorization and tenant scoping live in the route handler. */}
+      <ExportCsvButton dataset="orders" label="orders" />
 
       <BulkOrderStatusForm action={bulkUpdateOrderStatusAction} />
 
