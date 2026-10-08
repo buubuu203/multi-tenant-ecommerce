@@ -359,9 +359,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-2">
               {showDiscount && originalPriceDisplay && (
-                <span className="font-mono text-sm text-muted-foreground line-through">{originalPriceDisplay}</span>
+                <span className="money text-sm text-muted-foreground line-through">{originalPriceDisplay}</span>
               )}
-              <span className="font-mono text-xl font-semibold">{priceDisplay}</span>
+              <span className="money text-xl font-semibold">{priceDisplay}</span>
               {showDiscount && resolvedVariant?.discountPercent != null && (
                 <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
                   −{resolvedVariant.discountPercent}%
@@ -419,9 +419,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <div className="flex items-baseline gap-1.5">
             {showDiscount && originalPriceDisplay && (
-              <span className="font-mono text-xs text-muted-foreground line-through">{originalPriceDisplay}</span>
+              <span className="money text-xs text-muted-foreground line-through">{originalPriceDisplay}</span>
             )}
-            <span className="font-mono text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+            <span className="money text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
             {showDiscount && resolvedVariant?.discountPercent != null && (
               <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
                 −{resolvedVariant.discountPercent}%

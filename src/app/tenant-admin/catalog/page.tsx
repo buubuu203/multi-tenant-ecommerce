@@ -343,7 +343,7 @@ export default async function CatalogPage({
                     <td className="px-3 py-2 font-medium">{product.name}</td>
                     <td className="px-3 py-2 capitalize">{product.status}</td>
                     <td className="px-3 py-2">{activeVariants.length}</td>
-                    <td className="px-3 py-2 font-mono">
+                    <td className="px-3 py-2 money">
                       {simpleVariant ? formatVnd(simpleVariant.price) : "Multiple"}
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">Open below</td>
@@ -399,7 +399,7 @@ export default async function CatalogPage({
                     )}
                   </span>
                   <span className="min-w-0 flex-1 truncate font-medium">{product.name}</span>
-                  <span className="font-mono text-xs whitespace-nowrap text-muted-foreground">
+                  <span className="money text-xs whitespace-nowrap text-muted-foreground">
                     {summaryPrice}
                   </span>
                   <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">

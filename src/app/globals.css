@@ -105,3 +105,27 @@ body {
   outline: 2px solid var(--foreground);
   outline-offset: -2px;
 }
+
+/*
+ * Monetary values.
+ *
+ * Prices were originally set in the monospace face for one real reason:
+ * column alignment, so stacked amounts in a table line up on their
+ * digits. But monospace also reads as "this is a technical token", which
+ * is wrong for money a customer is being asked to pay — and it meant
+ * every price on the site rendered in a different typeface from the rest
+ * of the page.
+ *
+ * This keeps the alignment and drops the connotation: the amount inherits
+ * Be Vietnam Pro like all other prose, and font-variant-numeric gives it
+ * fixed-width digits, which is what actually made the columns line up.
+ *
+ * Monospace is retained for identifiers — order ids, tenant slugs,
+ * hostnames and bank account numbers — where a fixed-width, unambiguous
+ * glyph per character is the point and the value is read or copied
+ * character by character rather than understood as a quantity.
+ */
+.money {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}

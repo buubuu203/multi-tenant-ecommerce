@@ -141,7 +141,7 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
                       </div>
                     </td>
                     <td className="py-1.5 pr-2">{item.quantity}</td>
-                    <td className="py-1.5 pr-2 font-mono">
+                    <td className="py-1.5 pr-2 money">
                       {item.originalUnitPrice != null && (
                         <span className="mr-1 text-muted-foreground line-through">
                           {formatVnd(item.originalUnitPrice)}
@@ -154,7 +154,7 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
                         </span>
                       )}
                     </td>
-                    <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                    <td className="py-1.5 money">{formatVnd(item.lineTotal)}</td>
                   </tr>
                 ))}
               </tbody>
@@ -168,17 +168,17 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         <div className="rounded-xl bg-surface-muted p-4">
           <div className="flex items-center justify-between text-muted-foreground">
             <span>Subtotal</span>
-            <span className="font-mono">{formatVnd(order.subtotal)}</span>
+            <span className="money">{formatVnd(order.subtotal)}</span>
           </div>
           <div className="flex items-center justify-between text-muted-foreground">
             <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}</span>
-            <span className="font-mono">
+            <span className="money">
               {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
             </span>
           </div>
           <div className="mt-3 flex items-center justify-between border-t border-border pt-3 font-medium text-foreground">
             <span>Total</span>
-            <span className="font-mono text-lg">{formatVnd(order.total)}</span>
+            <span className="money text-lg">{formatVnd(order.total)}</span>
           </div>
         </div>
       </div>

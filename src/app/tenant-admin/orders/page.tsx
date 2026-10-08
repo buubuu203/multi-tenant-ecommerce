@@ -142,7 +142,7 @@ export default async function OrdersPage({
                 <td className="px-3 py-2">
                   {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
                 </td>
-                <td className="px-3 py-2 font-mono">{formatVnd(order.total)}</td>
+                <td className="px-3 py-2 money">{formatVnd(order.total)}</td>
                 <td className="px-3 py-2 text-xs text-muted-foreground">
                   {order.createdAt.toLocaleDateString("en-US")}
                 </td>
@@ -203,7 +203,7 @@ export default async function OrdersPage({
               <span className="text-xs text-muted-foreground">
                 {order.itemCount} item{order.itemCount === 1 ? "" : "s"}
               </span>
-              <span className="font-mono text-xs">{formatVnd(order.total)}</span>
+              <span className="money text-xs">{formatVnd(order.total)}</span>
               {order.status === "pending" && (
                 <div className="ml-auto flex items-center gap-1">
                   <OrderStatusForm
@@ -275,7 +275,7 @@ export default async function OrdersPage({
                         )}
                       </td>
                       <td className="py-1.5 pr-2">{item.quantity}</td>
-                      <td className="py-1.5 pr-2 font-mono">
+                      <td className="py-1.5 pr-2 money">
                         {item.originalUnitPrice != null && (
                           <span className="mr-1 text-muted-foreground line-through">
                             {formatVnd(item.originalUnitPrice)}
@@ -288,7 +288,7 @@ export default async function OrdersPage({
                           </span>
                         )}
                       </td>
-                      <td className="py-1.5 font-mono">{formatVnd(item.lineTotal)}</td>
+                      <td className="py-1.5 money">{formatVnd(item.lineTotal)}</td>
                     </tr>
                   ))}
                 </tbody>
@@ -301,19 +301,19 @@ export default async function OrdersPage({
               <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-xs">
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>Subtotal</span>
-                  <span className="font-mono">{formatVnd(order.subtotal)}</span>
+                  <span className="money">{formatVnd(order.subtotal)}</span>
                 </div>
                 <div className="flex items-center justify-between text-muted-foreground">
                   <span>
                     Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}
                   </span>
-                  <span className="font-mono">
+                  <span className="money">
                     {order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}
                   </span>
                 </div>
                 <div className="flex items-center justify-between font-medium">
                   <span>Total</span>
-                  <span className="font-mono">{formatVnd(order.total)}</span>
+                  <span className="money">{formatVnd(order.total)}</span>
                 </div>
               </div>
             </div>

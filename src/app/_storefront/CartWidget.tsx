@@ -479,7 +479,7 @@ export function CartWidget({
                         )}
                         <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5">
                           <span className="text-muted-foreground">Amount</span>
-                          <span className="font-mono text-base font-semibold">
+                          <span className="money text-base font-semibold">
                             {formatVnd(checkout.instructions.amount)}
                           </span>
                         </div>
@@ -556,11 +556,11 @@ export function CartWidget({
                               )}
                               <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
                                 {item.originalPrice != null && (
-                                  <span className="font-mono text-[11px] text-muted-foreground line-through">
+                                  <span className="money text-[11px] text-muted-foreground line-through">
                                     {formatVnd(item.originalPrice)}
                                   </span>
                                 )}
-                                <span className="font-mono text-xs">{formatVnd(item.price)}</span>
+                                <span className="money text-xs">{formatVnd(item.price)}</span>
                                 {item.discountPercent != null && (
                                   <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
                                     −{item.discountPercent}%
@@ -739,7 +739,7 @@ export function CartWidget({
                             />
                             <span className="font-medium">{method.name}</span>
                           </span>
-                          <span className="font-mono text-xs">{method.amount === 0 ? "Free" : formatVnd(method.amount)}</span>
+                          <span className="money text-xs">{method.amount === 0 ? "Free" : formatVnd(method.amount)}</span>
                         </label>
                       ))
                     )}
@@ -798,7 +798,7 @@ export function CartWidget({
               <div className="border-t border-border px-5 py-4">
                 <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
                   <span>Subtotal</span>
-                  <span className="font-mono">{formatVnd(subtotal)}</span>
+                  <span className="money">{formatVnd(subtotal)}</span>
                 </div>
                 <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
                   <span>Shipping</span>
@@ -807,7 +807,7 @@ export function CartWidget({
                       where checkout is blocked entirely — this used to
                       read "Free", promising free delivery the shop had
                       not actually offered. */}
-                  <span className="font-mono">
+                  <span className="money">
                     {selectedShippingMethod ? (
                       selectedShippingMethod.amount === 0 ? (
                         "Free"
@@ -824,7 +824,7 @@ export function CartWidget({
                 </div>
                 <div className="mb-3 flex items-center justify-between border-t border-border pt-2 text-sm">
                   <span className="text-muted-foreground">Total</span>
-                  <span className="font-mono text-base font-semibold">{formatVnd(total)}</span>
+                  <span className="money text-base font-semibold">{formatVnd(total)}</span>
                 </div>
                 <div className="flex gap-2">
                   {step !== "cart" && (
