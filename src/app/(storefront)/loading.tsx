@@ -1,4 +1,18 @@
-// Root-level loading UI for the buyer storefront. Every storefront route
+// Loading UI for the storefront HOME route only.
+//
+// This deliberately lives inside the (storefront) route group rather than
+// at src/app/, which is where it used to sit. A loading.tsx creates a
+// Suspense boundary for its whole subtree, and the response starts
+// streaming the moment that fallback renders — after which the HTTP status
+// is already committed as 200 and cannot be changed. At the root it
+// therefore covered /products/[productId], so a nonexistent or
+// cross-tenant product called notFound() but could only ever be a soft 404.
+//
+// Route groups do not affect URLs, so "/" still renders page.tsx beside
+// this file and keeps its skeleton, while /products/* and /orders are no
+// longer inside any Suspense boundary and can return a real 404. The
+// skeleton is shaped like this page specifically (hero band over a product
+// grid), so it was the wrong fallback for those routes regardless. Every storefront route
 // is dynamic (hostname-resolved tenant + live catalog), so without this a
 // customer saw a blank page during navigation.
 //
