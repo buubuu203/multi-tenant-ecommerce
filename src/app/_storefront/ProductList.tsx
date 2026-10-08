@@ -6,6 +6,7 @@ import type { TenantProduct, TenantProductVariant } from "./get-tenant-products"
 import { useCart } from "./cart-context";
 import { ProductMediaCarousel } from "./ProductMediaCarousel";
 import { compareByStartingPrice } from "@/lib/product-sort";
+import { isLowStock } from "@/lib/inventory-availability";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
@@ -15,7 +16,6 @@ function formatVnd(price: number): string {
 // "Only N left" hint — deliberately not a database field, admin setting,
 // or prop; this is a small presentation rule, not a merchant-facing
 // feature.
-const LOW_STOCK_THRESHOLD = 5;
 
 // Resolves a customer's selection (one VariantOptionValue id per option) to
 // the exact ProductVariant whose full set of option/value pairs matches the
@@ -202,7 +202,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // much of it. Only ever shown alongside the normal in-stock price/button
   // state below, never in place of "Out of stock" or "(unavailable)".
   const lowStockHint =
-    resolvedVariant && !outOfStock && resolvedVariant.available <= LOW_STOCK_THRESHOLD
+    resolvedVariant && !outOfStock && isLowStock(resolvedVariant.available)
       ? `Only ${resolvedVariant.available} left`
       : null;
 

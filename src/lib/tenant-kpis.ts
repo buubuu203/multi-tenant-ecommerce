@@ -1,17 +1,22 @@
 import { getScopedDb } from "./db/tenant-db";
 import { prisma } from "./prisma";
+import { isLowStock } from "./inventory-availability";
 
 export type TenantKpis = {
   windowDays: number;
   pendingOrders: number;
   ordersInWindow: number;
+  /**
+   * Total ORDER VALUE in the window, not settled revenue: items plus
+   * shipping for every order that has not been cancelled, which includes
+   * pending orders that have not been paid for. Surfaced in the UI as
+   * "Order value (30d)" for exactly that reason. The field name is
+   * historical.
+   */
   revenueInWindow: number;
   activeProducts: number;
   lowStockVariants: number;
 };
-
-/** A variant at or below this available count is surfaced as "low stock". */
-export const LOW_STOCK_THRESHOLD = 5;
 
 const WINDOW_DAYS = 30;
 
@@ -25,7 +30,7 @@ const WINDOW_DAYS = 30;
  * where clause — the same rule order-queries.ts and banner-mutations.ts
  * already follow.
  *
- * Revenue is summed in application code rather than SQL because a line
+ * Order value is summed in application code rather than SQL because a line
  * total is price × quantity and Prisma's aggregate API can't express a
  * product of two columns. Bounded to the 30-day window, which keeps the
  * row count proportional to recent trading rather than to all history.
@@ -40,8 +45,9 @@ export async function getTenantKpis(tenantId: string): Promise<TenantKpis> {
     prisma.order.count({ where: { tenantId, status: "pending" } }),
     prisma.order.count({ where: { tenantId, createdAt: { gte: since } } }),
     prisma.order.findMany({
-      // Cancelled orders are excluded from revenue: they released their
-      // inventory and were never collected on.
+      // Cancelled orders are the ONLY exclusion: they released their
+      // inventory and were never collected on. Pending and fulfilled both
+      // count, which is why this is order value rather than revenue.
       where: { tenantId, createdAt: { gte: since }, status: { not: "cancelled" } },
       select: {
         shippingAmount: true,
@@ -58,7 +64,7 @@ export async function getTenantKpis(tenantId: string): Promise<TenantKpis> {
   }, 0);
 
   const lowStockVariants = inventoryRows.filter(
-    (row) => row.onHand - row.reserved <= LOW_STOCK_THRESHOLD,
+    (row) => isLowStock(row.onHand - row.reserved),
   ).length;
 
   return {
