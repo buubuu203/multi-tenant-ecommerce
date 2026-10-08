@@ -15,16 +15,20 @@ export type SitemapEntry = {
  * product URLs — is directly testable without a request context.
  *
  * Two deliberate exclusions:
- *   - Only `status: "active"` products. A draft product is not public, so
- *     listing it in a sitemap would hand crawlers a URL the storefront
- *     itself refuses to render.
+ *   - Only `status: "active"` products that still have a non-archived
+ *     variant. A draft product is not public, and a product with nothing
+ *     left to sell now returns a real 404 (see getTenantProductForTenant);
+ *     listing either would hand crawlers a URL the storefront itself
+ *     refuses to render.
  *   - No customer-facing order URLs (/orders, /orders/<id>). Those are
  *     reachable only with a high-entropy order id plus a checkout-time
  *     field; putting any of it in a public sitemap would defeat that.
  */
 export async function buildSitemapEntries(tenantId: string, origin: string): Promise<SitemapEntry[]> {
   const products = await prisma.product.findMany({
-    where: { tenantId, status: "active" },
+    // `some` rather than a count: one surviving variant is enough to make
+    // the product page renderable, which is exactly the PDP's own rule.
+    where: { tenantId, status: "active", variants: { some: { status: { not: "archived" } } } },
     select: { id: true, updatedAt: true },
     orderBy: { updatedAt: "desc" },
   });

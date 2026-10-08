@@ -18,6 +18,8 @@ let tenantB: { id: string };
 let activeProduct: { id: string };
 let draftProduct: { id: string };
 let allVariantsArchived: { id: string };
+let variantlessProduct: { id: string };
+let outOfStockProduct: { id: string };
 let tenantBProduct: { id: string };
 
 // ProductStatus is only `draft | active` — there is no archived PRODUCT
@@ -30,6 +32,7 @@ async function seedProduct(
   status: "draft" | "active",
   suffix: string,
   variantStatus: "active" | "archived" = "active",
+  onHand = 10,
 ) {
   const location = await prisma.location.findFirst({ where: { tenantId, isDefault: true } });
   const product = await prisma.product.create({
@@ -47,7 +50,7 @@ async function seedProduct(
   });
   if (location) {
     await prisma.inventory.create({
-      data: { tenantId, productVariantId: variant.id, locationId: location.id, onHand: 10 },
+      data: { tenantId, productVariantId: variant.id, locationId: location.id, onHand },
     });
   }
   return product;
@@ -67,6 +70,11 @@ before(async () => {
   activeProduct = await seedProduct(tenantA.id, "Active", "active", suffix);
   draftProduct = await seedProduct(tenantA.id, "Draft", "draft", suffix);
   allVariantsArchived = await seedProduct(tenantA.id, "ArchivedVariants", "active", suffix, "archived");
+  // A product with no variant row at all.
+  variantlessProduct = await prisma.product.create({
+    data: { tenantId: tenantA.id, name: "Túi NoVariants", status: "active" },
+  });
+  outOfStockProduct = await seedProduct(tenantA.id, "OutOfStock", "active", suffix, "active", 0);
   tenantBProduct = await seedProduct(tenantB.id, "OtherTenant", "active", suffix);
 });
 
@@ -108,16 +116,33 @@ test("a draft product is not publicly visible", async () => {
   assert.equal(await getTenantProductForTenant(tenantA.id, draftProduct.id), null);
 });
 
-test("an active product whose only variant is archived resolves with nothing purchasable", async () => {
-  // Documents real current behavior rather than asserting a wish: the
-  // PRODUCT is active so it is not a 404, but every variant is archived and
-  // therefore excluded, leaving no price. buildProductJsonLd() returns null
-  // for exactly that case (see product-seo.test.ts), so such a page emits no
-  // Product markup. Whether it should 404 instead is a product decision, not
-  // part of this status-code fix.
-  const product = await getTenantProductForTenant(tenantA.id, allVariantsArchived.id);
-  assert.ok(product, "the product itself is active, so it still resolves");
-  assert.equal(product.variants.length, 0, "archived variants are excluded");
+test("an active product whose every variant is archived is NOT publicly visible", async () => {
+  // The confirmed product decision: nothing purchasable means no public
+  // product page. Must be the same null as a nonexistent id, so the 404
+  // cannot be used to distinguish "exists but unsellable" from "no such
+  // product".
+  const unsellable = await getTenantProductForTenant(tenantA.id, allVariantsArchived.id);
+  const nonexistent = await getTenantProductForTenant(tenantA.id, randomUUID());
+  assert.equal(unsellable, null);
+  assert.equal(unsellable, nonexistent);
+});
+
+test("an active product with no variant rows at all is NOT publicly visible", async () => {
+  // The other way to have nothing to sell: a product that never had a
+  // variant. Same rule, same null — not a special case.
+  assert.equal(await getTenantProductForTenant(tenantA.id, variantlessProduct.id), null);
+});
+
+test("an out-of-stock variant still resolves — stock does not drive the status code", async () => {
+  // Deliberate boundary on the rule above. The variant exists and has a
+  // price, and the storefront shows it with an "Out of stock" button; if
+  // stock drove visibility, a product URL would flap between 200 and 404 as
+  // inventory moved, which is worse for crawlers and for customers.
+  const product = await getTenantProductForTenant(tenantA.id, outOfStockProduct.id);
+  assert.ok(product, "an out-of-stock product is still a real product page");
+  assert.equal(product.variants.length, 1);
+  assert.equal(product.variants[0].available, 0, "genuinely out of stock");
+  assert.equal(product.variants[0].price, PRICE, "and still has a price to show");
 });
 
 test("TENANT ISOLATION — another tenant's product id behaves exactly like a nonexistent one", async () => {
@@ -150,6 +175,8 @@ test("NO LEAKAGE — every invalid case yields null, so no name, price or image 
     await getTenantProductForTenant(tenantA.id, "not-a-uuid"),
     await getTenantProductForTenant(tenantA.id, draftProduct.id),
     await getTenantProductForTenant(tenantA.id, tenantBProduct.id),
+    await getTenantProductForTenant(tenantA.id, allVariantsArchived.id),
+    await getTenantProductForTenant(tenantA.id, variantlessProduct.id),
   ];
   for (const result of invalid) {
     assert.equal(result, null);
