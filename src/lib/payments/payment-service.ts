@@ -1,4 +1,5 @@
 import { randomUUID } from "crypto";
+import { recordOrderEventInTx, SYSTEM_ACTOR, type OrderEventActor } from "../order-events";
 import { prisma } from "@/lib/prisma";
 import type { ActionResult } from "@/lib/action-result";
 import { getScopedDb } from "@/lib/db/tenant-db";
@@ -156,19 +157,48 @@ export async function createPaymentForOrder(
  * WHERE status = 'pending' means a second click (or a stale page) is a
  * harmless no-op, never a double-transition.
  */
-export async function markManualPaymentReceived(tenantId: string, orderId: string): Promise<ActionResult> {
+export async function markManualPaymentReceived(
+  tenantId: string,
+  orderId: string,
+  // Who confirmed it, for the audit timeline. Supplied by the authorized
+  // caller, never by the client; defaults to `system` so an internal call
+  // is recorded honestly rather than attributed to an admin.
+  actor: OrderEventActor = SYSTEM_ACTOR,
+): Promise<ActionResult> {
   const payment = await prisma.payment.findFirst({ where: { tenantId, orderId } });
 
   if (!payment || payment.provider !== "bank_transfer_manual") {
     return { success: false, error: "This order has no manual bank transfer payment to confirm." };
   }
 
-  const result = await prisma.payment.updateMany({
-    where: { id: payment.id, tenantId, status: "pending" },
-    data: { status: "succeeded" },
+  // Order Audit History: the guarded update and its event now share one
+  // transaction, so a recorded "payment received" entry always corresponds
+  // to a payment row that really did transition. The WHERE status =
+  // 'pending' guard is unchanged and still does the idempotency work — a
+  // second click matches zero rows, so it writes no second event either.
+  const recorded = await prisma.$transaction(async (tx) => {
+    const result = await tx.payment.updateMany({
+      where: { id: payment.id, tenantId, status: "pending" },
+      data: { status: "succeeded" },
+    });
+    if (result.count === 0) {
+      return false;
+    }
+    await recordOrderEventInTx(tx, {
+      tenantId,
+      orderId,
+      type: "payment_status_changed",
+      previousValue: "pending",
+      newValue: "succeeded",
+      // Operational only: which provider and what moved. No account
+      // number, no reference, no raw payload.
+      summary: "Manual bank transfer confirmed received by store admin",
+      actor,
+    });
+    return true;
   });
 
-  if (result.count === 0) {
+  if (!recorded) {
     return { success: false, error: "This payment is no longer pending." };
   }
 

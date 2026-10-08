@@ -1,5 +1,32 @@
-import type { Prisma } from "@/generated/prisma/client";
 import { prisma } from "./prisma";
+
+/**
+ * The minimal capability recordOrderEventInTx() needs from a transaction
+ * client: the ability to insert one order_events row.
+ *
+ * Typed structurally on purpose. Events are written from two different
+ * transaction flavours — createOrder()/updateOrderStatus() run inside
+ * getScopedDb()'s EXTENDED client, while markManualPaymentReceived() runs
+ * inside the plain prisma client — and those two types are not assignable
+ * to each other. Naming only what is used keeps one writer usable from
+ * both instead of forcing a cast.
+ */
+type OrderEventTx = {
+  orderEvent: {
+    create(args: {
+      data: {
+        tenantId: string;
+        orderId: string;
+        type: OrderEventType;
+        previousValue: string | null;
+        newValue: string | null;
+        summary: string;
+        actorType: OrderEventActorType;
+        actorId: string | null;
+      };
+    }): Promise<unknown>;
+  };
+};
 
 // Order Audit History: the ONE place order timeline events are written and
 // read. Append-only from application code — this module exports no update
@@ -69,7 +96,7 @@ export type RecordOrderEventInput = {
  * default rather than anything supplied.
  */
 export async function recordOrderEventInTx(
-  tx: Prisma.TransactionClient,
+  tx: OrderEventTx,
   input: RecordOrderEventInput,
 ): Promise<void> {
   await tx.orderEvent.create({
