@@ -11,11 +11,103 @@ import { CartWidget } from '../../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { TenantTheme } from '@/components/TenantTheme';
+import type { Metadata } from 'next';
+import { getRequestOrigin } from '@/lib/seo/request-origin';
+import {
+  buildMetaDescription,
+  buildProductJsonLd,
+  buildSocialImageUrl,
+  toAbsoluteUrl,
+  type ProductSeoInput,
+} from '@/lib/seo/product-seo';
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header), same as the storefront home
 // page — force dynamic rendering for the same tenant-isolation reason.
 export const dynamic = 'force-dynamic';
+
+/**
+ * Gathers everything the page's metadata and JSON-LD need, from the same
+ * tenant-scoped reads the page itself uses. Returns null when the product
+ * isn't visible to this tenant, so neither consumer can describe a product
+ * the page would 404 on.
+ */
+async function resolveProductSeo(productId: string): Promise<ProductSeoInput | null> {
+  const [product, tenant, origin] = await Promise.all([
+    getTenantProduct(productId),
+    getCurrentTenant(),
+    getRequestOrigin(),
+  ]);
+  if (!product || !tenant || !origin) {
+    return null;
+  }
+  const branding = resolveBranding(tenant, tenant.branding);
+  return {
+    productName: product.name,
+    storeName: branding.storeName,
+    descriptionExcerpt: product.descriptionExcerpt,
+    origin,
+    productPath: `/products/${product.id}`,
+    // Only images: a video URL is not a preview card or a listing image.
+    imageUrls: product.media.filter((m) => m.type === 'image').map((m) => m.url),
+    logoUrl: branding.logoUrl,
+    // Already-discounted effective prices, the same numbers shown on the
+    // page — so a preview can never advertise a price the store won't honour.
+    prices: product.variants.map((v) => v.price),
+    anyInStock: product.variants.some((v) => v.available > 0),
+  };
+}
+
+/**
+ * Per-product title, description and social preview card. Without this the
+ * page inherited the root layout's store-level metadata, so every product
+ * URL on every tenant shared as just the store name with no product, price
+ * or image — on a market where links are distributed through Zalo, Facebook
+ * and TikTok, that preview card is the whole first impression.
+ *
+ * Absolute URLs come from getRequestOrigin(), i.e. the same host header the
+ * tenant was resolved from, so the canonical URL and the tenant context
+ * cannot disagree and one tenant's page can never advertise another's host.
+ */
+export async function generateMetadata({
+  params,
+}: {
+  params: Promise<{ productId: string }>;
+}): Promise<Metadata> {
+  const { productId } = await params;
+  const seo = await resolveProductSeo(productId);
+  // Fall through to the root layout's store-level metadata rather than
+  // inventing anything for a product this request cannot see.
+  if (!seo) {
+    return {};
+  }
+
+  const title = `${seo.productName} — ${seo.storeName}`;
+  const description = buildMetaDescription(seo);
+  const url = toAbsoluteUrl(seo.origin, seo.productPath);
+  const image = buildSocialImageUrl(seo);
+
+  return {
+    title,
+    description,
+    alternates: { canonical: url },
+    openGraph: {
+      title,
+      description,
+      url,
+      siteName: seo.storeName,
+      locale: 'vi_VN',
+      type: 'website',
+      ...(image ? { images: [{ url: image, alt: seo.productName }] } : {}),
+    },
+    twitter: {
+      card: image ? 'summary_large_image' : 'summary',
+      title,
+      description,
+      ...(image ? { images: [image] } : {}),
+    },
+  };
+}
 
 export default async function ProductDetailPage({
   params,
@@ -60,6 +152,12 @@ export default async function ProductDetailPage({
   const tenant = await getCurrentTenant();
   const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
 
+  // Reuses resolveProductSeo()'s tenant-scoped reads; React dedupes the
+  // identical fetches this and generateMetadata() both perform within one
+  // request, so this costs no extra queries.
+  const seo = await resolveProductSeo(productId);
+  const jsonLd = seo ? buildProductJsonLd(seo) : null;
+
   return (
     <TenantTheme
       branding={
@@ -74,6 +172,17 @@ export default async function ProductDetailPage({
       className="flex flex-1 flex-col"
     >
       <CartProvider>
+        {/* schema.org Product markup. Next.js's own guidance is to render
+            JSON-LD as a script tag in the component; JSON.stringify of a
+            server-built object cannot inject markup, and every value here
+            comes from this tenant's own already-sanitized product data.
+            Null when the product has no price — see buildProductJsonLd. */}
+        {jsonLd && (
+          <script
+            type="application/ld+json"
+            dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+          />
+        )}
         <div className="flex flex-1 flex-col">
           {branding ? (
             <StorefrontHeader
