@@ -128,3 +128,23 @@ test("KPIs: counts only this tenant's active products", async () => {
   const kpis = await getTenantKpis(tenantA.id);
   assert.equal(kpis.activeProducts, 1);
 });
+
+test("KPIs: order value counts BOTH pending and fulfilled — cancelled is the only exclusion", async () => {
+  // Locks the confirmed product decision behind the "Order value (30d)"
+  // card: it is order value, not settled revenue. Tenant A's counted order
+  // is pending (nobody has paid), tenant B's is fulfilled; both contribute
+  // their full items + shipping. Tenant A's cancelled order contributes
+  // nothing, which is what makes the label honest rather than the metric
+  // wrong.
+  const a = await getTenantKpis(tenantA.id);
+  const b = await getTenantKpis(tenantB.id);
+
+  assert.equal(a.pendingOrders, 1, "tenant A's counted order is pending");
+  assert.equal(a.revenueInWindow, 2 * UNIT_PRICE + SHIPPING, "a pending, unpaid order counts in full");
+
+  assert.equal(b.pendingOrders, 0, "tenant B's order is fulfilled, not pending");
+  assert.equal(b.revenueInWindow, 10 * UNIT_PRICE + SHIPPING, "a fulfilled order counts in full");
+
+  // Two orders exist for tenant A but only one contributes value.
+  assert.equal(a.ordersInWindow, 2, "volume counts the cancelled order");
+});

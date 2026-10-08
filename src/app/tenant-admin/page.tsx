@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getTenantKpis, LOW_STOCK_THRESHOLD } from "@/lib/tenant-kpis";
+import { getTenantKpis } from "@/lib/tenant-kpis";
+import { LOW_STOCK_THRESHOLD } from "@/lib/inventory-availability";
 import { formatVnd } from "./format";
 import { adminSectionClassName } from "./styles";
 
@@ -32,9 +33,13 @@ export default async function TenantAdminOverviewPage() {
       href: "/tenant-admin/orders",
     },
     {
-      label: `Revenue (${kpis.windowDays}d)`,
+      // "Order value", not "Revenue": this figure counts every order that
+      // has not been cancelled, which includes pending ones nobody has
+      // paid for yet. Calling that revenue would tell a merchant they had
+      // earned money they may never collect.
+      label: `Order value (${kpis.windowDays}d)`,
       value: formatVnd(kpis.revenueInWindow),
-      hint: "Items + shipping, excluding cancelled",
+      hint: "Items + shipping, including unpaid orders",
       href: "/tenant-admin/orders",
     },
     {
