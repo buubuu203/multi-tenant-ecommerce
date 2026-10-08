@@ -5,8 +5,8 @@ import { resolveBranding } from "../_storefront/resolve-branding";
 import { TenantTheme } from "@/components/TenantTheme";
 import { Toaster } from "@/components/Toast";
 import { AdminTabs } from "./AdminTabs";
-import { currentUser } from "@clerk/nextjs/server";
-import { AdminAccount } from "@/components/AdminAccount";
+import { AdminAccountBar } from "@/components/AdminAccountBar";
+import { AdminDenied } from "@/components/AdminDenied";
 
 // Phase 1 of the admin route split: this layout now owns the chrome
 // (theme, header, tab nav) that used to live inside the single giant
@@ -20,21 +20,16 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
     ({ tenantId } = await requireTenantAdmin());
   } catch (e) {
     if (e instanceof NotTenantAdminError) {
-      return (
-        <main className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-24 text-center">
-          <h1 className="text-2xl font-semibold">Not authorized</h1>
-          <p className="max-w-md text-black/70 dark:text-white/70">
-            Your account does not have access to this store&apos;s admin.
-          </p>
-        </main>
-      );
+      // The shared denied shell, so a signed-in user refused this store's
+      // admin still sees who they are and can sign out. Deliberately
+      // rendered BEFORE getScopedDb() is ever reached below — no tenant
+      // data, branding included, is read on the unauthorized path.
+      return <AdminDenied surface="Store Admin" />;
     }
     throw e; // e.g. Next.js's internal redirect signal from redirectToSignIn()
   }
 
   const db = getScopedDb(tenantId);
-  const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "Email unavailable";
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
   const themeBranding = resolveBranding(tenant ?? { name: "Store" }, branding);
@@ -59,7 +54,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
               View storefront ↗
             </a>
           )}
-          <AdminAccount email={email} />
+          <AdminAccountBar />
         </div>
 
         <AdminTabs />

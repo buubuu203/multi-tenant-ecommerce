@@ -2,7 +2,8 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Toaster } from "@/components/Toast";
-import { AdminAccount } from "@/components/AdminAccount";
+import { AdminAccountBar } from "@/components/AdminAccountBar";
+import { AdminDenied } from "@/components/AdminDenied";
 
 // AUTHENTICATION — "who is this request from?"
 // Entirely Clerk's responsibility. A missing userId means no signed-in
@@ -33,19 +34,14 @@ async function isPlatformAdmin(): Promise<boolean> {
 export default async function PlatformAdminLayout({ children }: { children: ReactNode }) {
   await requireAuthenticatedUser();
 
+  // Authorization failing returns the shared denied shell, which carries
+  // the account strip (email + Sign out) so a signed-in user who lands
+  // here is not stranded with no identity and no way out. It is handed no
+  // tenant, no db handle and no actions, so nothing protected renders
+  // before this check succeeds.
   if (!(await isPlatformAdmin())) {
-    return (
-      <main className="flex flex-1 flex-col items-center justify-center gap-2 px-6 py-24 text-center">
-        <h1 className="text-2xl font-semibold">Not authorized</h1>
-        <p className="max-w-md text-sm text-muted-foreground">
-          Your account does not have access to Platform Admin.
-        </p>
-      </main>
-    );
+    return <AdminDenied surface="Platform Admin" />;
   }
-
-  const user = await currentUser();
-  const email = user?.primaryEmailAddress?.emailAddress ?? "Email unavailable";
 
   // Platform Admin is deliberately NOT wrapped in TenantTheme: it belongs
   // to the platform, not to any one tenant, so it must never pick up a
@@ -67,7 +63,7 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
           <p className="text-sm text-muted-foreground">
             Every tenant on this platform. Changes here affect whole storefronts.
           </p>
-          <AdminAccount email={email} />
+          <AdminAccountBar />
         </div>
       </header>
       <div className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</div>
