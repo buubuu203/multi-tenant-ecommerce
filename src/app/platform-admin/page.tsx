@@ -1,4 +1,7 @@
+import { redirect } from "next/navigation";
 import { platformDb } from "@/lib/db/platform-db";
+import { requirePlatformAdmin, NotAuthenticatedError } from "@/lib/auth/require-platform-admin";
+import { AdminDenied } from "@/components/AdminDenied";
 import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } from "./actions";
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmActionForm } from "@/components/ConfirmActionForm";
@@ -45,6 +48,28 @@ export default async function PlatformAdminHomePage({
 }: {
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
+  // SECURITY: this page authorizes itself rather than trusting
+  // layout.tsx's gate, because a layout's early return does NOT prevent
+  // this page segment from being rendered and streamed. Without this,
+  // an unauthenticated request to /platform-admin received an RSC
+  // payload containing every tenant's name and slug plus the create and
+  // status forms, even though the layout had returned the denied shell
+  // and the browser showed nothing. Verified by curl with no cookies.
+  //
+  // This is the same "the layout gate is necessary but not sufficient"
+  // rule requirePlatformAdmin() already documents for Server Actions,
+  // applied to the read path — and it is why the tenant-admin pages
+  // never leaked: each one calls requireTenantAdmin() itself to obtain
+  // its tenantId. Nothing below this point runs unauthorized.
+  try {
+    await requirePlatformAdmin();
+  } catch (e) {
+    if (e instanceof NotAuthenticatedError) {
+      redirect("/sign-in");
+    }
+    return <AdminDenied surface="Platform Admin" />;
+  }
+
   const params = await searchParams;
   const q = typeof params.q === "string" ? params.q.trim() : "";
 
