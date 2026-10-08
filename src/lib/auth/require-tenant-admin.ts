@@ -54,7 +54,7 @@ export function resolveTenantAdminAuthorization(
  * reached via shop-a.localhost/tenant-admin, shop-b.localhost/tenant-admin,
  * etc. — not a single fixed platform URL, unlike Platform Admin).
  */
-export async function requireTenantAdmin(): Promise<{ tenantId: string }> {
+export async function requireTenantAdmin(): Promise<{ tenantId: string; userId: string | null }> {
   const { userId, redirectToSignIn } = await auth();
   const headerList = await headers();
   const resolvedTenantId = headerList.get("x-tenant-id");
@@ -73,5 +73,17 @@ export async function requireTenantAdmin(): Promise<{ tenantId: string }> {
     throw new NotTenantAdminError(decision.reason);
   }
 
-  return { tenantId: decision.tenantId };
+  // userId is returned alongside tenantId purely so callers can attribute
+  // an audit event to the acting admin. It is the same identifier
+  // requirePlatformAdmin() already returns, it is never a token or a
+  // session id, and no authorization decision reads it — the decision
+  // above is unchanged.
+  //
+  // Typed nullable rather than asserted non-null: the !userId branch above
+  // relies on redirectToSignIn() throwing at runtime, which TypeScript
+  // cannot narrow, and restructuring that branch would mean touching live
+  // authorization control flow for a field only the audit trail uses. An
+  // authorized admin always has an id in practice; a null simply records
+  // the event without an actor id rather than blocking the mutation.
+  return { tenantId: decision.tenantId, userId: user?.id ?? null };
 }

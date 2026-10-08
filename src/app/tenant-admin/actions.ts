@@ -503,11 +503,16 @@ export async function updateOrderStatusAction(
   _prevState: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, userId } = await requireTenantAdmin();
   const orderId = String(formData.get('orderId') ?? '');
   const nextStatus = String(formData.get('nextStatus') ?? '');
 
-  const result = await updateOrderStatus(tenantId, orderId, nextStatus);
+  // Audit actor comes from the authorization helper, never from formData —
+  // a client cannot claim a role or an identity.
+  const result = await updateOrderStatus(tenantId, orderId, nextStatus, {
+    type: 'tenant_admin',
+    id: userId ?? undefined,
+  });
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
   }
@@ -526,7 +531,7 @@ export async function bulkUpdateOrderStatusAction(
   _prevState: ActionResult<{ updated: number; failed: number }> | null,
   formData: FormData,
 ): Promise<ActionResult<{ updated: number; failed: number }>> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, userId } = await requireTenantAdmin();
   const orderIds = formData.getAll('orderIds').map(String).filter(Boolean);
   const nextStatus = String(formData.get('nextStatus') ?? '');
 
@@ -537,7 +542,12 @@ export async function bulkUpdateOrderStatusAction(
   let updated = 0;
   let failed = 0;
   for (const orderId of orderIds) {
-    const result = await updateOrderStatus(tenantId, orderId, nextStatus);
+    // Each order's transition writes its own event, attributed to this
+    // admin; a failed one writes none, so the counts and the timelines agree.
+    const result = await updateOrderStatus(tenantId, orderId, nextStatus, {
+      type: 'tenant_admin',
+      id: userId ?? undefined,
+    });
     if (result.success) updated++;
     else failed++;
   }
@@ -554,10 +564,13 @@ export async function markManualPaymentReceivedAction(
   _prevState: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, userId } = await requireTenantAdmin();
   const orderId = String(formData.get('orderId') ?? '');
 
-  const result = await markManualPaymentReceived(tenantId, orderId);
+  const result = await markManualPaymentReceived(tenantId, orderId, {
+    type: 'tenant_admin',
+    id: userId ?? undefined,
+  });
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
   }
