@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
 import { auth, currentUser } from "@clerk/nextjs/server";
 import { Toaster } from "@/components/Toast";
+import { AdminAccount } from "@/components/AdminAccount";
 
 // AUTHENTICATION — "who is this request from?"
 // Entirely Clerk's responsibility. A missing userId means no signed-in
@@ -43,6 +44,9 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
     );
   }
 
+  const user = await currentUser();
+  const email = user?.primaryEmailAddress?.emailAddress ?? "Email unavailable";
+
   // Platform Admin is deliberately NOT wrapped in TenantTheme: it belongs
   // to the platform, not to any one tenant, so it must never pick up a
   // tenant's branding tokens. It uses the same base token set as
@@ -63,6 +67,7 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
           <p className="text-sm text-muted-foreground">
             Every tenant on this platform. Changes here affect whole storefronts.
           </p>
+          <AdminAccount email={email} />
         </div>
       </header>
       <div className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</div>
