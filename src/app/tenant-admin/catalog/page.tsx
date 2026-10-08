@@ -19,6 +19,7 @@ import {
 } from "../actions";
 import { listDiscountsByProduct } from "@/lib/discount-mutations";
 import { ImportProductsForm } from "../ImportProductsForm";
+import { ExportCsvButton } from "../ExportCsvButton";
 import { ProductMediaGallery } from "../ProductMediaGallery";
 import { DescriptionEditor } from "../DescriptionEditor";
 import { Pagination } from "../Pagination";
@@ -277,6 +278,15 @@ export default async function CatalogPage({
             1 MB. Media can be added after import from the product editor below.
           </p>
           <ImportProductsForm action={importProductsAction} />
+        </div>
+
+        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
+          <h3 className="text-sm font-medium">Export Products (CSV)</h3>
+          <p className="text-xs text-muted-foreground">
+            One row per variant, including drafts and archived variants, with SKU, price, any
+            discount, and current stock. Opens in Excel with Vietnamese text intact.
+          </p>
+          <ExportCsvButton dataset="products" label="products" />
         </div>
 
         <div className="flex flex-wrap items-end justify-between gap-3">
