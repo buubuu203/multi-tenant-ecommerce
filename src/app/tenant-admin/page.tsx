@@ -68,7 +68,7 @@ export default async function TenantAdminOverviewPage() {
             className="flex flex-col gap-1 rounded-lg border border-border bg-surface-muted p-4 transition-colors hover:bg-surface focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
             <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
-            <span className="font-mono text-2xl font-semibold tabular-nums">{card.value}</span>
+            <span className="money text-2xl font-semibold tabular-nums">{card.value}</span>
             <span className="text-xs text-muted-foreground">{card.hint}</span>
           </Link>
         ))}
