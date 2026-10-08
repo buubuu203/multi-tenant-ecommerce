@@ -27,7 +27,16 @@ export function ConfirmActionForm<T>({
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children?: React.ReactNode;
   submitLabel: string;
-  confirmMessage: string;
+  /**
+   * The text shown in the confirm() dialog. A plain string covers the
+   * common case; a function is evaluated against the form's OWN FormData
+   * at submit time, which is what lets a message describe the value the
+   * operator actually picked rather than a fixed worst case. (Platform
+   * Admin's status form needs this: the same form can activate a store or
+   * take it offline, so a static string has to warn about both and is
+   * therefore wrong for one of them.)
+   */
+  confirmMessage: string | ((formData: FormData) => string);
   successMessage?: string;
   /** "danger" reads as destructive; "default" matches ActionForm's button. */
   variant?: "default" | "danger";
@@ -52,7 +61,13 @@ export function ConfirmActionForm<T>({
       className={className}
       aria-busy={pending}
       onSubmit={(e) => {
-        if (!window.confirm(confirmMessage)) {
+        // Read the form's current values before confirming, so a
+        // function message sees exactly what is about to be submitted.
+        const message =
+          typeof confirmMessage === "function"
+            ? confirmMessage(new FormData(e.currentTarget))
+            : confirmMessage;
+        if (!window.confirm(message)) {
           e.preventDefault();
         }
       }}

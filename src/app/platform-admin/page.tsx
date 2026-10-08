@@ -3,11 +3,14 @@ import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } 
 import { ActionForm } from "@/components/ActionForm";
 import { ConfirmActionForm } from "@/components/ConfirmActionForm";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName } from "../tenant-admin/styles";
+import {
+  TENANT_STATUSES as STATUSES,
+  DISRUPTIVE_STATUSES,
+  tenantStatusConfirmMessage,
+  isTenantStatus,
+} from "./tenant-status-copy";
 
 export const dynamic = "force-dynamic";
-
-const STATUSES = ["pending", "active", "suspended", "archived"] as const;
-type TenantStatusValue = (typeof STATUSES)[number];
 
 // Same per-file badge-map convention Tenant Admin already uses for order
 // and payment status — colour carries the meaning at a glance rather than
@@ -21,10 +24,6 @@ const STATUS_BADGE: Record<string, string> = {
     "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
   archived: "border-border bg-surface-muted text-muted-foreground",
 };
-
-// Which transitions take a live storefront offline. These get a
-// confirm() before they fire; the harmless ones stay a single click.
-const DISRUPTIVE_STATUSES = new Set<TenantStatusValue>(["suspended", "archived"]);
 
 function statusHelpText(status: string): string {
   switch (status) {
@@ -175,7 +174,16 @@ export default async function PlatformAdminHomePage({
                     action={updateTenantStatusAction}
                     submitLabel="Save status"
                     successMessage="Tenant status saved."
-                    confirmMessage={`Change “${tenant.name}” status? Suspending or archiving takes its storefront offline for customers immediately.`}
+                    // Derived from the status the operator actually
+                    // selected, not a fixed worst case — reactivating a
+                    // suspended store no longer warns about going offline.
+                    confirmMessage={(formData) =>
+                      tenantStatusConfirmMessage(
+                        tenant.name,
+                        isTenantStatus(tenant.status) ? tenant.status : "pending",
+                        formData.get("status"),
+                      )
+                    }
                     className="flex flex-col gap-2"
                   >
                     <input type="hidden" name="tenantId" value={tenant.id} />
