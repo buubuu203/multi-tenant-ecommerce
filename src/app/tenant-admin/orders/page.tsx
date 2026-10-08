@@ -13,7 +13,13 @@ import { formatVnd } from "../format";
 import { getOrderTimelinesForOrders } from "@/lib/order-events";
 import { OrderTimeline } from "../OrderTimeline";
 import { ExportCsvButton } from "../ExportCsvButton";
-import { adminSectionClassName, adminInputClassName } from "../styles";
+import {
+  adminSectionClassName,
+  adminInputClassName,
+  adminButtonSecondaryClassName,
+  adminEyebrowClassName,
+} from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -83,19 +89,28 @@ export default async function OrdersPage({
 
   return (
     <section className={adminSectionClassName}>
-      <h2 className="text-lg font-medium tracking-tight">Orders</h2>
+      <AdminPageHeader
+        title="Orders"
+        description="Every order placed in this store. Select orders to update several at once."
+        meta={
+          <span className={adminEyebrowClassName}>
+            {totalCount} {totalCount === 1 ? "order" : "orders"}
+            {(q || status) && " matching"}
+          </span>
+        }
+      />
 
-      {/* Phase 2: search + status filter, plain GET form — no client JS,
-        no state to lose on refresh, shareable/bookmarkable URL. */}
+      {/* Search + status filter, plain GET form — no client JS, no state to
+        lose on refresh, shareable/bookmarkable URL. */}
       <form className="flex flex-wrap items-end gap-2" method="get">
-        <label className="flex flex-col gap-1 text-xs">
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs sm:flex-none">
           Search
           <input
             type="text"
             name="q"
             defaultValue={q}
             placeholder="Order id, customer name, or email"
-            className={`w-64 ${adminInputClassName}`}
+            className={`w-full sm:w-72 ${adminInputClassName}`}
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
@@ -109,32 +124,25 @@ export default async function OrdersPage({
             ))}
           </select>
         </label>
-        <button
-          type="submit"
-          className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
-        >
+        <button type="submit" className={`${adminButtonSecondaryClassName} py-1.5`}>
           Filter
         </button>
       </form>
 
-      {/* Exports the full order list for this tenant, not just the current
-          page or filter — a merchant asking for "my orders" means all of
-          them. Authorization and tenant scoping live in the route handler. */}
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
-        <h3 className="text-sm font-medium">Export Orders (CSV)</h3>
-        <p className="text-xs text-muted-foreground">
-          Every order in this store, not just the current page or filter. Opens in Excel with
-          Vietnamese text intact.
-        </p>
-        {/* Stated plainly on the screen that starts the download, because
-            this is the moment the merchant decides to take the data out of
-            the app. */}
+      {/* The export sits beside the data it exports rather than in a large
+          box above it, but the personal-data warning stays visible rather
+          than hidden behind a disclosure: this is the moment the merchant
+          decides to take customer data out of the app, and a warning you
+          have to open is a warning you will not read. */}
+      <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
         <p className="text-xs text-muted-foreground">
           <strong className="font-medium text-foreground">Contains customer personal data</strong>{" "}
           — name, email, phone and shipping address. A downloaded file is no longer protected by
           your store login, so store and share it carefully, and delete copies you no longer need.
         </p>
-        <ExportCsvButton dataset="orders" label="orders" />
+        <div className="shrink-0">
+          <ExportCsvButton dataset="orders" label="orders" />
+        </div>
       </div>
 
       <BulkOrderStatusForm action={bulkUpdateOrderStatusAction} />
