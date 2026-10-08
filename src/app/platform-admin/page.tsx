@@ -4,14 +4,9 @@ import { requirePlatformAdmin, NotAuthenticatedError } from "@/lib/auth/require-
 import { AdminDenied } from "@/components/AdminDenied";
 import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } from "./actions";
 import { ActionForm } from "@/components/ActionForm";
-import { ConfirmActionForm } from "@/components/ConfirmActionForm";
+import { TenantStatusForm } from "./TenantStatusForm";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName } from "../tenant-admin/styles";
-import {
-  TENANT_STATUSES as STATUSES,
-  DISRUPTIVE_STATUSES,
-  tenantStatusConfirmMessage,
-  isTenantStatus,
-} from "./tenant-status-copy";
+
 
 export const dynamic = "force-dynamic";
 
@@ -193,41 +188,16 @@ export default async function PlatformAdminHomePage({
 
                   {/* Status changes can take a live storefront offline, so
                       this uses the confirming variant rather than a plain
-                      one-click save. The server action's own authorization
-                      and validation are unchanged. */}
-                  <ConfirmActionForm
+                      one-click save. Rendered by a Client Component because
+                      its confirm() text is computed from the selected
+                      status; the server action's own authorization and
+                      validation are unchanged. */}
+                  <TenantStatusForm
+                    tenantId={tenant.id}
+                    tenantName={tenant.name}
+                    currentStatus={tenant.status}
                     action={updateTenantStatusAction}
-                    submitLabel="Save status"
-                    successMessage="Tenant status saved."
-                    // Derived from the status the operator actually
-                    // selected, not a fixed worst case — reactivating a
-                    // suspended store no longer warns about going offline.
-                    confirmMessage={(formData) =>
-                      tenantStatusConfirmMessage(
-                        tenant.name,
-                        isTenantStatus(tenant.status) ? tenant.status : "pending",
-                        formData.get("status"),
-                      )
-                    }
-                    className="flex flex-col gap-2"
-                  >
-                    <input type="hidden" name="tenantId" value={tenant.id} />
-                    <label className={adminLabelClassName}>
-                      Status
-                      <select
-                        name="status"
-                        defaultValue={tenant.status}
-                        className={adminInputClassName}
-                      >
-                        {STATUSES.map((status) => (
-                          <option key={status} value={status}>
-                            {status}
-                            {DISRUPTIVE_STATUSES.has(status) ? " — takes storefront offline" : ""}
-                          </option>
-                        ))}
-                      </select>
-                    </label>
-                  </ConfirmActionForm>
+                  />
                 </div>
               </li>
             ))}
