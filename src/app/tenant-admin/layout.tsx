@@ -5,6 +5,11 @@ import { resolveBranding } from "../_storefront/resolve-branding";
 import { TenantTheme } from "@/components/TenantTheme";
 import { Toaster } from "@/components/Toast";
 import { AdminTabs } from "./AdminTabs";
+import {
+  adminContainerClassName,
+  adminEyebrowClassName,
+  adminButtonSecondaryClassName,
+} from "./styles";
 import { AdminAccountBar } from "@/components/AdminAccountBar";
 import { AdminDenied } from "@/components/AdminDenied";
 
@@ -38,29 +43,48 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   return (
     <TenantTheme branding={themeBranding} className="admin-chrome flex flex-1 flex-col">
       <Toaster />
-      {/* <main>, not <div>: see the same change in platform-admin's
-          layout — admin surfaces need one landmark to skip to. */}
-      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
-        <div className="flex flex-col gap-1">
-          <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
-          <p className="text-sm text-muted-foreground">
-            You are managing {tenant?.name ?? "(unknown tenant)"}.
-          </p>
-          {primaryDomain && (
-            <a
-              href={`http://${primaryDomain.hostname}:3000/`}
-              target="_blank"
-              rel="noreferrer"
-              className="w-fit text-sm text-muted-foreground underline transition-colors hover:text-foreground"
-            >
-              View storefront ↗
-            </a>
-          )}
-          <AdminAccountBar />
+      {/* A real <header> landmark, separated from <main> by a border and a
+          surface change, so the chrome reads as chrome and the page body
+          starts at an obvious edge. */}
+      <header className="border-b border-border bg-surface">
+        <div className={`${adminContainerClassName} flex flex-col gap-4 py-4`}>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div className="flex min-w-0 flex-col gap-0.5">
+              {/* The STORE is the h1, not "Tenant Admin". The operator
+                  knows which tool they are in; what they need confirmed at
+                  a glance — especially when they run more than one shop —
+                  is which shop they are about to change. "Tenant Admin" is
+                  demoted to an eyebrow, which is what it actually is. */}
+              <p className={adminEyebrowClassName}>Tenant Admin</p>
+              <h1 className="truncate text-xl font-semibold tracking-tight">
+                {tenant?.name ?? "(unknown tenant)"}
+              </h1>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              {primaryDomain && (
+                <a
+                  href={`http://${primaryDomain.hostname}:3000/`}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={adminButtonSecondaryClassName}
+                >
+                  View storefront
+                  {/* Marked decorative: the link text already says where it
+                      goes, and "↗" announced as a character is noise. The
+                      new-tab behaviour is named for screen readers below. */}
+                  <span aria-hidden="true">↗</span>
+                  <span className="sr-only">(opens in a new tab)</span>
+                </a>
+              )}
+              <AdminAccountBar />
+            </div>
+          </div>
+          <AdminTabs />
         </div>
+      </header>
 
-        <AdminTabs />
-
+      {/* <main>, not <div>: admin surfaces need one landmark to skip to. */}
+      <main className={`${adminContainerClassName} flex flex-1 flex-col gap-6 py-6 sm:py-8`}>
         {children}
       </main>
     </TenantTheme>
