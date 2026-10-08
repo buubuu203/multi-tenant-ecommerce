@@ -50,11 +50,18 @@ export function escapeCsvCell(value: string | number | null | undefined): string
   }
   let text = String(value);
 
+  // A real number is never a formula, so it must not be guarded: a
+  // negative value like stock_available = -5 would otherwise be written as
+  // "'-5" and land in the spreadsheet as TEXT, silently breaking a numeric
+  // column a merchant expects to sum. The guard exists for strings that a
+  // spreadsheet would evaluate, which a number by definition is not.
+  const isNumeric = typeof value === "number" && Number.isFinite(value);
+
   // Guard before quoting, so the decision is made on the real first
   // character rather than on a quote we added.
   const firstChar = text.charAt(0);
   const needsFormulaGuard =
-    FORMULA_TRIGGERS.includes(firstChar) || RISKY_CONTROL.includes(firstChar);
+    !isNumeric && (FORMULA_TRIGGERS.includes(firstChar) || RISKY_CONTROL.includes(firstChar));
   if (needsFormulaGuard) {
     text = `'${text}`;
   }

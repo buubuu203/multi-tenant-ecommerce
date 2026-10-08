@@ -129,3 +129,35 @@ test("a round trip survives the existing importer's parsing rules", () => {
   assert.ok(body.includes('""đặc biệt""'), "internal quotes doubled");
   assert.ok(body.startsWith('"'), "field is quoted");
 });
+
+test("a negative NUMBER stays numeric — the formula guard must not turn it into text", () => {
+  // Regression: escapeCsvCell(-5) used to emit "'-5", which a spreadsheet
+  // reads as text, silently breaking a numeric column. stock_available is
+  // onHand - reserved and can legitimately go negative under
+  // over-reservation, and the products export pushes it as a raw number.
+  // A number is never a formula, so it must never be guarded.
+  assert.equal(escapeCsvCell(-5), "-5");
+  assert.equal(escapeCsvCell(-20), "-20");
+  assert.equal(escapeCsvCell(-0.5), "-0.5");
+  assert.equal(escapeCsvCell(0), "0");
+  assert.equal(escapeCsvCell(1234), "1234");
+});
+
+test("a negative value supplied as a STRING is still guarded", () => {
+  // The distinction is the type, not the glyph: a string beginning with -
+  // can be a formula, so it keeps its guard.
+  assert.equal(escapeCsvCell("-5"), `"'-5"`);
+  assert.equal(escapeCsvCell("-20% sale"), `"'-20% sale"`);
+  // formatCsvAmount() returns a string, so a negative amount stays guarded
+  // rather than silently changing behaviour here.
+  assert.equal(escapeCsvCell(formatCsvAmount(-500)), `"'-500"`);
+});
+
+test("non-finite numbers do not slip past the guard as bare text", () => {
+  // String(NaN)/String(Infinity) start with a letter, so neither is a
+  // formula vector; asserted so a future change to isNumeric cannot
+  // accidentally emit something a spreadsheet evaluates.
+  assert.equal(escapeCsvCell(Number.NaN), "NaN");
+  assert.equal(escapeCsvCell(Number.POSITIVE_INFINITY), "Infinity");
+  assert.equal(escapeCsvCell(Number.NEGATIVE_INFINITY), `"'-Infinity"`);
+});
