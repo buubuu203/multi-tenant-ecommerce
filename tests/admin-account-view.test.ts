@@ -57,9 +57,14 @@ const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "u
  * code rather than prose that happens to mention the same identifiers.
  */
 const readCode = (p: string) =>
+  // Line comments FIRST, deliberately: a // comment in this codebase
+  // mentions a path like "/tenant-admin/*", and stripping block comments
+  // first treats that as an opening /* and eats everything up to the next
+  // */ anywhere later in the file — which silently swallowed the very
+  // code these assertions exist to check.
   read(p)
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
 
 test("the denied shell renders identity and exit controls only — no db, no actions", () => {
   const src = readCode("src/components/AdminDenied.tsx");

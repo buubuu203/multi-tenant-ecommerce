@@ -20,9 +20,12 @@ const root = fileURLToPath(new URL("../", import.meta.url));
 
 /** Source with comments stripped, so prose cannot satisfy these checks. */
 function readCode(relativePath: string): string {
+  // Line comments FIRST: a // comment mentioning a path such as
+  // "/tenant-admin/*" otherwise reads as an opening /* and swallows the
+  // code under test up to the next */ in the file.
   return readFileSync(join(root, relativePath), "utf8")
-    .replace(/\/\*[\s\S]*?\*\//g, "")
-    .replace(/\/\/[^\n]*/g, "");
+    .replace(/\/\/[^\n]*/g, "")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
 }
 
 function adminPages(dir: string): string[] {
