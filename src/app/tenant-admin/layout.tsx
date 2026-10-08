@@ -38,7 +38,9 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   return (
     <TenantTheme branding={themeBranding} className="admin-chrome flex flex-1 flex-col">
       <Toaster />
-      <div className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
+      {/* <main>, not <div>: see the same change in platform-admin's
+          layout — admin surfaces need one landmark to skip to. */}
+      <main className="mx-auto flex w-full max-w-5xl flex-1 flex-col gap-8 px-6 py-12 sm:py-16">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Tenant Admin</h1>
           <p className="text-sm text-muted-foreground">
@@ -60,7 +62,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
         <AdminTabs />
 
         {children}
-      </div>
+      </main>
     </TenantTheme>
   );
 }

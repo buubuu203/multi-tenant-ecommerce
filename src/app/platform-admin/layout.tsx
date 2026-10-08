@@ -66,7 +66,10 @@ export default async function PlatformAdminLayout({ children }: { children: Reac
           <AdminAccountBar />
         </div>
       </header>
-      <div className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</div>
+      {/* <main>, not <div>: screen-reader users navigate by landmark, and
+          without one there was no way to jump past the header to the
+          tenant list. The denied shell already used <main>. */}
+      <main className="mx-auto w-full max-w-5xl flex-1 px-6 py-8">{children}</main>
     </div>
   );
 }
