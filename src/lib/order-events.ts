@@ -157,6 +157,54 @@ export async function getOrderTimeline(
   return events;
 }
 
+/**
+ * Timelines for several orders in ONE query, keyed by order id.
+ *
+ * The admin orders page renders up to 20 expandable order cards; asking
+ * per card would be 20 round-trips, so this is the same
+ * "constant number of queries, not one per row" rule
+ * get-tenant-products.ts already follows for options and inventory.
+ *
+ * Scoped by tenantId AND the id list together, so an id belonging to
+ * another tenant simply contributes no entry — the caller gets an empty
+ * timeline for it, indistinguishable from an order with no activity.
+ */
+export async function getOrderTimelinesForOrders(
+  tenantId: string,
+  orderIds: string[],
+): Promise<Map<string, OrderTimelineEntry[]>> {
+  const byOrder = new Map<string, OrderTimelineEntry[]>();
+  const ids = orderIds.filter((id) => id.trim().length > 0);
+  if (!tenantId.trim() || ids.length === 0) {
+    return byOrder;
+  }
+
+  const events = await prisma.orderEvent.findMany({
+    where: { tenantId, orderId: { in: ids } },
+    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    select: {
+      id: true,
+      orderId: true,
+      type: true,
+      previousValue: true,
+      newValue: true,
+      summary: true,
+      actorType: true,
+      createdAt: true,
+    },
+  });
+
+  for (const { orderId, ...entry } of events) {
+    const existing = byOrder.get(orderId);
+    if (existing) {
+      existing.push(entry);
+    } else {
+      byOrder.set(orderId, [entry]);
+    }
+  }
+  return byOrder;
+}
+
 /** Human label for an actor, for the admin timeline. */
 export function actorLabel(actorType: OrderEventActorType): string {
   switch (actorType) {
