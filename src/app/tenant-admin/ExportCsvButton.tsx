@@ -21,6 +21,14 @@ import { showToast } from "@/components/Toast";
  * is attacker-controlled from this component: `dataset` is a literal passed
  * by the server-rendered page, never user input.
  */
+/**
+ * How long the object URL is kept alive after the click that starts the
+ * download. One second is far longer than any browser needs to begin
+ * reading the blob, and short enough that the CSV is not held in memory
+ * in any meaningful way.
+ */
+const REVOKE_DELAY_MS = 1000;
+
 export function ExportCsvButton({
   dataset,
   label,
@@ -68,9 +76,17 @@ export function ExportCsvButton({
       document.body.appendChild(anchor);
       anchor.click();
       anchor.remove();
-      // Release immediately — the download has already been handed to the
-      // browser, and holding the object URL would keep the CSV in memory.
-      URL.revokeObjectURL(url);
+      // Revoked on a LATER task, never in this one. anchor.click() only
+      // queues the download; Chrome tolerates an immediate revoke, but
+      // Firefox and older Safari can still be resolving the blob URL when
+      // the current task ends, and revoking under them aborts the download
+      // silently — the worst failure mode, because the merchant sees a
+      // success toast and no file. Deferring costs nothing and is the
+      // documented way to do this.
+      //
+      // Not a leak: the timer always fires and revokes exactly once, so the
+      // blob is released whether or not this component is still mounted.
+      setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 
       showToast(`${label} exported.`, "success");
     } catch {

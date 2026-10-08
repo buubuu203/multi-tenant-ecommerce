@@ -284,7 +284,8 @@ export default async function CatalogPage({
           <h3 className="text-sm font-medium">Export Products (CSV)</h3>
           <p className="text-xs text-muted-foreground">
             One row per variant, including drafts and archived variants, with SKU, price, any
-            discount, and current stock. Opens in Excel with Vietnamese text intact.
+            discount, and current stock. Opens in Excel with Vietnamese text intact. Contains no
+            customer data.
           </p>
           <ExportCsvButton dataset="products" label="products" />
         </div>
