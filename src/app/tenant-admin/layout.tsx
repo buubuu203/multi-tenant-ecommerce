@@ -5,6 +5,8 @@ import { resolveBranding } from "../_storefront/resolve-branding";
 import { TenantTheme } from "@/components/TenantTheme";
 import { Toaster } from "@/components/Toast";
 import { AdminTabs } from "./AdminTabs";
+import { currentUser } from "@clerk/nextjs/server";
+import { AdminAccount } from "@/components/AdminAccount";
 
 // Phase 1 of the admin route split: this layout now owns the chrome
 // (theme, header, tab nav) that used to live inside the single giant
@@ -31,6 +33,8 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   }
 
   const db = getScopedDb(tenantId);
+  const user = await currentUser();
+  const email = user?.primaryEmailAddress?.emailAddress ?? "Email unavailable";
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
   const themeBranding = resolveBranding(tenant ?? { name: "Store" }, branding);
@@ -55,6 +59,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
               View storefront ↗
             </a>
           )}
+          <AdminAccount email={email} />
         </div>
 
         <AdminTabs />
