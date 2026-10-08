@@ -44,6 +44,7 @@ model Tenant {
   shippingMethods TenantShippingMethod[]
   banners         Banner[]
   discounts       Discount[]
+  orderEvents     OrderEvent[]
 
   @@map("tenants")
 }
@@ -536,6 +537,7 @@ model Order {
   tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   items    OrderItem[]
+  events   OrderEvent[]
   // Step 51: a Payment row now exists for EVERY order regardless of
   // paymentMethod (cod/bank_transfer_manual included) — see PaymentProviderType
   // below. Still deliberately a separate model/status axis from
@@ -740,4 +742,75 @@ model TenantShippingMethod {
 
   @@index([tenantId])
   @@map("tenant_shipping_methods")
+}
+
+// Order Audit History: an append-only operational timeline per order, for
+// merchants answering "what happened to this order, when, and who did it".
+//
+// Deliberately SEPARATE from PaymentEvent, which is not an audit log: that
+// table exists to make provider webhooks idempotent and replay-safe and
+// stores the raw provider payload. This one stores no provider payload, no
+// signature, no token, no session id and no account number — only the
+// operational transition and a safe summary.
+enum OrderEventType {
+  // The order was created by checkout.
+  order_created
+  // Order.status moved between pending/fulfilled/cancelled.
+  order_status_changed
+  // Payment.status changed because THIS application recorded it (a
+  // merchant confirming a manual bank transfer). Provider-driven changes
+  // are not written here; they already have PaymentEvent.
+  payment_status_changed
+  // A cancellation released this order's inventory reservation.
+  inventory_released
+}
+
+// Who caused the event. Only these three: there is no customer-facing
+// action that writes an event, and no other role exists in this system.
+enum OrderEventActorType {
+  system
+  tenant_admin
+  platform_admin
+}
+
+model OrderEvent {
+  id       String         @id @default(uuid())
+  tenantId String
+  orderId  String
+  type     OrderEventType
+
+  // Plain-text SNAPSHOTS of the transition, the same convention as
+  // OrderItem.price and Order.shippingMethodName: stored as strings rather
+  // than enum references so the recorded history survives unchanged even
+  // if the order, or the enum itself, later changes. Null where a
+  // transition has no meaningful before/after (order_created has no
+  // previous value).
+  previousValue String?
+  newValue      String?
+
+  // A short operational sentence shown in Tenant Admin. Composed
+  // server-side from the transition only — never from customer input, and
+  // never containing customer name, email, phone or address.
+  summary String
+
+  actorType OrderEventActorType
+  // The acting Clerk user id where one exists, which is the same
+  // identifier requirePlatformAdmin() already returns. Null for
+  // actorType=system (guest checkout has no signed-in actor). Never a
+  // token, a session id, or an email.
+  actorId String?
+
+  createdAt DateTime @default(now())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Composite FK to (id, tenantId), the same tenant-safe pattern Payment
+  // and Customer already use, so an event can never be attached to an
+  // order from another tenant. Cascade on delete so removing an order
+  // cannot leave orphan events behind.
+  order Order @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  // The timeline query is always (tenant, order, chronological).
+  @@index([tenantId, orderId, createdAt])
+  @@index([tenantId])
+  @@map("order_events")
 }
