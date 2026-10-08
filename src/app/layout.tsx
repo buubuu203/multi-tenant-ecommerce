@@ -1,17 +1,35 @@
 import type { Metadata } from 'next';
-import { Geist, Geist_Mono } from 'next/font/google';
+import { Be_Vietnam_Pro, Geist_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { getCurrentTenant } from './_storefront/get-current-tenant';
 import './globals.css';
 
-const geistSans = Geist({
-  variable: '--font-geist-sans',
-  subsets: ['latin'],
+// Be Vietnam Pro is the storefront and admin typeface: a Vietnamese-first
+// family, which matters here because every price is formatted in ₫ and
+// product, address and customer data is routinely Vietnamese. The
+// 'vietnamese' subset is what carries the stacked diacritics (ế, ữ, ộ) and
+// the ₫ sign (U+20AB); loading 'latin' alone renders those from a fallback
+// face and they visibly mismatch the rest of the text.
+//
+// Not a variable font on Google Fonts, so weights are explicit. These are
+// exactly the three the codebase uses — 400 body, 500 for the 130
+// font-medium call sites, 600 for the 27 font-semibold ones — rather than
+// the full 100-900 range, which would ship nine files to no purpose.
+const beVietnamPro = Be_Vietnam_Pro({
+  variable: '--font-sans-family',
+  subsets: ['latin', 'vietnamese'],
+  weight: ['400', '500', '600'],
+  display: 'swap',
 });
 
+// Monospace is retained deliberately and is NOT replaced: prices, order
+// ids, tenant slugs and the KPI figures are set in it so digits align in
+// columns and an id stays selectable as one unmistakable token. Those are
+// semantic uses of a monospace face, not a stylistic leftover.
 const geistMono = Geist_Mono({
-  variable: '--font-geist-mono',
+  variable: '--font-mono-family',
   subsets: ['latin'],
+  display: 'swap',
 });
 
 export async function generateMetadata(): Promise<Metadata> {
@@ -33,7 +51,10 @@ export async function generateMetadata(): Promise<Metadata> {
 export default function RootLayout({ children }: LayoutProps<'/'>) {
   return (
     <ClerkProvider signInUrl="/sign-in">
-      <html lang="en" className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}>
+      {/* lang="vi": the storefronts, their content and their currency are
+          Vietnamese. It drives correct hyphenation and font selection, and
+          tells a screen reader which language to pronounce. */}
+      <html lang="vi" className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}>
         <body className="min-h-full flex flex-col">{children}</body>
       </html>
     </ClerkProvider>
