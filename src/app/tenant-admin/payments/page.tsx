@@ -2,8 +2,15 @@ import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
 import { updateTenantPaymentMethodAction } from "../actions";
-import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
+import {
+  adminPageClassName,
+  adminPanelClassName,
+  adminPanelTitleClassName,
+  adminInputClassName,
+  adminLabelClassName,
+} from "../styles";
 import { AdminPageHeader } from "../AdminPageHeader";
+import { StatusBadge } from "../StatusBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -16,19 +23,29 @@ export default async function PaymentsPage() {
   const paymentMethodByMethod = new Map(tenantPaymentMethods.map((row) => [row.method, row]));
 
   return (
-    <section className={adminSectionClassName}>
+    <div className={adminPageClassName}>
       <AdminPageHeader
         title="Payments"
         description="Only enabled AND fully configured methods appear at checkout — a customer can never select a method you have not set up here, even if this toggle is on but the required fields below are empty."
       />
 
       {/* Cash on delivery — no configuration, just enable/disable. */}
-      <div className={adminCardClassName}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium">Cash on delivery</h3>
-          <span className="text-xs text-muted-foreground">
-            {paymentMethodByMethod.get("cod")?.enabled ? "Enabled" : "Disabled"}
-          </span>
+      <section aria-labelledby="pm-cod" className={adminPanelClassName}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <div className="flex flex-col gap-0.5">
+            <h3 id="pm-cod" className={adminPanelTitleClassName}>
+              Cash on delivery
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              No configuration needed — the customer pays the courier.
+            </p>
+          </div>
+          {/* Shared badge rather than a grey word, so a method's state is
+              as scannable here as a status is anywhere else in the admin. */}
+          <StatusBadge
+            status={paymentMethodByMethod.get("cod")?.enabled ? "Enabled" : "Disabled"}
+            tone={paymentMethodByMethod.get("cod")?.enabled ? "success" : "neutral"}
+          />
         </div>
         <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="Cash on delivery settings saved.">
           <input type="hidden" name="method" value="cod" />
@@ -42,21 +59,38 @@ export default async function PaymentsPage() {
             Enabled
           </label>
         </ActionForm>
-      </div>
+      </section>
 
       {/* Bank transfer — two possible providers behind the same
         customer-facing method; manual requires bank details, SePay VA
         requires a registered bank-account UUID (set up with SePay
         directly — that account linking happens outside this app). */}
-      <div className={adminCardClassName}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium">Bank transfer</h3>
-          <span className="text-xs text-muted-foreground">
-            {paymentMethodByMethod.get("bank_transfer")?.enabled ? "Enabled" : "Disabled"} ·{" "}
-            {paymentMethodByMethod.get("bank_transfer")?.provider === "bank_transfer_sepay_va"
-              ? "SePay virtual account"
-              : "Manual"}
-          </span>
+      <section aria-labelledby="pm-bank" className={adminPanelClassName}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <div className="flex flex-col gap-0.5">
+            <h3 id="pm-bank" className={adminPanelTitleClassName}>
+              Bank transfer
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              {paymentMethodByMethod.get("bank_transfer")?.provider === "bank_transfer_sepay_va"
+                ? "SePay virtual account — confirmed automatically by SePay's webhook."
+                : "Manual — you confirm each payment yourself from the order."}
+            </p>
+          </div>
+          <div className="flex flex-wrap items-center gap-1.5">
+            <StatusBadge
+              status={paymentMethodByMethod.get("bank_transfer")?.enabled ? "Enabled" : "Disabled"}
+              tone={paymentMethodByMethod.get("bank_transfer")?.enabled ? "success" : "neutral"}
+            />
+            <StatusBadge
+              status={
+                paymentMethodByMethod.get("bank_transfer")?.provider === "bank_transfer_sepay_va"
+                  ? "SePay"
+                  : "Manual"
+              }
+              tone="info"
+            />
+          </div>
         </div>
         <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="Bank transfer settings saved.">
           <input type="hidden" name="method" value="bank_transfer" />
@@ -146,17 +180,25 @@ export default async function PaymentsPage() {
             />
           </label>
         </ActionForm>
-      </div>
+      </section>
 
       {/* MoMo — platform-level credentials (env vars), no per-tenant
         config to enter; enabling it here just opts this tenant into
         the shared platform MoMo integration once it's configured. */}
-      <div className={adminCardClassName}>
-        <div className="flex items-center justify-between">
-          <h3 className="font-medium">MoMo</h3>
-          <span className="text-xs text-muted-foreground">
-            {paymentMethodByMethod.get("momo")?.enabled ? "Enabled" : "Disabled"}
-          </span>
+      <section aria-labelledby="pm-momo" className={adminPanelClassName}>
+        <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+          <div className="flex flex-col gap-0.5">
+            <h3 id="pm-momo" className={adminPanelTitleClassName}>
+              MoMo
+            </h3>
+            <p className="text-xs text-muted-foreground">
+              Uses this platform&apos;s shared MoMo credentials — there is nothing to enter here.
+            </p>
+          </div>
+          <StatusBadge
+            status={paymentMethodByMethod.get("momo")?.enabled ? "Enabled" : "Disabled"}
+            tone={paymentMethodByMethod.get("momo")?.enabled ? "success" : "neutral"}
+          />
         </div>
         <ActionForm action={updateTenantPaymentMethodAction} submitLabel="Save" successMessage="MoMo settings saved.">
           <input type="hidden" name="method" value="momo" />
@@ -170,7 +212,7 @@ export default async function PaymentsPage() {
             Enabled
           </label>
         </ActionForm>
-      </div>
-    </section>
+      </section>
+    </div>
   );
 }
