@@ -1,8 +1,9 @@
-"use client";
+'use client';
 
-import { useActionState, useEffect } from "react";
-import type { ActionResult } from "@/lib/action-result";
-import { showToast } from "./Toast";
+import { useActionState, useEffect } from 'react';
+import type { ActionResult } from '@/lib/action-result';
+import { showToast } from './Toast';
+import { callerOwnsFormLayout, mergeFormClassName } from './ActionForm';
 
 /**
  * ActionForm's sibling for actions that should not fire on a single
@@ -21,7 +22,7 @@ export function ConfirmActionForm<T>({
   submitLabel,
   confirmMessage,
   successMessage,
-  variant = "default",
+  variant = 'default',
   className,
 }: {
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
@@ -39,32 +40,37 @@ export function ConfirmActionForm<T>({
   confirmMessage: string | ((formData: FormData) => string);
   successMessage?: string;
   /** "danger" reads as destructive; "default" matches ActionForm's button. */
-  variant?: "default" | "danger";
+  variant?: 'default' | 'danger';
   className?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
   useEffect(() => {
     if (state?.success && successMessage) {
-      showToast(successMessage, "success");
+      showToast(successMessage, 'success');
     }
   }, [state, successMessage]);
 
   const buttonClassName =
-    variant === "danger"
-      ? "rounded-md border border-red-300 px-3.5 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950"
-      : "rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground";
+    variant === 'danger'
+      ? 'rounded-md border border-red-300 px-3.5 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950'
+      : 'rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground';
+
+  // Same layout contract as ActionForm (shared helpers, not a second
+  // copy of the rule), so a destructive form spaces its children exactly
+  // like the form it sits beneath.
+  const ownsLayout = !callerOwnsFormLayout(className);
 
   return (
     <form
       action={formAction}
-      className={className}
+      className={mergeFormClassName(className)}
       aria-busy={pending}
       onSubmit={(e) => {
         // Read the form's current values before confirming, so a
         // function message sees exactly what is about to be submitted.
         const message =
-          typeof confirmMessage === "function"
+          typeof confirmMessage === 'function'
             ? confirmMessage(new FormData(e.currentTarget))
             : confirmMessage;
         if (!window.confirm(message)) {
@@ -73,14 +79,16 @@ export function ConfirmActionForm<T>({
       }}
     >
       {children}
-      <button type="submit" disabled={pending} className={buttonClassName}>
-        {pending ? "Working…" : submitLabel}
-      </button>
-      {state && !state.success && (
-        <p role="alert" className="text-sm text-red-600">
-          {state.error}
-        </p>
-      )}
+      <div className={ownsLayout ? 'flex flex-wrap items-center gap-3' : 'contents'}>
+        <button type="submit" disabled={pending} className={buttonClassName}>
+          {pending ? 'Working…' : submitLabel}
+        </button>
+        {state && !state.success && (
+          <p role="alert" className="text-sm text-red-600">
+            {state.error}
+          </p>
+        )}
+      </div>
     </form>
   );
 }

@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useActionState, useEffect } from "react";
-import type { ActionResult } from "@/lib/action-result";
-import { showToast } from "./Toast";
+import { useActionState, useEffect } from 'react';
+import type { ActionResult } from '@/lib/action-result';
+import { showToast } from './Toast';
 
 // Generic form + Server Action wrapper shared by Platform Admin and Tenant
 // Admin — contains no area-specific behavior, just useActionState wiring,
@@ -15,6 +15,34 @@ import { showToast } from "./Toast";
 // Omitting `successMessage` keeps a form silent on success, same as
 // before this change — no existing caller's behavior changes unless it
 // opts in.
+/**
+ * The default vertical rhythm for a form that does not bring its own
+ * layout. Children previously rendered as bare siblings of the submit
+ * button, so a form with no `className` had NO spacing at all between
+ * its labels, fields, checkboxes and that button — which is what made
+ * Payments and the shipping-method forms read as one dense block.
+ */
+export const actionFormLayoutClassName = 'flex flex-col gap-3';
+
+/**
+ * Whether the caller has already taken responsibility for laying the
+ * form out. Several callers deliberately use a ROW (`flex items-end
+ * gap-2` for an inline stock control, `inline-flex` inside a table
+ * cell); adding `flex flex-col` to those would rotate them. So the base
+ * layout is applied only when the caller names no display utility of its
+ * own, and the caller's classes are always preserved either way.
+ */
+export function callerOwnsFormLayout(className?: string): boolean {
+  return /\b(flex|inline-flex|grid|inline-grid|block|inline-block|contents)\b/.test(
+    className ?? '',
+  );
+}
+
+export function mergeFormClassName(className?: string): string {
+  if (callerOwnsFormLayout(className)) return className ?? '';
+  return [actionFormLayoutClassName, className].filter(Boolean).join(' ');
+}
+
 export function ActionForm<T>({
   action,
   children,
@@ -39,13 +67,17 @@ export function ActionForm<T>({
 
   useEffect(() => {
     if (state?.success && successMessage) {
-      showToast(successMessage, "success");
+      showToast(successMessage, 'success');
     }
   }, [state, successMessage]);
 
-  return (
-    <form action={formAction} className={className} aria-busy={pending}>
-      {children}
+  // When ActionForm owns the layout it also owns the separation before the
+  // submit button: a rule and real space, so Save never sits flush against
+  // the last field. Row-layout callers keep the previous flat structure.
+  const ownsLayout = !callerOwnsFormLayout(className);
+
+  const submit = (
+    <>
       <button
         type="submit"
         // `pending` alone already prevents a second submission while one
@@ -55,12 +87,25 @@ export function ActionForm<T>({
         disabled={pending || disabled}
         className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
       >
-        {pending ? "Working…" : submitLabel}
+        {pending ? 'Working…' : submitLabel}
       </button>
       {state && !state.success && (
         <p role="alert" className="text-sm text-red-600">
           {state.error}
         </p>
+      )}
+    </>
+  );
+
+  return (
+    <form action={formAction} className={mergeFormClassName(className)} aria-busy={pending}>
+      {children}
+      {ownsLayout ? (
+        <div className="flex flex-wrap items-center gap-3 border-t border-border pt-3">
+          {submit}
+        </div>
+      ) : (
+        submit
       )}
     </form>
   );
