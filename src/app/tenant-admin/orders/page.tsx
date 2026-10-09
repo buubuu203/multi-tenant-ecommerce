@@ -14,7 +14,9 @@ import { getOrderTimelinesForOrders } from "@/lib/order-events";
 import { OrderTimeline } from "../OrderTimeline";
 import { ExportCsvButton } from "../ExportCsvButton";
 import {
-  adminSectionClassName,
+  adminPageClassName,
+  adminPanelClassName,
+  adminPanelTitleClassName,
   adminInputClassName,
   adminButtonSecondaryClassName,
   adminEyebrowClassName,
@@ -71,7 +73,7 @@ export default async function OrdersPage({
   );
 
   return (
-    <section className={adminSectionClassName}>
+    <div className={adminPageClassName}>
       <AdminPageHeader
         title="Orders"
         description="Every order placed in this store. Select orders to update several at once."
@@ -84,8 +86,14 @@ export default async function OrdersPage({
       />
 
       {/* Search + status filter, plain GET form — no client JS, no state to
-        lose on refresh, shareable/bookmarkable URL. */}
-      <form className="flex flex-wrap items-end gap-2" method="get">
+        lose on refresh, shareable/bookmarkable URL. Given its own toolbar
+        surface so "narrow the list" reads as a distinct step from "act on
+        the list" below it. */}
+      <form
+        className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface p-3"
+        method="get"
+        role="search"
+      >
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs sm:flex-none">
           Search
           <input
@@ -117,13 +125,23 @@ export default async function OrdersPage({
           than hidden behind a disclosure: this is the moment the merchant
           decides to take customer data out of the app, and a warning you
           have to open is a warning you will not read. */}
-      <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
-        <p className="text-xs text-muted-foreground">
-          <strong className="font-medium text-foreground">Contains customer personal data</strong>{" "}
-          — name, email, phone and shipping address. A downloaded file is no longer protected by
-          your store login, so store and share it carefully, and delete copies you no longer need.
+      <div className={adminPanelClassName}>
+        <div className="flex flex-col gap-1">
+          <h3 className={adminPanelTitleClassName}>Export orders</h3>
+          <p className="text-xs text-muted-foreground">
+            Every order in this store, not just the current page or filter. Opens in Excel with
+            Vietnamese text intact.
+          </p>
+        </div>
+        {/* The warning is a bordered notice, not grey body text: this is
+            the moment customer data leaves the app's access controls, and
+            it should not be the quietest thing on the screen. */}
+        <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+          <strong className="font-semibold">Contains customer personal data</strong> — name, email,
+          phone and shipping address. A downloaded file is no longer protected by your store login,
+          so store and share it carefully, and delete copies you no longer need.
         </p>
-        <div className="shrink-0">
+        <div>
           <ExportCsvButton dataset="orders" label="orders" />
         </div>
       </div>
@@ -378,6 +396,6 @@ export default async function OrdersPage({
         pageSize={PAGE_SIZE}
         totalCount={totalCount}
       />
-    </section>
+    </div>
   );
 }
