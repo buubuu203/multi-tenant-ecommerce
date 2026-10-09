@@ -1,17 +1,24 @@
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getScopedDb } from "@/lib/db/tenant-db";
-import { ActionForm } from "@/components/ActionForm";
-import { ConfirmActionForm } from "@/components/ConfirmActionForm";
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getScopedDb } from '@/lib/db/tenant-db';
+import { ActionForm } from '@/components/ActionForm';
+import { ConfirmActionForm } from '@/components/ConfirmActionForm';
 import {
   createShippingMethodAction,
   updateShippingMethodAction,
   deleteShippingMethodAction,
-} from "../actions";
-import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
-import { AdminPageHeader } from "../AdminPageHeader";
-import { StatusBadge } from "../StatusBadge";
+} from '../actions';
+import {
+  adminPageClassName,
+  adminPanelClassName,
+  adminPanelTitleClassName,
+  adminInputClassName,
+  adminLabelClassName,
+  adminRequiredClassName,
+} from '../styles';
+import { AdminPageHeader } from '../AdminPageHeader';
+import { StatusBadge } from '../StatusBadge';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 export default async function ShippingPage() {
   const { tenantId } = await requireTenantAdmin();
@@ -21,46 +28,59 @@ export default async function ShippingPage() {
   // than one row per fixed method like TenantPaymentMethod).
   const shippingMethods = await db.tenantShippingMethod.findMany({
     where: { tenantId },
-    orderBy: { sortOrder: "asc" },
+    orderBy: { sortOrder: 'asc' },
   });
 
   return (
-    <section className={adminSectionClassName}>
+    <div className={adminPageClassName}>
       <AdminPageHeader
         title="Shipping"
         description="Only enabled methods appear at checkout. If no method is enabled, checkout is blocked entirely — the same rule as payment methods. At most one method can be the default, pre-selected at checkout."
       />
 
       {shippingMethods.length === 0 && (
-        <p className="text-xs text-red-600">
-          No shipping methods yet — checkout is currently blocked for this store.
+        // role="alert": this is not decorative copy, it is the store
+        // telling the merchant it cannot take orders right now.
+        <p
+          role="alert"
+          className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
+        >
+          <strong className="font-semibold">Checkout is blocked.</strong> This store has no shipping
+          method, and checkout requires at least one enabled method. Add one below.
         </p>
       )}
 
       <div className="flex flex-col gap-3">
         {shippingMethods.map((method) => (
-          <div key={method.id} className={adminCardClassName}>
-            <div className="flex items-center justify-between">
-              <h3 className="font-medium">{method.name}</h3>
+          <section key={method.id} className={adminPanelClassName}>
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-border pb-3">
+              <h3 className={adminPanelTitleClassName}>{method.name}</h3>
               <span className="flex flex-wrap items-center gap-1.5">
                 {/* Shared badges rather than prose, so a method's state is
                     scannable and reads the same as every other status in
                     the admin. Text labels, never colour alone. */}
                 <StatusBadge
-                  status={method.enabled ? "Enabled" : "Disabled"}
-                  tone={method.enabled ? "success" : "neutral"}
+                  status={method.enabled ? 'Enabled' : 'Disabled'}
+                  tone={method.enabled ? 'success' : 'neutral'}
                 />
                 {method.isDefault && <StatusBadge status="Default" tone="info" />}
               </span>
             </div>
-            <ActionForm action={updateShippingMethodAction} submitLabel="Save" successMessage="Shipping method saved.">
+            <ActionForm
+              action={updateShippingMethodAction}
+              submitLabel="Save"
+              successMessage="Shipping method saved."
+            >
               <input type="hidden" name="methodId" value={method.id} />
               <label className={adminLabelClassName}>
                 Name
                 <input name="name" defaultValue={method.name} className={adminInputClassName} />
               </label>
               <label className={adminLabelClassName}>
-                Amount (VND, 0 = free)
+                <span className="flex flex-wrap items-baseline gap-1.5">
+                  Amount
+                  <span className={adminRequiredClassName}>in VND — enter 0 for free shipping</span>
+                </span>
                 <input
                   name="amount"
                   inputMode="numeric"
@@ -72,52 +92,78 @@ export default async function ShippingPage() {
                 <input type="checkbox" name="enabled" defaultChecked={method.enabled} />
                 Enabled
               </label>
-              <label className="flex items-center gap-2 text-xs">
-                <input type="checkbox" name="isDefault" defaultChecked={method.isDefault} />
-                Default method
+              <label className="flex items-start gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  name="isDefault"
+                  defaultChecked={method.isDefault}
+                  className="mt-0.5"
+                />
+                <span className="flex flex-col gap-0.5">
+                  Default method
+                  {/* The one-default rule stated where it applies, rather
+                      than only in the page description: setting this
+                      unsets whichever method currently holds it. */}
+                  <span className="text-muted-foreground">
+                    Pre-selected at checkout. Only one method can be the default — choosing this one
+                    removes it from the current default.
+                  </span>
+                </span>
               </label>
             </ActionForm>
-            <ConfirmActionForm
-              action={deleteShippingMethodAction}
-              submitLabel="Delete"
-              successMessage="Shipping method deleted."
-              confirmMessage={`Delete “${method.name}”? Customers will no longer be able to choose it at checkout. Orders already placed with it keep their own snapshot and are unaffected.`}
-              variant="danger"
-            >
-              <input type="hidden" name="methodId" value={method.id} />
-            </ConfirmActionForm>
-          </div>
+            {/* Delete is separated by a rule and sits alone, so it is never
+                adjacent to Save in the scan path. */}
+            <div className="border-t border-border pt-3">
+              <ConfirmActionForm
+                action={deleteShippingMethodAction}
+                submitLabel="Delete"
+                successMessage="Shipping method deleted."
+                confirmMessage={`Delete “${method.name}”? Customers will no longer be able to choose it at checkout. Orders already placed with it keep their own snapshot and are unaffected.`}
+                variant="danger"
+              >
+                <input type="hidden" name="methodId" value={method.id} />
+              </ConfirmActionForm>
+            </div>
+          </section>
         ))}
       </div>
 
-      <ActionForm
-        action={createShippingMethodAction}
-        submitLabel="Add shipping method"
-        successMessage="Shipping method added."
-        className="flex max-w-md flex-col gap-3"
-      >
-        <label className={adminLabelClassName}>
-          Name
-          <input name="name" placeholder="Standard" className={adminInputClassName} />
-        </label>
-        <label className={adminLabelClassName}>
-          Amount (VND, 0 = free)
-          <input
-            name="amount"
-            inputMode="numeric"
-            placeholder="20000"
-            className={adminInputClassName}
-          />
-        </label>
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" name="enabled" />
-          Enabled
-        </label>
-        <label className="flex items-center gap-2 text-xs">
-          <input type="checkbox" name="isDefault" />
-          Default method
-        </label>
-      </ActionForm>
-    </section>
+      <section aria-labelledby="add-shipping" className={adminPanelClassName}>
+        <h3 id="add-shipping" className={adminPanelTitleClassName}>
+          Add a shipping method
+        </h3>
+        <ActionForm
+          action={createShippingMethodAction}
+          submitLabel="Add shipping method"
+          successMessage="Shipping method added."
+          className="flex max-w-md flex-col gap-3"
+        >
+          <label className={adminLabelClassName}>
+            Name
+            <input name="name" placeholder="Standard" className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            <span className="flex flex-wrap items-baseline gap-1.5">
+              Amount
+              <span className={adminRequiredClassName}>in VND — enter 0 for free shipping</span>
+            </span>
+            <input
+              name="amount"
+              inputMode="numeric"
+              placeholder="20000"
+              className={adminInputClassName}
+            />
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="enabled" />
+            Enabled
+          </label>
+          <label className="flex items-center gap-2 text-xs">
+            <input type="checkbox" name="isDefault" />
+            Default method
+          </label>
+        </ActionForm>
+      </section>
+    </div>
   );
 }
