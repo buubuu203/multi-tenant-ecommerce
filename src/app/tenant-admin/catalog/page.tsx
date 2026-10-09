@@ -20,6 +20,8 @@ import {
 import { listDiscountsByProduct } from "@/lib/discount-mutations";
 import { ImportProductsForm } from "../ImportProductsForm";
 import { ExportCsvButton } from "../ExportCsvButton";
+import { AdminPageHeader } from "../AdminPageHeader";
+import { StatusBadge } from "../StatusBadge";
 import { ProductMediaGallery } from "../ProductMediaGallery";
 import { DescriptionEditor } from "../DescriptionEditor";
 import { Pagination } from "../Pagination";
@@ -29,6 +31,8 @@ import {
   adminInputClassName,
   adminLabelClassName,
   adminSectionClassName,
+  adminEyebrowClassName,
+  adminButtonPrimaryClassName,
   productInputClassName,
   productLabelClassName,
   productFieldGroupClassName,
@@ -196,7 +200,7 @@ export default async function CatalogPage({
     <>
       <section className={adminSectionClassName}>
         <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium tracking-tight">Variant Options</h2>
+          <h2 className="text-lg font-medium tracking-tight">Variant options</h2>
           <p className="text-xs text-muted-foreground">
             Reusable option types (e.g. Color, Size) shared across every product for this store.
           </p>
@@ -269,46 +273,62 @@ export default async function CatalogPage({
       </section>
 
       <section className={adminSectionClassName}>
-        <h2 className="text-lg font-medium tracking-tight">Products</h2>
+        <AdminPageHeader
+          title="Products"
+          description="Everything you sell. Open a product to edit its details, variants, stock, media and discount."
+          meta={
+            <span className={adminEyebrowClassName}>
+              {productCount} {productCount === 1 ? "product" : "products"}
+            </span>
+          }
+          actions={
+            <Link href="/tenant-admin/products/new" className={adminButtonPrimaryClassName}>
+              Add a product
+            </Link>
+          }
+        />
 
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
-          <h3 className="text-sm font-medium">Import Products (CSV)</h3>
-          <p className="text-xs text-muted-foreground">
-            CSV import supports: name, price, status (optional, defaults to draft). Max 500 rows,
-            1 MB. Media can be added after import from the product editor below.
-          </p>
-          <ImportProductsForm action={importProductsAction} />
+        {/* Import and export are related data chores, so they sit together
+            in one block rather than as two competing full-width cards —
+            and below the catalogue actions, because neither is the thing a
+            merchant came here to do. */}
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
+            <h3 className="text-sm font-medium">Import products (CSV)</h3>
+            <p className="text-xs text-muted-foreground">
+              Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB. Media
+              can be added afterwards from the product editor.
+            </p>
+            <ImportProductsForm action={importProductsAction} />
+          </div>
+
+          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
+            <h3 className="text-sm font-medium">Export products (CSV)</h3>
+            <p className="text-xs text-muted-foreground">
+              One row per variant, including drafts and archived variants, with SKU, price, any
+              discount and current stock. Opens in Excel with Vietnamese text intact. Contains no
+              customer data.
+            </p>
+            <div className="mt-auto">
+              <ExportCsvButton dataset="products" label="products" />
+            </div>
+          </div>
         </div>
 
-        <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-4">
-          <h3 className="text-sm font-medium">Export Products (CSV)</h3>
-          <p className="text-xs text-muted-foreground">
-            One row per variant, including drafts and archived variants, with SKU, price, any
-            discount, and current stock. Opens in Excel with Vietnamese text intact. Contains no
-            customer data.
-          </p>
-          <ExportCsvButton dataset="products" label="products" />
-        </div>
-
-        <div className="flex flex-wrap items-end justify-between gap-3">
-          <Link
-            href="/tenant-admin/products/new"
-            className="w-fit rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
-          >
-            + Add a product
-          </Link>
-
-          {/* Phase 2: name search + status filter, plain GET form — no
-            client JS, no state to lose on refresh, shareable URL. */}
-          <form className="flex flex-wrap items-end gap-2" method="get">
-            <label className="flex flex-col gap-1 text-xs">
+        <div className="flex flex-wrap items-end gap-3">
+          {/* Name search + status filter, plain GET form — no client JS, no
+            state to lose on refresh, shareable URL. "Add a product" used to
+            share this row; it is now the page header's primary action, so
+            there is exactly one of it. */}
+          <form className="flex w-full flex-wrap items-end gap-2" method="get">
+            <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs sm:flex-none">
               Search
               <input
                 type="text"
                 name="q"
                 defaultValue={q}
                 placeholder="Product name"
-                className={`w-56 ${adminInputClassName}`}
+                className={`w-full sm:w-64 ${adminInputClassName}`}
               />
             </label>
             <label className="flex flex-col gap-1 text-xs">
@@ -331,39 +351,12 @@ export default async function CatalogPage({
           </form>
         </div>
 
-        <div className="overflow-x-auto rounded-lg border border-border">
-          <table className="w-full min-w-[620px] text-left text-sm">
-            <thead className="bg-surface-muted text-xs uppercase tracking-wide text-muted-foreground">
-              <tr>
-                <th className="px-3 py-2 font-medium">Product</th>
-                <th className="px-3 py-2 font-medium">Status</th>
-                <th className="px-3 py-2 font-medium">Variants</th>
-                <th className="px-3 py-2 font-medium">Price</th>
-                <th className="px-3 py-2 font-medium">Editor</th>
-              </tr>
-            </thead>
-            <tbody>
-              {products.map((product) => {
-                const activeVariants = product.variants.filter((v) => v.status !== "archived");
-                const simpleVariant =
-                  activeVariants.length === 1 && activeVariants[0].combinationKey === ""
-                    ? activeVariants[0]
-                    : null;
-                return (
-                  <tr key={product.id} className="border-t border-border">
-                    <td className="px-3 py-2 font-medium">{product.name}</td>
-                    <td className="px-3 py-2 capitalize">{product.status}</td>
-                    <td className="px-3 py-2">{activeVariants.length}</td>
-                    <td className="px-3 py-2 money">
-                      {simpleVariant ? formatVnd(simpleVariant.price) : "Multiple"}
-                    </td>
-                    <td className="px-3 py-2 text-muted-foreground">Open below</td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        {/* The products table that used to sit here is gone. Its five
+            columns — name, status, variant count, price, and an "Open
+            below" cell that was not a link — were all repeated by the
+            editor disclosures underneath, so every product was rendered
+            twice and the table needed a 620px min-width to do it. The
+            disclosure summary now carries that same information. */}
 
         <Pagination
           basePath="/tenant-admin/catalog"
@@ -373,7 +366,7 @@ export default async function CatalogPage({
           totalCount={productCount}
         />
 
-        <h3 className="text-sm font-medium text-muted-foreground">Product editors</h3>
+        <h3 className="sr-only">Product list</h3>
         <div className="flex flex-col gap-3">
           {products.map((product) => {
             const activeVariants = product.variants.filter((v) => v.status !== "archived");
@@ -409,13 +402,18 @@ export default async function CatalogPage({
                       <span className="text-xs text-muted-foreground">—</span>
                     )}
                   </span>
-                  <span className="min-w-0 flex-1 truncate font-medium">{product.name}</span>
-                  <span className="money text-xs whitespace-nowrap text-muted-foreground">
+                  <span className="flex min-w-0 flex-1 flex-col gap-0.5">
+                    <span className="truncate font-medium">{product.name}</span>
+                    <span className="text-xs text-muted-foreground">
+                      {activeVariants.length} variant{activeVariants.length === 1 ? "" : "s"}
+                    </span>
+                  </span>
+                  <span className="money text-sm font-medium whitespace-nowrap">
                     {summaryPrice}
                   </span>
-                  <span className="rounded-full border border-border px-2 py-0.5 text-xs capitalize">
-                    {product.status}
-                  </span>
+                  {/* Shared badge, so a draft product reads the same here as
+                      everywhere else in the admin. */}
+                  <StatusBadge status={product.status} />
                   <span className="text-muted-foreground transition-transform group-open:rotate-90">
                     ›
                   </span>
@@ -733,7 +731,11 @@ export default async function CatalogPage({
             );
           })}
           {products.length === 0 && (
-            <p className="text-sm text-muted-foreground">No products yet.</p>
+            <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+              {q || status
+                ? "No products match these filters."
+                : "No products yet. Add one above, or import a CSV to get started."}
+            </p>
           )}
         </div>
       </section>
