@@ -1,8 +1,8 @@
-import Link from "next/link";
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getScopedDb } from "@/lib/db/tenant-db";
-import { ActionForm } from "@/components/ActionForm";
-import { ConfirmActionForm } from "@/components/ConfirmActionForm";
+import Link from 'next/link';
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getScopedDb } from '@/lib/db/tenant-db';
+import { ActionForm } from '@/components/ActionForm';
+import { ConfirmActionForm } from '@/components/ConfirmActionForm';
 import {
   updateProductAction,
   importProductsAction,
@@ -16,30 +16,34 @@ import {
   adjustInventoryOnHandAction,
   upsertProductDiscountAction,
   deleteProductDiscountAction,
-} from "../actions";
-import { listDiscountsByProduct } from "@/lib/discount-mutations";
-import { ImportProductsForm } from "../ImportProductsForm";
-import { ExportCsvButton } from "../ExportCsvButton";
-import { AdminPageHeader } from "../AdminPageHeader";
-import { StatusBadge } from "../StatusBadge";
-import { ProductMediaGallery } from "../ProductMediaGallery";
-import { DescriptionEditor } from "../DescriptionEditor";
-import { Pagination } from "../Pagination";
-import { PRODUCT_STATUSES } from "../product-status";
-import { formatVnd } from "../format";
+} from '../actions';
+import { listDiscountsByProduct } from '@/lib/discount-mutations';
+import { ImportProductsForm } from '../ImportProductsForm';
+import { ExportCsvButton } from '../ExportCsvButton';
+import { AdminPageHeader } from '../AdminPageHeader';
+import { StatusBadge } from '../StatusBadge';
+import { ProductMediaGallery } from '../ProductMediaGallery';
+import { DescriptionEditor } from '../DescriptionEditor';
+import { Pagination } from '../Pagination';
+import { PRODUCT_STATUSES } from '../product-status';
+import { formatVnd } from '../format';
+import { LOW_STOCK_THRESHOLD } from '@/lib/inventory-availability';
 import {
   adminInputClassName,
   adminLabelClassName,
-  adminSectionClassName,
+  adminPageClassName,
+  adminPanelClassName,
+  adminPanelTitleClassName,
+  adminSubtleClassName,
   adminEyebrowClassName,
   adminButtonPrimaryClassName,
   productInputClassName,
   productLabelClassName,
   productFieldGroupClassName,
   productSectionHeadingClassName,
-} from "../styles";
+} from '../styles';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
 
@@ -51,8 +55,8 @@ const PAGE_SIZE = 20;
 // that input requires "YYYY-MM-DDTHH:mm" in LOCAL time, not toISOString()
 // (which is UTC and includes seconds/milliseconds/Z).
 function toDatetimeLocalValue(date: Date | null | undefined): string {
-  if (!date) return "";
-  const pad = (n: number) => String(n).padStart(2, "0");
+  if (!date) return '';
+  const pad = (n: number) => String(n).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }
 
@@ -62,16 +66,16 @@ function formatCombination(
   valueLabelById: Map<string, string>,
 ): string {
   if (variant.optionValues.length === 0) {
-    return "(no options)";
+    return '(no options)';
   }
   return variant.optionValues
     .map((ov) => ({
-      optionName: optionNameById.get(ov.variantOptionId) ?? "?",
-      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? "?",
+      optionName: optionNameById.get(ov.variantOptionId) ?? '?',
+      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? '?',
     }))
     .sort((a, b) => a.optionName.localeCompare(b.optionName))
     .map((pair) => `${pair.optionName}: ${pair.valueLabel}`)
-    .join(" / ");
+    .join(' / ');
 }
 
 // Step 38: renders the on-hand/reserved/available display plus the
@@ -98,8 +102,17 @@ function StockControl({
       className="flex flex-wrap items-end gap-2"
     >
       <input type="hidden" name="productVariantId" value={productVariantId} />
-      <span className="pb-1.5 text-xs text-muted-foreground">
+      <span className="flex flex-wrap items-center gap-1.5 pb-1.5 text-xs text-muted-foreground">
         On hand: {inventory.onHand} · Reserved: {inventory.reserved} · Available: {available}
+        {/* The stock state said in words as well as digits: a merchant
+            scanning for trouble should not have to compare each number
+            against a threshold they are expected to remember, and the
+            signal has to survive greyscale. */}
+        {available <= 0 ? (
+          <StatusBadge status="Out of stock" tone="danger" />
+        ) : available <= LOW_STOCK_THRESHOLD ? (
+          <StatusBadge status="Low stock" tone="warning" />
+        ) : null}
       </span>
       <label className={adminLabelClassName}>
         Adjust by
@@ -123,8 +136,8 @@ export default async function CatalogPage({
   const db = getScopedDb(tenantId);
 
   const params = await searchParams;
-  const q = typeof params.q === "string" ? params.q : "";
-  const status = typeof params.status === "string" ? params.status : "";
+  const q = typeof params.q === 'string' ? params.q : '';
+  const status = typeof params.status === 'string' ? params.status : '';
   const page = Number(params.page) > 0 ? Math.floor(Number(params.page)) : 1;
 
   // Phase 2 (Catalog at scale): name search + status filter + pagination,
@@ -132,7 +145,7 @@ export default async function CatalogPage({
   // page-load regardless of how many products a tenant has in total.
   const productWhere = {
     tenantId,
-    ...(q ? { name: { contains: q, mode: "insensitive" as const } } : {}),
+    ...(q ? { name: { contains: q, mode: 'insensitive' as const } } : {}),
     ...(status && PRODUCT_STATUSES.includes(status as (typeof PRODUCT_STATUSES)[number])
       ? { status: status as (typeof PRODUCT_STATUSES)[number] }
       : {}),
@@ -141,12 +154,12 @@ export default async function CatalogPage({
   const [products, productCount] = await Promise.all([
     db.product.findMany({
       where: productWhere,
-      orderBy: { createdAt: "asc" },
+      orderBy: { createdAt: 'asc' },
       skip: (page - 1) * PAGE_SIZE,
       take: PAGE_SIZE,
       include: {
         variants: { include: { optionValues: true } },
-        media: { orderBy: { sortOrder: "asc" } },
+        media: { orderBy: { sortOrder: 'asc' } },
       },
     }),
     db.product.count({ where: productWhere }),
@@ -159,11 +172,11 @@ export default async function CatalogPage({
   // directly.
   const variantOptions = await db.variantOption.findMany({
     where: { tenantId },
-    orderBy: { name: "asc" },
+    orderBy: { name: 'asc' },
   });
   const variantOptionValues = await db.variantOptionValue.findMany({
     where: { tenantId },
-    orderBy: { value: "asc" },
+    orderBy: { value: 'asc' },
   });
   const allProductOptions = await db.productOption.findMany({ where: { tenantId } });
   // Product Discount (V1): fetched once for the current page's products,
@@ -188,97 +201,26 @@ export default async function CatalogPage({
       po,
     ]);
   }
-  const archivedVariantsByProduct = new Map<string, (typeof products)[number]["variants"]>();
+  const archivedVariantsByProduct = new Map<string, (typeof products)[number]['variants']>();
   for (const product of products) {
-    const archived = product.variants.filter((v) => v.status === "archived");
+    const archived = product.variants.filter((v) => v.status === 'archived');
     if (archived.length > 0) {
       archivedVariantsByProduct.set(product.id, archived);
     }
   }
 
   return (
-    <>
-      <section className={adminSectionClassName}>
-        <div className="flex flex-col gap-1">
-          <h2 className="text-lg font-medium tracking-tight">Variant options</h2>
-          <p className="text-xs text-muted-foreground">
-            Reusable option types (e.g. Color, Size) shared across every product for this store.
-          </p>
-        </div>
-
-        <ActionForm
-          action={createVariantOptionAction}
-          successMessage="Option added."
-          submitLabel="Add option"
-          className="flex max-w-md flex-col gap-3"
-        >
-          <label className={adminLabelClassName}>
-            Option name
-            <input name="name" placeholder="Color" className={adminInputClassName} />
-          </label>
-        </ActionForm>
-
-        <div className="flex flex-col gap-3">
-          {variantOptions.map((option) => {
-            const values = valuesByOption.get(option.id) ?? [];
-            return (
-              <div key={option.id} className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted p-3 text-sm">
-                <h3 className="font-medium">{option.name}</h3>
-                <div className="flex flex-col gap-1">
-                  {values.map((value) => (
-                    <div
-                      key={value.id}
-                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
-                    >
-                      <span>{value.value}</span>
-                      <ConfirmActionForm
-                        action={deleteVariantOptionValueAction}
-                        submitLabel="Delete"
-                        successMessage="Option value deleted."
-                        confirmMessage="Delete this option value? Any product variant built from it is removed too. This cannot be undone."
-                        variant="danger"
-                      >
-                        <input type="hidden" name="variantOptionValueId" value={value.id} />
-                      </ConfirmActionForm>
-                    </div>
-                  ))}
-                  {values.length === 0 && (
-                    <p className="text-xs text-muted-foreground">No values yet.</p>
-                  )}
-                </div>
-                {values.length > 0 && (
-                  <p className="text-xs text-amber-700 dark:text-amber-500">
-                    Deleting a value also removes it from any product variants that used it.
-                  </p>
-                )}
-                <ActionForm
-                  action={createVariantOptionValueAction}
-                  successMessage="Value added."
-                  submitLabel="Add value"
-                  className="flex items-end gap-2"
-                >
-                  <input type="hidden" name="variantOptionId" value={option.id} />
-                  <label className={adminLabelClassName}>
-                    Value
-                    <input name="value" placeholder="White" className={adminInputClassName} />
-                  </label>
-                </ActionForm>
-              </div>
-            );
-          })}
-          {variantOptions.length === 0 && (
-            <p className="text-sm text-muted-foreground">No variant options yet.</p>
-          )}
-        </div>
-      </section>
-
-      <section className={adminSectionClassName}>
+    <div className={adminPageClassName}>
+      {/* Products sit on the page canvas, not inside an outer page card:
+          each product disclosure is already its own surface, and wrapping
+          them in a second card flattened the whole screen into one slab. */}
+      <section className="flex flex-col gap-4">
         <AdminPageHeader
           title="Products"
           description="Everything you sell. Open a product to edit its details, variants, stock, media and discount."
           meta={
             <span className={adminEyebrowClassName}>
-              {productCount} {productCount === 1 ? "product" : "products"}
+              {productCount} {productCount === 1 ? 'product' : 'products'}
             </span>
           }
           actions={
@@ -292,28 +234,33 @@ export default async function CatalogPage({
             in one block rather than as two competing full-width cards —
             and below the catalogue actions, because neither is the thing a
             merchant came here to do. */}
-        <div className="grid gap-3 sm:grid-cols-2">
-          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
-            <h3 className="text-sm font-medium">Import products (CSV)</h3>
-            <p className="text-xs text-muted-foreground">
-              Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB. Media
-              can be added afterwards from the product editor.
-            </p>
-            <ImportProductsForm action={importProductsAction} />
-          </div>
+        <details className="rounded-md border border-border bg-surface-muted">
+          <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium marker:content-none">
+            CSV import and export
+          </summary>
+          <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+              <h3 className="text-sm font-medium">Import products (CSV)</h3>
+              <p className="text-xs text-muted-foreground">
+                Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
+                Media can be added afterwards from the product editor.
+              </p>
+              <ImportProductsForm action={importProductsAction} />
+            </div>
 
-          <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface-muted p-3">
-            <h3 className="text-sm font-medium">Export products (CSV)</h3>
-            <p className="text-xs text-muted-foreground">
-              One row per variant, including drafts and archived variants, with SKU, price, any
-              discount and current stock. Opens in Excel with Vietnamese text intact. Contains no
-              customer data.
-            </p>
-            <div className="mt-auto">
-              <ExportCsvButton dataset="products" label="products" />
+            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+              <h3 className="text-sm font-medium">Export products (CSV)</h3>
+              <p className="text-xs text-muted-foreground">
+                One row per variant, including drafts and archived variants, with SKU, price, any
+                discount and current stock. Opens in Excel with Vietnamese text intact. Contains no
+                customer data.
+              </p>
+              <div className="mt-auto">
+                <ExportCsvButton dataset="products" label="products" />
+              </div>
             </div>
           </div>
-        </div>
+        </details>
 
         <div className="flex flex-wrap items-end gap-3">
           {/* Name search + status filter, plain GET form — no client JS, no
@@ -369,9 +316,9 @@ export default async function CatalogPage({
         <h3 className="sr-only">Product list</h3>
         <div className="flex flex-col gap-3">
           {products.map((product) => {
-            const activeVariants = product.variants.filter((v) => v.status !== "archived");
+            const activeVariants = product.variants.filter((v) => v.status !== 'archived');
             const simpleVariant =
-              activeVariants.length === 1 && activeVariants[0].combinationKey === ""
+              activeVariants.length === 1 && activeVariants[0].combinationKey === ''
                 ? activeVariants[0]
                 : null;
 
@@ -382,7 +329,7 @@ export default async function CatalogPage({
             const primaryMedia = product.media[0];
             const summaryPrice = simpleVariant
               ? formatVnd(simpleVariant.price)
-              : `${activeVariants.length} variant${activeVariants.length === 1 ? "" : "s"}`;
+              : `${activeVariants.length} variant${activeVariants.length === 1 ? '' : 's'}`;
 
             return (
               <details
@@ -392,11 +339,15 @@ export default async function CatalogPage({
                 <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted">
                     {primaryMedia ? (
-                      primaryMedia.type === "image" ? (
+                      primaryMedia.type === 'image' ? (
                         // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see storefront ProductList.tsx
                         <img src={primaryMedia.url} alt="" className="h-full w-full object-cover" />
                       ) : (
-                        <video src={primaryMedia.url} muted className="h-full w-full object-cover" />
+                        <video
+                          src={primaryMedia.url}
+                          muted
+                          className="h-full w-full object-cover"
+                        />
                       )
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>
@@ -405,7 +356,7 @@ export default async function CatalogPage({
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate font-medium">{product.name}</span>
                     <span className="text-xs text-muted-foreground">
-                      {activeVariants.length} variant{activeVariants.length === 1 ? "" : "s"}
+                      {activeVariants.length} variant{activeVariants.length === 1 ? '' : 's'}
                     </span>
                   </span>
                   <span className="money text-sm font-medium whitespace-nowrap">
@@ -469,7 +420,7 @@ export default async function CatalogPage({
                       <h4 className={productSectionHeadingClassName}>Description</h4>
                       <label className={productLabelClassName}>
                         Optional — supports Markdown formatting
-                        <DescriptionEditor defaultValue={product.description ?? ""} />
+                        <DescriptionEditor defaultValue={product.description ?? ''} />
                       </label>
                     </div>
                   </ActionForm>
@@ -482,12 +433,13 @@ export default async function CatalogPage({
                           Discount
                         </h4>
                         <p className="text-xs text-muted-foreground">
-                          One discount per product — saving again replaces the current one, never stacks.
+                          One discount per product — saving again replaces the current one, never
+                          stacks.
                         </p>
                         <ActionForm
                           action={upsertProductDiscountAction}
                           successMessage="Discount saved."
-                          submitLabel={discount ? "Save discount" : "Add discount"}
+                          submitLabel={discount ? 'Save discount' : 'Add discount'}
                           className="flex flex-wrap items-end gap-2"
                         >
                           <input type="hidden" name="productId" value={product.id} />
@@ -497,7 +449,7 @@ export default async function CatalogPage({
                               name="percentOff"
                               inputMode="numeric"
                               placeholder="10"
-                              defaultValue={discount ? String(discount.percentOff) : ""}
+                              defaultValue={discount ? String(discount.percentOff) : ''}
                               className={`w-24 ${adminInputClassName}`}
                             />
                           </label>
@@ -520,12 +472,20 @@ export default async function CatalogPage({
                             />
                           </label>
                           <label className="flex items-center gap-2 pb-1.5 text-xs">
-                            <input type="checkbox" name="enabled" defaultChecked={discount?.enabled ?? true} />
+                            <input
+                              type="checkbox"
+                              name="enabled"
+                              defaultChecked={discount?.enabled ?? true}
+                            />
                             Enabled
                           </label>
                         </ActionForm>
                         {discount && (
-                          <ActionForm action={deleteProductDiscountAction} submitLabel="Remove discount" successMessage="Discount removed.">
+                          <ActionForm
+                            action={deleteProductDiscountAction}
+                            submitLabel="Remove discount"
+                            successMessage="Discount removed."
+                          >
                             <input type="hidden" name="productId" value={product.id} />
                           </ActionForm>
                         )}
@@ -571,7 +531,9 @@ export default async function CatalogPage({
                             key={po.id}
                             className="flex items-center justify-between gap-2 rounded-md border border-border px-2.5 py-1.5"
                           >
-                            <span>{optionNameById.get(po.variantOptionId) ?? "(unknown option)"}</span>
+                            <span>
+                              {optionNameById.get(po.variantOptionId) ?? '(unknown option)'}
+                            </span>
                             <ConfirmActionForm
                               action={removeProductOptionAction}
                               submitLabel="Remove"
@@ -647,7 +609,10 @@ export default async function CatalogPage({
                             </thead>
                             <tbody>
                               {activeVariants.map((variant) => (
-                                <tr key={variant.id} className="border-b border-border last:border-0">
+                                <tr
+                                  key={variant.id}
+                                  className="border-b border-border last:border-0"
+                                >
                                   <td className="py-1.5 pr-2 align-top">
                                     {formatCombination(variant, optionNameById, valueLabelById)}
                                   </td>
@@ -658,12 +623,16 @@ export default async function CatalogPage({
                                       successMessage="Variant saved."
                                       className="flex flex-wrap items-end gap-2"
                                     >
-                                      <input type="hidden" name="productVariantId" value={variant.id} />
+                                      <input
+                                        type="hidden"
+                                        name="productVariantId"
+                                        value={variant.id}
+                                      />
                                       <label className={adminLabelClassName}>
                                         SKU
                                         <input
                                           name="sku"
-                                          defaultValue={variant.sku ?? ""}
+                                          defaultValue={variant.sku ?? ''}
                                           placeholder="(none)"
                                           className={`w-32 ${adminInputClassName}`}
                                         />
@@ -677,7 +646,9 @@ export default async function CatalogPage({
                                           className={`w-28 ${adminInputClassName}`}
                                         />
                                       </label>
-                                      <span className="pb-1.5 text-muted-foreground">{variant.status}</span>
+                                      <span className="pb-1.5 text-muted-foreground">
+                                        {variant.status}
+                                      </span>
                                     </ActionForm>
                                     <div className="mt-1">
                                       <StockControl
@@ -710,12 +681,17 @@ export default async function CatalogPage({
                               </thead>
                               <tbody>
                                 {archivedVariantsByProduct.get(product.id)?.map((variant) => (
-                                  <tr key={variant.id} className="border-b border-border text-muted-foreground last:border-0">
+                                  <tr
+                                    key={variant.id}
+                                    className="border-b border-border text-muted-foreground last:border-0"
+                                  >
                                     <td className="py-1.5 pr-2">
                                       {formatCombination(variant, optionNameById, valueLabelById)}
                                     </td>
-                                    <td className="py-1.5 pr-2">{variant.sku ?? "(none)"}</td>
-                                    <td className="py-1.5 pr-2">{variant.price.toLocaleString("vi-VN")} ₫</td>
+                                    <td className="py-1.5 pr-2">{variant.sku ?? '(none)'}</td>
+                                    <td className="py-1.5 pr-2">
+                                      {variant.price.toLocaleString('vi-VN')} ₫
+                                    </td>
                                     <td className="py-1.5">Archived</td>
                                   </tr>
                                 ))}
@@ -733,12 +709,100 @@ export default async function CatalogPage({
           {products.length === 0 && (
             <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
               {q || status
-                ? "No products match these filters."
-                : "No products yet. Add one above, or import a CSV to get started."}
+                ? 'No products match these filters.'
+                : 'No products yet. Add one above, or import a CSV to get started.'}
             </p>
           )}
         </div>
       </section>
-    </>
+      {/* Variant options are store-wide settings, not the catalogue: they
+          are configured occasionally and then used by every product, so
+          they sit after the products and start collapsed instead of
+          opening the page above the thing merchants came for. */}
+      <details className={adminPanelClassName}>
+        <summary className="cursor-pointer list-none marker:content-none">
+          <span className="flex flex-col gap-1">
+            <span className={adminPanelTitleClassName}>Variant options</span>
+            <span className="text-xs text-muted-foreground">
+              Reusable option types (e.g. Color, Size) shared across every product for this store.
+            </span>
+          </span>
+        </summary>
+
+        <ActionForm
+          action={createVariantOptionAction}
+          successMessage="Option added."
+          submitLabel="Add option"
+          className="flex max-w-md flex-col gap-3"
+        >
+          <label className={adminLabelClassName}>
+            Option name
+            <input name="name" placeholder="Color" className={adminInputClassName} />
+          </label>
+        </ActionForm>
+
+        <div className="flex flex-col gap-3">
+          {variantOptions.map((option) => {
+            const values = valuesByOption.get(option.id) ?? [];
+            return (
+              <div
+                key={option.id}
+                className="flex flex-col gap-3 rounded-lg border border-border bg-surface-muted p-3 text-sm"
+              >
+                <h3 className="font-medium">{option.name}</h3>
+                <div className="flex flex-col gap-1">
+                  {values.map((value) => (
+                    <div
+                      key={value.id}
+                      className="flex items-center justify-between gap-2 rounded-md border border-border bg-surface px-2.5 py-1.5"
+                    >
+                      <span>{value.value}</span>
+                      <ConfirmActionForm
+                        action={deleteVariantOptionValueAction}
+                        submitLabel="Delete"
+                        successMessage="Option value deleted."
+                        confirmMessage="Delete this option value? Any product variant built from it is removed too. This cannot be undone."
+                        variant="danger"
+                      >
+                        <input type="hidden" name="variantOptionValueId" value={value.id} />
+                      </ConfirmActionForm>
+                    </div>
+                  ))}
+                  {values.length === 0 && (
+                    <p className="text-xs text-muted-foreground">No values yet.</p>
+                  )}
+                </div>
+                {values.length > 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-500">
+                    Deleting a value also removes it from any product variants that used it.
+                  </p>
+                )}
+                <ActionForm
+                  action={createVariantOptionValueAction}
+                  successMessage="Value added."
+                  submitLabel="Add value"
+                  className="flex items-end gap-2"
+                >
+                  <input type="hidden" name="variantOptionId" value={option.id} />
+                  <label className={adminLabelClassName}>
+                    Value
+                    <input name="value" placeholder="White" className={adminInputClassName} />
+                  </label>
+                </ActionForm>
+              </div>
+            );
+          })}
+          {variantOptions.length === 0 && (
+            <div className={adminSubtleClassName}>
+              <p className={adminPanelTitleClassName}>No variant options yet</p>
+              <p className="text-xs text-muted-foreground">
+                Add one above — for example Color or Size — then give it values before building
+                product variants from it.
+              </p>
+            </div>
+          )}
+        </div>
+      </details>
+    </div>
   );
 }
