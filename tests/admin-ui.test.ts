@@ -361,3 +361,107 @@ test("products/new stays reachable even though it is not in the nav", () => {
   const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
   assert.match(catalog, /href="\/tenant-admin\/products\/new"/);
 });
+
+// --- The surface system -----------------------------------------------
+//
+// These assert the structural half of the redesign: that configuration
+// routes are built from named sections on the page canvas rather than
+// forms stacked in one page-sized card, and that every state a merchant
+// acts on is carried by text. They say nothing about how any of it
+// looks — that is only answerable in a browser.
+
+test("no admin route nests its content in a page-sized outer card", () => {
+  // adminSectionClassName is the old page-card. A card holding cards
+  // reads as one slab, which is what flattened these screens.
+  for (const page of TENANT_PAGES) {
+    const src = readCode(page);
+    if (page.includes("/products/new")) continue; // a single centred form, legitimately one card
+    assert.doesNotMatch(
+      src,
+      /adminSectionClassName/,
+      `${page} should compose panels on the canvas instead of one outer card`,
+    );
+  }
+});
+
+test("configuration routes group their settings into labelled sections", () => {
+  for (const route of ["payments", "shipping", "branding"]) {
+    const src = readCode(`src/app/tenant-admin/${route}/page.tsx`);
+    assert.match(src, /adminPanelClassName/, `${route} builds sections from the shared panel`);
+    assert.match(
+      src,
+      /aria-labelledby=/,
+      `${route}'s sections must be named for assistive technology`,
+    );
+  }
+});
+
+test("enabled, default and stock states are words, not only colour", () => {
+  const shipping = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(shipping, /["']Enabled["']/, "an enabled method says so");
+  assert.match(shipping, /status=["']Default["']/, "the default method says so");
+
+  const payments = readCode("src/app/tenant-admin/payments/page.tsx");
+  assert.match(payments, /StatusBadge/, "payment methods use the shared badge");
+
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.match(catalog, /Low stock/, "low stock is labelled, not inferred from a figure");
+  assert.match(catalog, /Out of stock/);
+  assert.match(catalog, /LOW_STOCK_THRESHOLD/, "the threshold is shared, not re-typed here");
+});
+
+test("a store with no shipping method is told checkout is blocked", () => {
+  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(src, /role="alert"/, "an unsellable store is announced, not styled red");
+  assert.match(src, /Checkout is blocked/);
+});
+
+test("the one-default rule is stated on the control it governs", () => {
+  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(src, /Only one method can be the default/);
+});
+
+test("destructive controls stay confirmation-protected and set apart", () => {
+  for (const route of ["shipping", "banners", "catalog"]) {
+    const src = readCode(`src/app/tenant-admin/${route}/page.tsx`);
+    assert.match(src, /ConfirmActionForm/, `${route} must confirm before deleting`);
+    assert.match(src, /variant="danger"/, `${route}'s delete must read as destructive`);
+  }
+  // Separated by a rule from the Save above it, so the two never sit
+  // adjacent in the scan path.
+  const shipping = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(shipping, /border-t border-border pt-3[\s\S]*ConfirmActionForm/);
+});
+
+test("the catalog leads with products and keeps options subordinate", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  const products = src.indexOf('title="Products"');
+  const options = src.indexOf("Variant options");
+  assert.ok(products > 0 && options > 0);
+  assert.ok(products < options, "products must come before the store-wide option settings");
+});
+
+test("empty states say what to do next, not only that nothing is there", () => {
+  const banners = readCode("src/app/tenant-admin/banners/page.tsx");
+  assert.match(banners, /No banners yet/);
+  assert.match(banners, /default welcome banner/, "it says what the storefront shows meanwhile");
+
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.match(catalog, /No variant options yet/);
+});
+
+test("the shipping amount field names its currency and its zero case", () => {
+  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(src, /in VND/);
+  assert.match(src, /0 for free shipping/);
+});
+
+test("branding separates store identity from its uploaded assets", () => {
+  const page = readCode("src/app/tenant-admin/branding/page.tsx");
+  assert.match(page, /Store identity/);
+  assert.match(page, /Logo, favicon and design tokens/);
+  // A Markdown token file is not a third image field, and the upload
+  // controls now say so.
+  const controls = readCode("src/app/tenant-admin/BrandingUploadControls.tsx");
+  assert.match(controls, /Design tokens/);
+});
