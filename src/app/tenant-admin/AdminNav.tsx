@@ -145,13 +145,18 @@ export function AdminNav() {
                       // harmless on desktop where the panel is always open.
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
-                      className={`flex min-h-11 items-center rounded-md px-3 py-2 text-sm font-medium transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:min-h-9 ${
+                      className={`flex min-h-11 items-center gap-2 rounded-md border-l-2 px-3 py-2 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:min-h-9 ${
                         active
-                          ? // Not colour alone: the active item also carries
-                            // aria-current for assistive tech and a weight
-                            // change that survives a greyscale screenshot.
-                            "bg-foreground font-semibold text-background"
-                          : "text-muted-foreground hover:bg-surface-muted hover:text-foreground"
+                          ? // Three signals, not one: a left rule, a filled
+                            // surface, and a weight change — plus
+                            // aria-current for assistive tech. None of them
+                            // is colour alone, so the state survives
+                            // greyscale and low vision. A fully inverted
+                            // pill was too heavy sitting under grouped
+                            // labels; this reads as "you are here" without
+                            // dominating the sidebar.
+                            "border-foreground bg-surface font-semibold text-foreground"
+                          : "border-transparent font-medium text-muted-foreground hover:bg-surface hover:text-foreground"
                       }`}
                     >
                       {label}

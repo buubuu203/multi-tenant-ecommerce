@@ -48,7 +48,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
           leave. Deliberately separate from the sidebar, which answers
           "where can I go": the two layers do different jobs, and letting
           them share one space is what made the old header crowded. */}
-      <header className="border-b border-border bg-surface">
+      <header className="sticky top-0 z-20 border-b border-border bg-surface">
         <div className={`${adminContainerClassName} flex flex-wrap items-center justify-between gap-3 py-3`}>
           <div className="flex min-w-0 flex-col gap-0.5">
             {/* The STORE is the h1, not "Tenant Admin". The operator knows
@@ -87,7 +87,12 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
         {/* Sticky on desktop so navigation stays reachable down a long
             orders list, and never focus-trapped: it is always-visible
             page furniture, not an overlay. */}
-        <aside className="lg:sticky lg:top-6">
+        {/* top-20 clears the sticky header rather than sliding under it —
+            WCAG 2.4.11 asks that a focused item not be obscured by other
+            content, and a focused nav link scrolled beneath a sticky bar is
+            exactly that. max-h/overflow so a longer menu scrolls on its own
+            instead of pushing the page. */}
+        <aside className="lg:sticky lg:top-20 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto">
           <AdminNav />
         </aside>
 

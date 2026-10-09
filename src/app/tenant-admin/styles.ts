@@ -82,3 +82,48 @@ export const adminHelpTextClassName = "text-sm text-muted-foreground";
 /** The small uppercase label above a group of related fields or facts. */
 export const adminEyebrowClassName =
   "text-xs font-medium tracking-wide text-muted-foreground uppercase";
+
+// ---------------------------------------------------------------------------
+// Surface hierarchy.
+//
+// Three levels, and only three: the page canvas (set on .admin-chrome in
+// globals.css), a content PANEL that holds one logical group, and a SUBTLE
+// block for secondary material nested inside a panel. More levels than that
+// stop reading as hierarchy and start reading as noise.
+//
+// The rule these replace: adminSectionClassName was wrapping whole PAGES in
+// one card, so a page was a single slab with everything inside it and no
+// grouping was visible. A panel should hold one group of related things, not
+// a whole screen.
+// ---------------------------------------------------------------------------
+
+/** The page's own column. No border, no background — the canvas shows through. */
+export const adminPageClassName = "flex flex-col gap-6";
+
+/** One logical group of content. The default container for a section. */
+export const adminPanelClassName =
+  "flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 sm:p-5";
+
+/** A panel that holds a divided list, so rows can own their own padding. */
+export const adminPanelFlushClassName =
+  "overflow-hidden rounded-lg border border-border bg-surface";
+
+/**
+ * Rows inside a flush panel, separated by hairlines rather than each being
+ * its own card — the shape settings pages want, and what stops a list of
+ * methods reading as a stack of unrelated forms.
+ */
+export const adminDividedListClassName = "divide-y divide-border";
+
+/** Secondary material nested inside a panel. */
+export const adminSubtleClassName =
+  "flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3";
+
+/** A panel's own title row. */
+export const adminPanelTitleClassName = "text-sm font-semibold tracking-tight";
+
+/** One consistent control height, so inputs and buttons share a baseline. */
+export const adminControlHeightClassName = "min-h-9";
+
+/** Marks a required field, as text rather than an unexplained asterisk. */
+export const adminRequiredClassName = "text-xs font-normal text-muted-foreground";
