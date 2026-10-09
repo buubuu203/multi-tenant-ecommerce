@@ -11,6 +11,7 @@ import {
 import { ConfirmActionForm } from "@/components/ConfirmActionForm";
 import { BannerImageUpload } from "../BannerImageUpload";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -28,14 +29,10 @@ export default async function BannersPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium tracking-tight">Storefront banners</h2>
-        <p className="text-xs text-muted-foreground">
-          Shown as a carousel at the top of your storefront, in place of the default welcome
-          banner. Only enabled banners appear, ordered by sort order (lowest first). The image
-          is the whole banner — no text is overlaid, so use a photo that speaks for itself.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Storefront banners"
+        description="Shown as a carousel at the top of your storefront, in place of the default welcome banner. Only enabled banners appear, ordered by sort order (lowest first). The image is the whole banner — no text is overlaid, so use a photo that speaks for itself."
+      />
 
       <details className="group rounded-lg border border-border bg-surface-muted">
         <summary className="cursor-pointer list-none px-4 py-3 text-sm font-medium marker:content-none">
