@@ -103,13 +103,23 @@ export function BulkOrderStatusForm({
         }
         setSelectionError(null);
       }}
-      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface-muted px-3 py-2 text-xs"
+      // Sits on the canvas as its own bar, distinct from both the filter
+      // toolbar above and the order list below — a control that acts on
+      // many rows at once should not look like part of any one of them.
+      className="flex flex-wrap items-center gap-2 rounded-lg border border-border bg-surface px-3 py-2 text-xs"
     >
       {/* The count is the point of this toolbar: a bulk control whose
           scope you cannot see is the one that causes accidents. role=status
           so a screen reader hears the selection change without the focus
           moving. */}
-      <span role="status" className="font-medium">
+      <span
+        role="status"
+        className={
+          selectedCount === 0
+            ? "text-muted-foreground"
+            : "rounded-full bg-foreground px-2 py-0.5 text-xs font-semibold text-background"
+        }
+      >
         {selectedCount === 0
           ? "No orders selected"
           : `${selectedCount} ${selectedCount === 1 ? "order" : "orders"} selected`}
