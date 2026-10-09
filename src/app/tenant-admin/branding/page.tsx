@@ -4,6 +4,7 @@ import { ActionForm } from "@/components/ActionForm";
 import { updateBrandingAction } from "../actions";
 import { BrandingUploadControls } from "../BrandingUploadControls";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName } from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -15,7 +16,10 @@ export default async function BrandingPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <h2 className="text-lg font-medium tracking-tight">Branding</h2>
+      <AdminPageHeader
+        title="Branding"
+        description="Your store name, logo and colours, used across the storefront."
+      />
       <ActionForm
         action={updateBrandingAction}
         submitLabel="Save branding"

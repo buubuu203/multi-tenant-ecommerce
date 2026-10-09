@@ -3,6 +3,7 @@ import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
 import { updateBankTransferDetailsAction } from "../actions";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName } from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -13,12 +14,10 @@ export default async function BankTransferPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium tracking-tight">Bank transfer instructions</h2>
-        <p className="text-xs text-muted-foreground">
-          These details are shown to customers who choose manual bank transfer.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Bank transfer instructions"
+        description="These details are shown to customers who choose manual bank transfer."
+      />
       <ActionForm
         action={updateBankTransferDetailsAction}
         submitLabel="Save bank details"

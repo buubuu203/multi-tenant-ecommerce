@@ -8,6 +8,8 @@ import {
   deleteShippingMethodAction,
 } from "../actions";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
+import { StatusBadge } from "../StatusBadge";
 
 export const dynamic = "force-dynamic";
 
@@ -24,14 +26,10 @@ export default async function ShippingPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium tracking-tight">Shipping</h2>
-        <p className="text-xs text-muted-foreground">
-          Only enabled methods appear at checkout. If no method is enabled, checkout is blocked
-          entirely — same rule as payment methods. At most one method can be the default
-          (pre-selected at checkout).
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Shipping"
+        description="Only enabled methods appear at checkout. If no method is enabled, checkout is blocked entirely — the same rule as payment methods. At most one method can be the default, pre-selected at checkout."
+      />
 
       {shippingMethods.length === 0 && (
         <p className="text-xs text-red-600">
@@ -44,8 +42,15 @@ export default async function ShippingPage() {
           <div key={method.id} className={adminCardClassName}>
             <div className="flex items-center justify-between">
               <h3 className="font-medium">{method.name}</h3>
-              <span className="text-xs text-muted-foreground">
-                {method.enabled ? "Enabled" : "Disabled"} {method.isDefault && "· Default"}
+              <span className="flex flex-wrap items-center gap-1.5">
+                {/* Shared badges rather than prose, so a method's state is
+                    scannable and reads the same as every other status in
+                    the admin. Text labels, never colour alone. */}
+                <StatusBadge
+                  status={method.enabled ? "Enabled" : "Disabled"}
+                  tone={method.enabled ? "success" : "neutral"}
+                />
+                {method.isDefault && <StatusBadge status="Default" tone="info" />}
               </span>
             </div>
             <ActionForm action={updateShippingMethodAction} submitLabel="Save" successMessage="Shipping method saved.">

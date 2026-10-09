@@ -32,7 +32,9 @@ export default async function NewProductPage() {
           >
             ← Back to dashboard
           </Link>
-          <h1 className="text-2xl font-semibold tracking-tight">Add a product</h1>
+          {/* h2, not h1: the admin layout's h1 is the store itself, so a
+              second h1 here would give the page two top-level headings. */}
+          <h2 className="text-xl font-semibold tracking-tight">Add a product</h2>
         </div>
 
         <div className="rounded-lg border border-border bg-surface p-6 sm:p-8">

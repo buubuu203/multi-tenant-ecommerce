@@ -4,6 +4,7 @@ import { getTenantKpis } from "@/lib/tenant-kpis";
 import { LOW_STOCK_THRESHOLD } from "@/lib/inventory-availability";
 import { formatVnd } from "./format";
 import { adminSectionClassName } from "./styles";
+import { AdminPageHeader } from "./AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -58,12 +59,10 @@ export default async function TenantAdminOverviewPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium tracking-tight">Overview</h2>
-        <p className="text-xs text-muted-foreground">
-          A read-only snapshot of this store. Nothing on this page changes any data.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Overview"
+        description="A read-only snapshot of this store. Nothing on this page changes any data."
+      />
 
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         {cards.map((card) => (

@@ -3,6 +3,7 @@ import { getScopedDb } from "@/lib/db/tenant-db";
 import { ActionForm } from "@/components/ActionForm";
 import { updateTenantPaymentMethodAction } from "../actions";
 import { adminInputClassName, adminLabelClassName, adminSectionClassName, adminCardClassName } from "../styles";
+import { AdminPageHeader } from "../AdminPageHeader";
 
 export const dynamic = "force-dynamic";
 
@@ -16,14 +17,10 @@ export default async function PaymentsPage() {
 
   return (
     <section className={adminSectionClassName}>
-      <div className="flex flex-col gap-1">
-        <h2 className="text-lg font-medium tracking-tight">Payments</h2>
-        <p className="text-xs text-muted-foreground">
-          Only enabled AND fully configured methods appear at checkout — a customer can never
-          select a method you haven&apos;t set up here, even if this toggle is on but the required
-          fields below are empty.
-        </p>
-      </div>
+      <AdminPageHeader
+        title="Payments"
+        description="Only enabled AND fully configured methods appear at checkout — a customer can never select a method you have not set up here, even if this toggle is on but the required fields below are empty."
+      />
 
       {/* Cash on delivery — no configuration, just enable/disable. */}
       <div className={adminCardClassName}>
