@@ -31,22 +31,37 @@ export default async function ShippingPage() {
     orderBy: { sortOrder: 'asc' },
   });
 
+  // Checkout requires at least one ENABLED method, so "no methods" was
+  // never the only blocked state — a store with three methods all switched
+  // off is equally unable to take an order, and previously said nothing at
+  // all. Derived from the rows already fetched; no behaviour changes here,
+  // the blocked state simply becomes visible.
+  const enabledCount = shippingMethods.filter((method) => method.enabled).length;
+  const blockedReason =
+    shippingMethods.length === 0
+      ? 'Checkout is blocked because no shipping method is configured.'
+      : enabledCount === 0
+        ? 'Checkout is blocked because all shipping methods are disabled.'
+        : null;
+
   return (
     <div className={adminPageClassName}>
       <AdminPageHeader
         title="Shipping"
-        description="Only enabled methods appear at checkout. If no method is enabled, checkout is blocked entirely — the same rule as payment methods. At most one method can be the default, pre-selected at checkout."
+        description="Only enabled methods appear at checkout. If none is enabled, checkout is blocked entirely."
       />
 
-      {shippingMethods.length === 0 && (
+      {blockedReason && (
         // role="alert": this is not decorative copy, it is the store
         // telling the merchant it cannot take orders right now.
         <p
           role="alert"
           className="rounded-md border border-red-300 bg-red-50 p-3 text-sm text-red-800 dark:border-red-900 dark:bg-red-950 dark:text-red-300"
         >
-          <strong className="font-semibold">Checkout is blocked.</strong> This store has no shipping
-          method, and checkout requires at least one enabled method. Add one below.
+          <strong className="font-semibold">{blockedReason}</strong>{' '}
+          {shippingMethods.length === 0
+            ? 'Add a method below and enable it.'
+            : 'Enable at least one method below.'}
         </p>
       )}
 
@@ -63,9 +78,20 @@ export default async function ShippingPage() {
                   status={method.enabled ? 'Enabled' : 'Disabled'}
                   tone={method.enabled ? 'success' : 'neutral'}
                 />
-                {method.isDefault && <StatusBadge status="Default" tone="info" />}
+                {/* Both states stay visible when a method is default but
+                    disabled — hiding either would misrepresent the row —
+                    but Default drops to neutral so it stops competing with
+                    the state that actually decides checkout. */}
+                {method.isDefault && (
+                  <StatusBadge status="Default" tone={method.enabled ? 'info' : 'neutral'} />
+                )}
               </span>
             </div>
+            {method.isDefault && !method.enabled && (
+              <p className="text-xs text-amber-700 dark:text-amber-500">
+                This is the default method but it is disabled, so checkout will not offer it.
+              </p>
+            )}
             <ActionForm
               action={updateShippingMethodAction}
               submitLabel="Save"
@@ -136,7 +162,7 @@ export default async function ShippingPage() {
           action={createShippingMethodAction}
           submitLabel="Add shipping method"
           successMessage="Shipping method added."
-          className="flex max-w-md flex-col gap-3"
+          className="max-w-md"
         >
           <label className={adminLabelClassName}>
             Name

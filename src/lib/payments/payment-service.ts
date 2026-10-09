@@ -35,7 +35,12 @@ export async function getEnabledPaymentMethods(tenantId: string): Promise<Paymen
     .map((row) => row.method);
 }
 
-function isProviderConfigured(provider: PaymentProviderType, config: Record<string, unknown> | null): boolean {
+// Exported so Tenant Admin can SHOW a readiness state derived from the
+// very predicate that gates the storefront selector, instead of
+// re-implementing the rule in the UI where the two could drift. Pure
+// function of its arguments — exporting it changes no behavior and no
+// existing caller.
+export function isProviderConfigured(provider: PaymentProviderType, config: Record<string, unknown> | null): boolean {
   if (provider === "cod") return true;
   if (provider === "bank_transfer_manual") {
     return Boolean(config?.bankName && config?.accountNumber && config?.accountHolder);

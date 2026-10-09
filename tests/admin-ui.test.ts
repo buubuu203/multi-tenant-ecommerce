@@ -4,6 +4,7 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { join } from "node:path";
 import { StatusBadge, toneForStatus } from "../src/app/tenant-admin/StatusBadge";
+import { callerOwnsFormLayout, mergeFormClassName } from "../src/components/ActionForm";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
 
@@ -464,4 +465,111 @@ test("branding separates store identity from its uploaded assets", () => {
   // controls now say so.
   const controls = readCode("src/app/tenant-admin/BrandingUploadControls.tsx");
   assert.match(controls, /Design tokens/);
+});
+
+// --- Payments and Shipping: form rhythm, readiness, blocked states ---
+//
+// Structure only, as above: these say the rule is expressed in the source.
+// None of them has seen a rendered pixel.
+
+test("a form with no layout of its own gets shared vertical spacing", () => {
+  const src = readCode("src/components/ActionForm.tsx");
+  assert.match(src, /actionFormLayoutClassName/);
+  assert.match(src, /flex flex-col gap-3/, "children are spaced, not bare siblings");
+  assert.match(src, /mergeFormClassName/, "caller classes are merged, never overwritten");
+});
+
+test("row-layout callers keep their own direction", () => {
+  // `flex items-end gap-2` and `inline-flex` callers must not be rotated
+  // into a column by the shared default.
+  assert.equal(callerOwnsFormLayout("flex items-end gap-2"), true);
+  assert.equal(callerOwnsFormLayout("inline-flex"), true);
+  assert.equal(callerOwnsFormLayout("max-w-md"), false);
+  assert.equal(callerOwnsFormLayout(undefined), false);
+
+  // A caller that owns its layout gets back exactly what it passed.
+  assert.equal(mergeFormClassName("flex items-end gap-2"), "flex items-end gap-2");
+  // One that does not keeps its own classes AND gains the spacing.
+  assert.match(mergeFormClassName("max-w-md"), /flex flex-col gap-3/);
+  assert.match(mergeFormClassName("max-w-md"), /max-w-md/);
+});
+
+test("both shared forms separate their submit button from the fields", () => {
+  for (const file of ["src/components/ActionForm.tsx", "src/components/ConfirmActionForm.tsx"]) {
+    const src = readCode(file);
+    assert.match(src, /ownsLayout/, `${file} decides separation from the layout it owns`);
+  }
+  assert.match(
+    readCode("src/components/ActionForm.tsx"),
+    /border-t border-border pt-3/,
+    "Save sits below a rule, not flush against the last field",
+  );
+});
+
+test("payment readiness is derived from the predicate checkout already uses", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  assert.match(page, /isProviderConfigured/, "no second copy of the configured rule in the UI");
+  assert.match(page, /from '@\/lib\/payments\/payment-service'/);
+  // Words, not colour alone.
+  assert.match(page, /Needs setup/);
+  assert.match(page, /'Ready'/);
+
+  const service = readCode("src/lib/payments/payment-service.ts");
+  assert.match(service, /export function isProviderConfigured/);
+});
+
+test("MoMo claims no readiness it cannot determine", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  assert.match(page, /Readiness is not shown for MoMo/);
+  assert.match(page, /platform credentials this page cannot/);
+});
+
+test("bank-transfer provider fields are grouped per provider", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  assert.match(page, /<legend[\s\S]*?Manual bank transfer/);
+  assert.match(page, /<legend[\s\S]*?SePay virtual account/);
+  // Save behaviour is unchanged, so the form has to SAY what it keeps.
+  assert.match(page, /Only the selected provider/);
+  // The field names checkout reads must not drift.
+  for (const name of ["bankName", "bankAccountNumber", "bankAccountHolder", "sepayBaUuid"]) {
+    assert.match(page, new RegExp(`name="${name}"`), `${name} is still posted`);
+  }
+});
+
+test("an all-disabled shipping list is announced as blocked too", () => {
+  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(src, /enabledCount/, "the blocked state is derived, not assumed from length");
+  assert.match(src, /no shipping method is configured/);
+  assert.match(src, /all shipping methods are disabled/);
+  assert.match(src, /role="alert"/);
+});
+
+test("a default-but-disabled shipping method shows both states", () => {
+  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(src, /default method but it is disabled/);
+  assert.match(src, /method\.enabled \? 'info' : 'neutral'/, "Default is subordinated, not hidden");
+});
+
+test("the bank-transfer route does not claim checkout reads its fields", () => {
+  const src = readCode("src/app/tenant-admin/bank-transfer/page.tsx");
+  assert.doesNotMatch(src, /shown to customers who choose manual bank transfer/);
+  assert.match(src, /Checkout does not read these fields/);
+  assert.match(src, /tenant-admin\/payments/, "it points at the fields that are read");
+});
+
+test("payments and shipping keep exactly one page heading each", () => {
+  for (const rel of [
+    "src/app/tenant-admin/payments/page.tsx",
+    "src/app/tenant-admin/shipping/page.tsx",
+    "src/app/tenant-admin/bank-transfer/page.tsx",
+  ]) {
+    const src = readCode(rel);
+    assert.equal((src.match(/<h1/g) ?? []).length, 0, `${rel} must not add a second h1`);
+    assert.equal((src.match(/<main/g) ?? []).length, 0, `${rel} must not nest a second main`);
+    assert.equal(
+      (src.match(/<AdminPageHeader/g) ?? []).length,
+      1,
+      `${rel} has exactly one page header`,
+    );
+  }
 });

@@ -10,6 +10,7 @@ import {
   adminPanelTitleClassName,
 } from '../styles';
 import { AdminPageHeader } from '../AdminPageHeader';
+import Link from 'next/link';
 
 export const dynamic = 'force-dynamic';
 
@@ -22,19 +23,39 @@ export default async function BankTransferPage() {
     <div className={adminPageClassName}>
       <AdminPageHeader
         title="Bank transfer instructions"
-        description="These details are shown to customers who choose manual bank transfer."
+        description="A copy of your bank details stored alongside your branding."
       />
+
+      {/* The previous description claimed these fields are what a customer
+          sees at checkout. They are not: the manual bank-transfer provider
+          builds its instructions (and the VietQR code) from the config
+          saved under Payments → Bank transfer, and nothing reads the
+          branding copy written here. Saying so is a copy fix — the stores,
+          the actions and the checkout behaviour are all left exactly as
+          they are. */}
+      <p
+        role="note"
+        className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
+      >
+        <strong className="font-semibold">Checkout does not read these fields.</strong> The bank
+        details a customer sees, and the QR code generated for them, come from the manual bank
+        transfer fields under{' '}
+        <Link href="/tenant-admin/payments" className="underline">
+          Payments
+        </Link>
+        . Set them there as well, or instead.
+      </p>
       {/* One settings section rather than a page-sized card, so this
           route reads as part of the same Checkout group as Payments. */}
       <section aria-labelledby="bank-details" className={adminPanelClassName}>
         <h3 id="bank-details" className={adminPanelTitleClassName}>
-          Account details shown at checkout
+          Stored account details
         </h3>
         <ActionForm
           action={updateBankTransferDetailsAction}
           submitLabel="Save bank details"
           successMessage="Bank transfer details saved."
-          className="flex max-w-md flex-col gap-3"
+          className="max-w-md"
         >
           <label className={adminLabelClassName}>
             Bank name
