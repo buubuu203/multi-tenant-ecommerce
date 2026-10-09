@@ -129,3 +129,36 @@ body {
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
 }
+
+/*
+ * Admin page canvas.
+ *
+ * In light mode --background and --surface are BOTH #ffffff, so a card sat
+ * on the page had no surface contrast at all — only its 10%-alpha border
+ * separated it, which is why the admin read as one flat slab regardless of
+ * how its markup was grouped. No amount of restructuring fixes that while
+ * the two surfaces are the same colour.
+ *
+ * The canvas now sits one step back from content surfaces, expressed only
+ * in existing tokens so a tenant override still flows through. Light mode
+ * steps the page back to --surface-muted and leaves cards at --surface
+ * (white, elevated). Dark mode cannot use the same expression, because
+ * there --surface-muted is LIGHTER than --surface; it steps the page back
+ * to --background instead, so cards still read as the nearer surface. The
+ * guards match the theming pattern used above: a media query for the
+ * unstamped default, plus an explicit [data-theme] rule so a manual
+ * toggle wins in either direction.
+ */
+.admin-chrome {
+  background-color: var(--surface-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .admin-chrome {
+    background-color: var(--background);
+  }
+}
+
+:root[data-theme="dark"] .admin-chrome {
+  background-color: var(--background);
+}
