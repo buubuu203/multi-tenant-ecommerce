@@ -82,13 +82,25 @@ test("the page header wraps rather than overflowing on narrow screens", () => {
 });
 
 test("every Tenant Admin page uses the shared header", () => {
-  // products/new is the exception: it is a focused full-page form with its
-  // own back link, not a dashboard section.
-  const exceptions = new Set(["src/app/tenant-admin/products/new/page.tsx"]);
   for (const page of TENANT_PAGES) {
-    if (exceptions.has(page)) continue;
     assert.match(readCode(page), /<AdminPageHeader/, `${page} must use AdminPageHeader`);
   }
+});
+
+test("no route renders its own shell inside the layout's", () => {
+  // products/new used to wrap itself in its own <TenantTheme> and <main>,
+  // which under the dashboard shell meant a <main> nested inside the
+  // layout's <main> — two main landmarks on one page — plus a second theme
+  // provider and two branding queries that existed only to feed it.
+  for (const page of TENANT_PAGES) {
+    const code = readCode(page);
+    assert.doesNotMatch(code, /<main/, `${page} must not render a second main landmark`);
+    assert.doesNotMatch(code, /<TenantTheme/, `${page} must not render a second theme provider`);
+  }
+  // The layout is the one place that owns them.
+  const layout = readCode("src/app/tenant-admin/layout.tsx");
+  assert.equal((layout.match(/<main/g) ?? []).length, 1);
+  assert.match(layout, /<TenantTheme/);
 });
 
 // ---------- heading hierarchy and landmarks ----------

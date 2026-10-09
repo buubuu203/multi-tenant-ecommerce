@@ -1,46 +1,47 @@
 import Link from "next/link";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getScopedDb } from "@/lib/db/tenant-db";
 import { CreateProductForm } from "../../CreateProductForm";
-import { resolveBranding } from "../../../_storefront/resolve-branding";
-import { TenantTheme } from "@/components/TenantTheme";
+import { AdminPageHeader } from "../../AdminPageHeader";
+import { adminSectionClassName } from "../../styles";
 
 export const dynamic = "force-dynamic";
 
-// Add Product, split out of the main Tenant Admin dashboard onto its own
-// page — the dashboard's inline version was cramped (one compact card
-// among many other sections); this gets the room a form this central to
-// daily merchant use deserves. Auth is already enforced by
-// tenant-admin/layout.tsx for every route under /tenant-admin/*, so no
-// separate requireTenantAdmin() re-check would be needed for THAT
-// purpose — it's called again here only to get tenantId for the branding
-// lookup, same as every other Tenant Admin page/action in this codebase.
+// Add Product, on its own page rather than as one cramped card among many
+// on the dashboard — a form this central to daily merchant use deserves
+// the room.
+//
+// This page deliberately renders NO shell of its own. It previously
+// wrapped itself in its own <TenantTheme> and its own <main>, which under
+// the dashboard shell meant a <main> nested inside the layout's <main>
+// (two main landmarks on one page) and a second theme provider inside the
+// first. Removing both also removes the two branding queries this page ran
+// purely to feed that duplicate theme — the layout already resolves them
+// once for every route beneath it.
+//
+// requireTenantAdmin() stays: every admin page authorizes itself before
+// any read, because a layout's gate does not stop a child page segment
+// from rendering and streaming its own payload.
 export default async function NewProductPage() {
-  const { tenantId } = await requireTenantAdmin();
-  const db = getScopedDb(tenantId);
-  const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
-  const branding = await db.branding.findUnique({ where: { tenantId } });
-  const themeBranding = resolveBranding(tenant ?? { name: "Store" }, branding);
+  await requireTenantAdmin();
 
   return (
-    <TenantTheme branding={themeBranding} className="flex flex-1 flex-col">
-      <main className="mx-auto flex w-full max-w-3xl flex-1 flex-col gap-6 px-6 py-12 sm:py-16">
-        <div className="flex flex-col gap-1">
+    <section className={adminSectionClassName}>
+      <AdminPageHeader
+        title="Add a product"
+        description="Create a product with a single price. Variants, media, stock and discounts are set up afterwards in the catalog editor."
+        actions={
           <Link
-            href="/tenant-admin"
-            className="w-fit text-sm text-muted-foreground underline transition-colors hover:text-foreground"
+            href="/tenant-admin/catalog"
+            className="text-sm text-muted-foreground underline transition-colors hover:text-foreground focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
-            ← Back to dashboard
+            Back to catalog
           </Link>
-          {/* h2, not h1: the admin layout's h1 is the store itself, so a
-              second h1 here would give the page two top-level headings. */}
-          <h2 className="text-xl font-semibold tracking-tight">Add a product</h2>
-        </div>
+        }
+      />
 
-        <div className="rounded-lg border border-border bg-surface p-6 sm:p-8">
-          <CreateProductForm />
-        </div>
-      </main>
-    </TenantTheme>
+      <div className="max-w-2xl">
+        <CreateProductForm />
+      </div>
+    </section>
   );
 }
