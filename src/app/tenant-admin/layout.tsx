@@ -4,7 +4,7 @@ import { getScopedDb } from "@/lib/db/tenant-db";
 import { resolveBranding } from "../_storefront/resolve-branding";
 import { TenantTheme } from "@/components/TenantTheme";
 import { Toaster } from "@/components/Toast";
-import { AdminTabs } from "./AdminTabs";
+import { AdminNav } from "./AdminNav";
 import {
   adminContainerClassName,
   adminEyebrowClassName,
@@ -43,50 +43,59 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   return (
     <TenantTheme branding={themeBranding} className="admin-chrome flex flex-1 flex-col">
       <Toaster />
-      {/* A real <header> landmark, separated from <main> by a border and a
-          surface change, so the chrome reads as chrome and the page body
-          starts at an obvious edge. */}
+
+      {/* Top bar: global context — which store, who is signed in, how to
+          leave. Deliberately separate from the sidebar, which answers
+          "where can I go": the two layers do different jobs, and letting
+          them share one space is what made the old header crowded. */}
       <header className="border-b border-border bg-surface">
-        <div className={`${adminContainerClassName} flex flex-col gap-4 py-4`}>
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
-            <div className="flex min-w-0 flex-col gap-0.5">
-              {/* The STORE is the h1, not "Tenant Admin". The operator
-                  knows which tool they are in; what they need confirmed at
-                  a glance — especially when they run more than one shop —
-                  is which shop they are about to change. "Tenant Admin" is
-                  demoted to an eyebrow, which is what it actually is. */}
-              <p className={adminEyebrowClassName}>Tenant Admin</p>
-              <h1 className="truncate text-xl font-semibold tracking-tight">
-                {tenant?.name ?? "(unknown tenant)"}
-              </h1>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
-              {primaryDomain && (
-                <a
-                  href={`http://${primaryDomain.hostname}:3000/`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className={adminButtonSecondaryClassName}
-                >
-                  View storefront
-                  {/* Marked decorative: the link text already says where it
-                      goes, and "↗" announced as a character is noise. The
-                      new-tab behaviour is named for screen readers below. */}
-                  <span aria-hidden="true">↗</span>
-                  <span className="sr-only">(opens in a new tab)</span>
-                </a>
-              )}
-              <AdminAccountBar />
-            </div>
+        <div className={`${adminContainerClassName} flex flex-wrap items-center justify-between gap-3 py-3`}>
+          <div className="flex min-w-0 flex-col gap-0.5">
+            {/* The STORE is the h1, not "Tenant Admin". The operator knows
+                which tool they are in; what they need confirmed before
+                changing anything — especially running more than one shop —
+                is which shop this is. */}
+            <p className={adminEyebrowClassName}>Tenant Admin</p>
+            <h1 className="truncate text-lg font-semibold tracking-tight">
+              {tenant?.name ?? "(unknown tenant)"}
+            </h1>
           </div>
-          <AdminTabs />
+          <div className="flex flex-wrap items-center gap-2">
+            {primaryDomain && (
+              <a
+                href={`http://${primaryDomain.hostname}:3000/`}
+                target="_blank"
+                rel="noreferrer"
+                className={adminButtonSecondaryClassName}
+              >
+                View storefront
+                <span aria-hidden="true">↗</span>
+                <span className="sr-only">(opens in a new tab)</span>
+              </a>
+            )}
+            <AdminAccountBar />
+          </div>
         </div>
       </header>
 
-      {/* <main>, not <div>: admin surfaces need one landmark to skip to. */}
-      <main className={`${adminContainerClassName} flex flex-1 flex-col gap-6 py-6 sm:py-8`}>
-        {children}
-      </main>
+      {/* One grid owns the whole body, so the sidebar and the content
+          column cannot drift apart or overlap. Single column below lg,
+          where a fixed sidebar would eat most of a 375px screen. */}
+      <div
+        className={`${adminContainerClassName} grid flex-1 grid-cols-1 items-start gap-6 py-6 lg:grid-cols-[14rem_minmax(0,1fr)] lg:gap-8`}
+      >
+        {/* Sticky on desktop so navigation stays reachable down a long
+            orders list, and never focus-trapped: it is always-visible
+            page furniture, not an overlay. */}
+        <aside className="lg:sticky lg:top-6">
+          <AdminNav />
+        </aside>
+
+        {/* minmax(0,1fr) above is load-bearing: without it a wide child
+            (a table, a long order id) would force the grid column wider
+            than the viewport and reintroduce horizontal scrolling. */}
+        <main className="flex min-w-0 flex-col gap-6">{children}</main>
+      </div>
     </TenantTheme>
   );
 }
