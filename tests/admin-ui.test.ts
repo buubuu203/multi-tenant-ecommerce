@@ -105,7 +105,7 @@ test("the admin layout provides header, nav and main landmarks", () => {
   const layout = readCode("src/app/tenant-admin/layout.tsx");
   assert.match(layout, /<header/, "header landmark");
   assert.match(layout, /<main/, "main landmark");
-  const nav = readCode("src/app/tenant-admin/AdminTabs.tsx");
+  const nav = readCode("src/app/tenant-admin/AdminNav.tsx");
   assert.match(nav, /<nav/, "nav landmark");
   assert.match(nav, /aria-label=/, "the nav is named, since a page may have several");
 });
@@ -113,28 +113,28 @@ test("the admin layout provides header, nav and main landmarks", () => {
 // ---------- navigation ----------
 
 test("the active nav link is marked with aria-current", () => {
-  const src = readCode("src/app/tenant-admin/AdminTabs.tsx");
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
   assert.match(src, /aria-current=\{active \? "page" : undefined\}/);
 });
 
 test("Overview matches exactly, so it does not light up on every sub-route", () => {
   // Every other admin path begins with "/tenant-admin/", so a startsWith
   // check would mark Overview current on all of them.
-  const src = readCode("src/app/tenant-admin/AdminTabs.tsx");
-  assert.match(src, /href === "\/tenant-admin"\s*\?\s*pathname === href/);
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /href === "\/tenant-admin"\) return pathname === href/);
 });
 
-test("navigation WRAPS instead of scrolling horizontally", () => {
+test("navigation never scrolls horizontally", () => {
   // WCAG 1.4.10 Reflow: content should not require two-dimensional
-  // scrolling. An overflow-x strip also hides destinations with no
-  // affordance on a touch device that has no hover.
-  const src = readCode("src/app/tenant-admin/AdminTabs.tsx");
-  assert.match(src, /flex-wrap/);
+  // scrolling. The sidebar stacks vertically; nothing here may reintroduce
+  // a horizontal strip that hides destinations off-screen.
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
   assert.doesNotMatch(src, /overflow-x-auto/);
+  assert.match(src, /flex-col/);
 });
 
 test("every admin route is reachable from the navigation", () => {
-  const src = readCode("src/app/tenant-admin/AdminTabs.tsx");
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
   for (const page of TENANT_PAGES) {
     const route = page
       .replace("src/app", "")
@@ -249,4 +249,103 @@ test("the danger button variant carries its own focus ring", () => {
   // So the distinction from a safe action survives keyboard navigation.
   const styles = readCode("src/app/tenant-admin/styles.ts");
   assert.match(styles, /adminButtonDangerClassName[\s\S]*?focus-visible:outline-red-600/);
+});
+
+// ---------- dashboard shell: sidebar + mobile disclosure ----------
+
+test("navigation is grouped, and every group is named for assistive tech", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  for (const group of ["Commerce", "Storefront", "Checkout"]) {
+    assert.ok(src.includes(`"${group}"`), `the ${group} group must exist`);
+  }
+  // A visible label that also names the list, rather than a heading that
+  // would compete with the page's own h1/h2 outline.
+  assert.match(src, /aria-labelledby=\{group\.label/);
+});
+
+test("the mobile menu is a DISCLOSURE, not a modal dialog", () => {
+  // A menu that overlays the page behaves as a dialog and then owes the
+  // user a focus trap, aria-modal and an inert background. This one pushes
+  // content down instead, so it owes none of those — and must not quietly
+  // acquire dialog semantics without the handling that implies.
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /aria-expanded=\{open\}/, "the trigger reports its state");
+  assert.match(src, /aria-controls=\{panelId\}/, "the trigger names what it controls");
+  assert.doesNotMatch(src, /aria-modal/, "not a dialog");
+  assert.doesNotMatch(src, /role="dialog"/, "not a dialog");
+});
+
+test("the menu trigger is a real button with a state-appropriate name", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /<button\s+type="button"/, "a real button, not a div");
+  assert.match(src, /open \? "Close menu" : "Menu"/, "the name says what pressing it does");
+});
+
+test("Escape closes the mobile menu", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /event\.key === "Escape"/);
+  assert.match(src, /addEventListener\("keydown"/);
+  assert.match(src, /removeEventListener\("keydown"/, "the listener is cleaned up");
+});
+
+test("navigating closes the mobile menu without a state write during render", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /onClick=\{\(\) => setOpen\(false\)\}/);
+});
+
+test("the nav list is rendered once, so no duplicate links reach assistive tech", () => {
+  // Shown or hidden with CSS rather than rendered twice for two
+  // breakpoints — a second copy of every link would be a second set of
+  // tab stops and duplicate accessible names.
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.equal((src.match(/GROUPS\.map\(/g) ?? []).length, 1, "one render of the groups");
+  assert.match(src, /\$\{open \? "flex" : "hidden"\} flex-col gap-4 lg:flex/);
+});
+
+test("the active route is not signalled by colour alone", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /aria-current=\{active \? "page" : undefined\}/, "exposed to assistive tech");
+  assert.match(src, /font-semibold/, "and a weight change, not just a hue");
+});
+
+test("touch targets meet the minimum size", () => {
+  // WCAG 2.2 SC 2.5.8 asks for 24x24 CSS px; 44px is the long-standing
+  // touch guidance, so the mobile links and trigger use min-h-11 (44px)
+  // and relax to min-h-9 only on desktop where a pointer is precise.
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(src, /min-h-11/);
+  assert.match(src, /lg:min-h-9/);
+});
+
+test("the shell lays out as a grid that cannot overflow horizontally", () => {
+  const layout = readCode("src/app/tenant-admin/layout.tsx");
+  assert.match(layout, /grid-cols-1/, "single column on small screens");
+  assert.match(layout, /lg:grid-cols-\[14rem_minmax\(0,1fr\)\]/, "sidebar only at lg and up");
+  // minmax(0,1fr) is load-bearing: a plain 1fr lets a wide child force the
+  // column past the viewport and reintroduce horizontal scrolling.
+  assert.match(layout, /minmax\(0,1fr\)/);
+  assert.match(layout, /min-w-0/, "the main region may shrink below its content");
+});
+
+test("the sidebar is page furniture, never an overlay that traps focus", () => {
+  const layout = readCode("src/app/tenant-admin/layout.tsx");
+  assert.match(layout, /<aside/);
+  assert.match(layout, /lg:sticky/, "sticky so it stays reachable down a long list");
+  assert.doesNotMatch(layout, /fixed inset-0/, "never covers the page");
+});
+
+test("every navigable route appears in the grouped navigation", () => {
+  const src = readCode("src/app/tenant-admin/AdminNav.tsx");
+  for (const page of TENANT_PAGES) {
+    const route = page.replace("src/app", "").replace("/page.tsx", "");
+    // products/new is an action reached from Catalog's primary button, not
+    // a destination; the sidebar lists places rather than verbs.
+    if (route.includes("/products/new")) continue;
+    assert.ok(src.includes(`"${route}"`), `${route} must be reachable from the nav`);
+  }
+});
+
+test("products/new stays reachable even though it is not in the nav", () => {
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.match(catalog, /href="\/tenant-admin\/products\/new"/);
 });
