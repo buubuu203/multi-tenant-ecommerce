@@ -66,7 +66,7 @@ export default async function BannersPage() {
             aspectRatio={DESKTOP_ASPECT_RATIO}
             outputWidth={DESKTOP_OUTPUT_WIDTH}
             label="Desktop image"
-            helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger."
+            helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger. Raster images are optimized and stored as WebP."
             required
           />
           <BannerImageUpload
@@ -75,7 +75,7 @@ export default async function BannersPage() {
             aspectRatio={MOBILE_ASPECT_RATIO}
             outputWidth={MOBILE_OUTPUT_WIDTH}
             label="Mobile image (optional)"
-            helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set."
+            helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set. Raster images are optimized and stored as WebP."
             removable
           />
           <label className={adminLabelClassName}>
@@ -147,7 +147,7 @@ export default async function BannersPage() {
                     outputWidth={DESKTOP_OUTPUT_WIDTH}
                     initialUrl={banner.imageUrl}
                     label="Desktop image"
-                    helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger."
+                    helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger. Raster images are optimized and stored as WebP."
                     required
                   />
                   <BannerImageUpload
@@ -157,7 +157,7 @@ export default async function BannersPage() {
                     outputWidth={MOBILE_OUTPUT_WIDTH}
                     initialUrl={banner.mobileImageUrl ?? undefined}
                     label="Mobile image (optional)"
-                    helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set."
+                    helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set. Raster images are optimized and stored as WebP."
                     removable
                   />
                 </div>

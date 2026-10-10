@@ -96,7 +96,9 @@ export function BrandingUploadControls({
         </label>
         <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
-            Upload a JPG, PNG, WebP, or SVG logo (max 5MB).
+            Upload a JPG, PNG, WebP, or SVG logo (max 5MB). Raster images are optimized and stored
+            as WebP, which reduces object-storage size and image transfer size. SVG logos are
+            preserved as SVG for branding compatibility.
           </p>
           <button
             type="button"
@@ -134,7 +136,8 @@ export function BrandingUploadControls({
         </label>
         <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
-            Upload an ICO, PNG, or SVG favicon (max 1MB).
+            Upload an ICO, PNG, or SVG favicon (max 1MB). Favicons are stored in the format you
+            upload — browser tab icons are not converted to WebP.
           </p>
           <button
             type="button"

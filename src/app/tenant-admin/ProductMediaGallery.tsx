@@ -260,6 +260,10 @@ export function ProductMediaGallery({
       <p className="text-xs text-muted-foreground">
         Images: JPG, PNG, WebP, HEIC/HEIF (max 10MB) · Videos: MP4, WebM (max 100MB)
       </p>
+      <p className="text-xs text-muted-foreground">
+        Raster images are optimized and stored as WebP, which reduces object-storage size and image
+        transfer size. Videos are stored as uploaded.
+      </p>
 
       {/* Only meaningful in "create" mode — the enclosing <ActionForm>'s
           own submit reads this field. In "edit" mode each change is
