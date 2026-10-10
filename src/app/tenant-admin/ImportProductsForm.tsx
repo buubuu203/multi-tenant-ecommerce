@@ -1,8 +1,8 @@
-"use client";
+'use client';
 
-import { useActionState } from "react";
-import type { ActionResult } from "@/lib/action-result";
-import type { ImportSummary } from "@/lib/product-csv";
+import { useActionState } from 'react';
+import type { ActionResult } from '@/lib/action-result';
+import type { ImportSummary } from '@/lib/product-csv';
 
 // Not reusing the shared ActionForm here: ActionForm only renders inline
 // error text on failure, with no way to render structured success detail
@@ -30,21 +30,28 @@ export function ImportProductsForm({
         aria-label="Product CSV file"
         className="text-sm"
       />
+      {/* Secondary treatment, matching ExportCsvButton: importing is a data
+          chore, not the thing a merchant came to the catalog to do, and it
+          must not read as visually equal to "Add a product". */}
       <button
         type="submit"
         disabled={pending}
-        className="w-fit rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+        className="w-fit rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
       >
-        Import
+        {pending ? 'Importing…' : 'Import products'}
       </button>
 
-      {state && !state.success && <p className="text-sm text-red-600">{state.error}</p>}
+      {state && !state.success && (
+        <p role="alert" className="text-sm text-red-600">
+          {state.error}
+        </p>
+      )}
 
       {state && state.success && (
-        <div className="text-sm">
+        <div role="status" className="text-sm">
           <p>
             Imported {state.data.imported} of {state.data.totalRows} rows
-            {state.data.failed > 0 ? ` (${state.data.failed} failed)` : ""}.
+            {state.data.failed > 0 ? ` (${state.data.failed} failed)` : ''}.
           </p>
           {state.data.failures.length > 0 && (
             <ul className="mt-1 list-disc pl-5 text-red-600">

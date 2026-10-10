@@ -573,3 +573,172 @@ test("payments and shipping keep exactly one page heading each", () => {
     );
   }
 });
+
+// --- Catalog CTA hierarchy ---
+//
+// These assert that the visible CTA model matches the ACTUAL persistence
+// model: one scoped label per Server Action, and no generic "Save".
+
+test("the catalog has exactly one dominant Add product action", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  // One primary button on the page, and it is the creating action.
+  assert.equal(
+    (src.match(/className=\{adminButtonPrimaryClassName\}/g) ?? []).length,
+    1,
+    "exactly one primary CTA on the catalog page",
+  );
+  assert.match(src, /Add a product/);
+});
+
+test("import and export are secondary tools, not competing primaries", () => {
+  const importForm = readCode("src/app/tenant-admin/ImportProductsForm.tsx");
+  const exportButton = readCode("src/app/tenant-admin/ExportCsvButton.tsx");
+  // Neither uses the filled primary treatment.
+  assert.doesNotMatch(importForm, /bg-foreground/, "import is not a filled primary");
+  assert.doesNotMatch(exportButton, /bg-foreground/, "export is not a filled primary");
+  // Both are scoped by name.
+  assert.match(importForm, /Import products/);
+  assert.match(exportButton, /Export \$\{label\}/);
+  // And both live behind the CSV disclosure rather than beside Add product.
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.ok(
+    catalog.indexOf("CSV import and export") < catalog.indexOf("<ImportProductsForm"),
+    "import sits inside the CSV disclosure",
+  );
+});
+
+test("no catalog action is labelled with a bare generic verb", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  for (const generic of ["Save", "Update", "Submit", "Remove", "Delete"]) {
+    assert.doesNotMatch(
+      src,
+      new RegExp(`submitLabel="${generic}"`),
+      `"${generic}" alone does not say what it commits`,
+    );
+  }
+});
+
+test("each catalog Server Action has its own scoped label", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  for (const label of [
+    "Save product",
+    "Save variant",
+    "Adjust",
+    "Generate variants",
+    "Assign option",
+    "Add option",
+    "Add value",
+    "Remove option",
+    "Delete value",
+    "Remove discount",
+  ]) {
+    assert.match(src, new RegExp(`submitLabel=(\\{)?["']${label}["']`), `${label} is used`);
+  }
+});
+
+test("the product form's single Save matches its single transaction", () => {
+  // updateProductAction persists name, price, status AND description in one
+  // call, so one page-level Save is accurate — not a facade over several.
+  const actions = readCode("src/app/tenant-admin/actions.ts");
+  const body = actions.slice(actions.indexOf("export async function updateProductAction"));
+  const fn = body.slice(0, body.indexOf("export async function", 10));
+  for (const field of ["name", "price", "status", "description"]) {
+    assert.match(fn, new RegExp(`${field}:`), `${field} is part of the same transaction`);
+  }
+
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  // Exactly one form posts updateProductAction per product.
+  assert.equal(
+    (catalog.match(/action=\{updateProductAction\}/g) ?? []).length,
+    1,
+    "one product form, one Save product",
+  );
+  // And the description editor lives inside it rather than owning a save.
+  assert.ok(
+    catalog.indexOf("action={updateProductAction}") < catalog.indexOf("<DescriptionEditor"),
+    "the description is part of the product form",
+  );
+});
+
+test("independent resources keep their own actions rather than being merged", () => {
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  // A variant is a separate resource with a separate action, so it keeps a
+  // separate scoped save instead of being folded into Save product.
+  assert.match(catalog, /action=\{updateProductVariantAction\}/);
+  assert.match(catalog, /submitLabel="Save variant"/);
+  // Inventory stays an operational adjustment, never a "Save".
+  assert.match(catalog, /action=\{adjustInventoryOnHandAction\}/);
+  assert.match(catalog, /submitLabel="Adjust"/);
+  assert.match(catalog, /Adjust by/, "the field states what the number does");
+});
+
+test("media commits on upload, so it has no Save of its own", () => {
+  const gallery = readCode("src/app/tenant-admin/ProductMediaGallery.tsx");
+  assert.doesNotMatch(gallery, /submitLabel="Save"/);
+  assert.match(gallery, /Upload media/);
+  assert.match(gallery, /aria-label="Remove media"/);
+  // The WebP wording added by the media pipeline work is still shown here.
+  assert.match(gallery, /stored as WebP/);
+});
+
+test("a collapsed product summarises its own state", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.match(src, /image\{product\.media\.length === 1/, "media count is in the summary");
+  assert.match(src, /'Discounted' : 'No discount'/, "discount state is in the summary");
+});
+
+test("destructive catalog actions stay confirmation-protected", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  // These two destroy generated variant data, and both still confirm.
+  for (const action of ["removeProductOptionAction", "deleteVariantOptionValueAction"]) {
+    const idx = src.indexOf(`action={${action}}`);
+    assert.ok(idx > -1, `${action} is still wired up`);
+    const nearby = src.slice(Math.max(0, idx - 400), idx + 400);
+    assert.match(nearby, /ConfirmActionForm/, `${action} still confirms`);
+    assert.match(nearby, /variant="danger"/, `${action} still reads as destructive`);
+  }
+});
+
+test("every destructive catalog action reads as destructive", () => {
+  // Remove discount is the one destructive catalog action that does NOT
+  // confirm — unchanged here on purpose, since altering destructive
+  // semantics is out of scope. What IS fixed is that it used to render as a
+  // filled primary immediately beside Save discount.
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  const idx = src.indexOf("action={deleteProductDiscountAction}");
+  assert.ok(idx > -1);
+  const nearby = src.slice(idx, idx + 300);
+  assert.match(nearby, /submitLabel="Remove discount"/);
+  assert.match(nearby, /variant="danger"/, "it no longer competes with Save discount");
+});
+
+test("the danger variant is additive, so default callers are unaffected", () => {
+  const form = readCode("src/components/ActionForm.tsx");
+  assert.match(form, /variant = 'default'/, "default is unchanged");
+  assert.match(form, /variant === 'danger'/);
+  assert.match(form, /border-red-300/, "danger uses the established destructive treatment");
+});
+
+test("import reports pending, success and failure accessibly", () => {
+  const src = readCode("src/app/tenant-admin/ImportProductsForm.tsx");
+  assert.match(src, /Importing…/, "pending state is visible, not only disabled");
+  assert.match(src, /disabled=\{pending\}/, "duplicate submission is blocked");
+  assert.match(src, /role="alert"/, "parse/validation errors are announced");
+  assert.match(src, /role="status"/, "the import summary is announced");
+  assert.match(src, /failed/, "partial failure is still reported, never silent");
+});
+
+test("catalog save feedback uses the shared accessible status conventions", () => {
+  const form = readCode("src/components/ActionForm.tsx");
+  assert.match(form, /disabled=\{pending \|\| disabled\}/, "Save is disabled while pending");
+  assert.match(form, /role="alert"/, "failures are announced");
+  const toast = readCode("src/components/Toast.tsx");
+  assert.match(toast, /role="status"/, "successes are announced politely");
+});
+
+test("the catalog keeps one page heading and adds no landmark", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  assert.equal((src.match(/<h1/g) ?? []).length, 0);
+  assert.equal((src.match(/<main/g) ?? []).length, 0);
+  assert.equal((src.match(/<AdminPageHeader/g) ?? []).length, 1);
+});
