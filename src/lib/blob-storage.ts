@@ -1,5 +1,6 @@
 import { put, del } from '@vercel/blob';
 import { randomUUID } from 'crypto';
+import { convertImageToWebp } from './images/webp-conversion';
 
 // Step 50: the ONLY module that talks to Vercel Blob directly — every
 // upload/delete in the app goes through here, so the tenant-scoping
@@ -40,9 +41,7 @@ const FAVICON_MIME_TYPES = new Set([
 async function validateSvgUpload(file: File): Promise<string | null> {
   if (file.type !== 'image/svg+xml') return null;
   const source = await file.text();
-  if (
-    /<script\b|<foreignObject\b|javascript:|on[a-z]+\s*=|data:text\/html/i.test(source)
-  ) {
+  if (/<script\b|<foreignObject\b|javascript:|on[a-z]+\s*=|data:text\/html/i.test(source)) {
     return 'SVG files may not contain scripts, event handlers, or embedded HTML.';
   }
   return null;
@@ -81,10 +80,22 @@ export async function uploadProductMediaFile(
     return { error: `${kind === 'image' ? 'Image' : 'Video'} exceeds the ${limitMb}MB limit.` };
   }
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  // Raster images are normalised to WebP BEFORE the key is derived, so
+  // the stored extension and content type always describe the actual
+  // bytes. Videos are never sent through the image pipeline.
+  let upload = file;
+  let contentType = file.type;
+  if (kind === 'image') {
+    const converted = await convertImageToWebp(file, IMAGE_MIME_TYPES);
+    if (!converted.ok) return { error: converted.error };
+    upload = converted.file;
+    contentType = converted.contentType;
+  }
+
+  const safeName = upload.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
   const pathname = `product-media/${tenantId}/${randomUUID()}-${safeName}`;
 
-  const blob = await put(pathname, file, { access: 'public' });
+  const blob = await put(pathname, upload, { access: 'public', contentType });
   return { url: blob.url, type: kind };
 }
 
@@ -112,16 +123,42 @@ export async function uploadBrandingLogoFile(
   if (file.size > MAX_LOGO_BYTES) {
     return { error: 'Logo image exceeds the 5MB limit.' };
   }
+  // SVG sanitisation runs FIRST and is unchanged: SVG is an exception to
+  // conversion, never to validation.
   const svgError = await validateSvgUpload(file);
   if (svgError) return { error: svgError };
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-  const blob = await put(`branding/${tenantId}/${randomUUID()}-${safeName}`, file, {
+  // A vector logo stays vector (mandated); a raster logo is normalised to
+  // WebP like any other raster upload. convertImageToWebp() makes that
+  // decision from the real content type, so this path states no policy of
+  // its own.
+  const converted = await convertImageToWebp(file, LOGO_MIME_TYPES);
+  if (!converted.ok) return { error: converted.error };
+
+  const safeName = converted.file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const blob = await put(`branding/${tenantId}/${randomUUID()}-${safeName}`, converted.file, {
     access: 'public',
+    contentType: converted.contentType,
   });
   return { url: blob.url };
 }
 
+/**
+ * Favicons are stored in the format they arrive in — the one image surface
+ * here that does NOT convert.
+ *
+ * Why: this app emits the favicon as `icons: { icon: url }` in Next's
+ * metadata (src/app/layout.tsx), which becomes a bare <link rel="icon">.
+ * The browser, not the app, decides what it will accept there. ICO is a
+ * multi-resolution container libvips cannot write at all, and a WebP tab
+ * icon, while supported by current Chrome/Firefox/Safari, is still the
+ * format most likely to be ignored by a crawler, a feed reader or an older
+ * browser — for a 1MB-capped piece of UI chrome, that trade buys nothing.
+ * So ICO stays ICO, PNG stays PNG, SVG stays SVG, and the generated
+ * metadata and URL stay valid for every one of them.
+ *
+ * Validation is unchanged and still applies, SVG sanitisation included.
+ */
 export async function uploadBrandingFaviconFile(
   tenantId: string,
   file: File,
@@ -161,11 +198,18 @@ export async function uploadBannerImageFile(
     return { error: 'Banner image exceeds the 8MB limit.' };
   }
 
-  const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  const converted = await convertImageToWebp(file, BANNER_MIME_TYPES);
+  if (!converted.ok) return { error: converted.error };
+
+  // The desktop/mobile distinction is carried by the key prefix exactly as
+  // before — conversion changes the bytes, never the namespace.
+  const safeName = converted.file.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
   const prefix = variant === 'mobile' ? 'mobile-' : '';
-  const blob = await put(`banners/${tenantId}/${prefix}${randomUUID()}-${safeName}`, file, {
-    access: 'public',
-  });
+  const blob = await put(
+    `banners/${tenantId}/${prefix}${randomUUID()}-${safeName}`,
+    converted.file,
+    { access: 'public', contentType: converted.contentType },
+  );
   return { url: blob.url };
 }
 
