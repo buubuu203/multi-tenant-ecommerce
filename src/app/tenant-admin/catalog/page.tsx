@@ -355,8 +355,14 @@ export default async function CatalogPage({
                   </span>
                   <span className="flex min-w-0 flex-1 flex-col gap-0.5">
                     <span className="truncate font-medium">{product.name}</span>
+                    {/* A collapsed product says what is inside it: variant
+                        count, media count and whether a discount exists —
+                        the three things a merchant opens a product to check.
+                        Words, not icons, so the summary survives greyscale. */}
                     <span className="text-xs text-muted-foreground">
-                      {activeVariants.length} variant{activeVariants.length === 1 ? '' : 's'}
+                      {activeVariants.length} variant{activeVariants.length === 1 ? '' : 's'} ·{' '}
+                      {product.media.length} image{product.media.length === 1 ? '' : 's'} ·{' '}
+                      {discountByProduct.get(product.id) ? 'Discounted' : 'No discount'}
                     </span>
                   </span>
                   <span className="money text-sm font-medium whitespace-nowrap">
@@ -373,7 +379,12 @@ export default async function CatalogPage({
                 <div className="flex flex-col gap-6 border-t border-border p-6">
                   <ActionForm
                     action={updateProductAction}
-                    submitLabel="Save"
+                    // One Server Action persists name, price, status and
+                    // description together, so this IS the product-level save
+                    // for this editor — named for what it commits rather than
+                    // left as a generic "Save" competing with every other
+                    // button in the panel.
+                    submitLabel="Save product"
                     successMessage="Product saved."
                     className="flex max-w-2xl flex-col gap-8"
                   >
@@ -484,6 +495,11 @@ export default async function CatalogPage({
                           <ActionForm
                             action={deleteProductDiscountAction}
                             submitLabel="Remove discount"
+                            // Destructive, so it must not render as a filled
+                            // primary next to Save discount. Confirmation
+                            // behaviour is deliberately left exactly as it
+                            // was — see the report.
+                            variant="danger"
                             successMessage="Discount removed."
                           >
                             <input type="hidden" name="productId" value={product.id} />
@@ -536,7 +552,7 @@ export default async function CatalogPage({
                             </span>
                             <ConfirmActionForm
                               action={removeProductOptionAction}
-                              submitLabel="Remove"
+                              submitLabel="Remove option"
                               successMessage="Option removed."
                               confirmMessage="Remove this option from the product? Variants generated from it are removed too. This cannot be undone."
                               variant="danger"
@@ -619,7 +635,11 @@ export default async function CatalogPage({
                                   <td colSpan={4} className="py-1.5">
                                     <ActionForm
                                       action={updateProductVariantAction}
-                                      submitLabel="Save"
+                                      // A separate Server Action on a separate
+                                      // resource (ProductVariant), so this is
+                                      // NOT folded into Save product — it is
+                                      // labelled for its own scope instead.
+                                      submitLabel="Save variant"
                                       successMessage="Variant saved."
                                       className="flex flex-wrap items-end gap-2"
                                     >
@@ -759,7 +779,7 @@ export default async function CatalogPage({
                       <span>{value.value}</span>
                       <ConfirmActionForm
                         action={deleteVariantOptionValueAction}
-                        submitLabel="Delete"
+                        submitLabel="Delete value"
                         successMessage="Option value deleted."
                         confirmMessage="Delete this option value? Any product variant built from it is removed too. This cannot be undone."
                         variant="danger"

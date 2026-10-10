@@ -50,6 +50,7 @@ export function ActionForm<T>({
   successMessage,
   className,
   disabled = false,
+  variant = 'default',
 }: {
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children: React.ReactNode;
@@ -62,6 +63,13 @@ export function ActionForm<T>({
   // component is shared by both Tenant Admin and Platform Admin forms with
   // no media concept at all.
   disabled?: boolean;
+  /**
+   * "danger" gives a destructive action the same visual weight it has on
+   * ConfirmActionForm, so a Remove/Delete control never renders as a filled
+   * primary competing with the Save beside it. Default is unchanged, so no
+   * existing caller is affected.
+   */
+  variant?: 'default' | 'danger';
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
@@ -85,7 +93,11 @@ export function ActionForm<T>({
         // but disabling the button is the visible half of that guarantee
         // — a user should never see a clickable button do nothing).
         disabled={pending || disabled}
-        className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+        className={
+          variant === 'danger'
+            ? 'rounded-md border border-red-300 px-3.5 py-1.5 text-sm font-medium text-red-700 transition-colors hover:bg-red-50 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-600 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950'
+            : 'rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground'
+        }
       >
         {pending ? 'Working…' : submitLabel}
       </button>
