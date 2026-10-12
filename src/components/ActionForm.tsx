@@ -51,6 +51,7 @@ export function ActionForm<T>({
   className,
   disabled = false,
   variant = 'default',
+  submitAriaLabel,
 }: {
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children: React.ReactNode;
@@ -70,6 +71,13 @@ export function ActionForm<T>({
    * existing caller is affected.
    */
   variant?: 'default' | 'danger';
+  /**
+   * Overrides the submit button's accessible name while leaving its visible
+   * text alone. Needed where the same action repeats per row: a column of
+   * buttons all named "Save variant" is indistinguishable to a screen
+   * reader listing them out of context.
+   */
+  submitAriaLabel?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
@@ -88,6 +96,7 @@ export function ActionForm<T>({
     <>
       <button
         type="submit"
+        aria-label={submitAriaLabel}
         // `pending` alone already prevents a second submission while one
         // is in flight (React ignores further calls to a pending action,
         // but disabling the button is the visible half of that guarantee
