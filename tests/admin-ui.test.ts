@@ -699,17 +699,77 @@ test("destructive catalog actions stay confirmation-protected", () => {
   }
 });
 
-test("every destructive catalog action reads as destructive", () => {
-  // Remove discount is the one destructive catalog action that does NOT
-  // confirm — unchanged here on purpose, since altering destructive
-  // semantics is out of scope. What IS fixed is that it used to render as a
-  // filled primary immediately beside Save discount.
+test("removing a discount requires confirmation, like every other destructive catalog action", () => {
   const src = readCode("src/app/tenant-admin/catalog/page.tsx");
   const idx = src.indexOf("action={deleteProductDiscountAction}");
-  assert.ok(idx > -1);
-  const nearby = src.slice(idx, idx + 300);
-  assert.match(nearby, /submitLabel="Remove discount"/);
-  assert.match(nearby, /variant="danger"/, "it no longer competes with Save discount");
+  assert.ok(idx > -1, "the action is still wired up");
+
+  // The form around it is the confirming one, not a plain ActionForm.
+  const before = src.slice(Math.max(0, idx - 300), idx);
+  const after = src.slice(idx, idx + 600);
+  assert.match(before, /<ConfirmActionForm/, "the enclosing form is the confirming one");
+  assert.match(after, /<\/ConfirmActionForm>/, "it closes as a ConfirmActionForm");
+  assert.doesNotMatch(after, /<\/ActionForm>/, "it is no longer a plain ActionForm");
+
+  assert.match(after, /submitLabel="Remove discount"/, "the scoped label is kept");
+  assert.match(after, /variant="danger"/, "it still reads as destructive");
+  // The confirmation says what will happen, in plain terms.
+  assert.match(after, /confirmMessage="Remove this discount/);
+  assert.match(after, /full price/, "the consequence is stated");
+  // The payload is untouched.
+  assert.match(after, /name="productId"/);
+});
+
+test("cancelling a confirmation sends no request", () => {
+  // The guard lives in ConfirmActionForm: a declined confirm() calls
+  // preventDefault(), so the action is never invoked. Asserted at the
+  // component, which is what every destructive catalog control shares.
+  const src = readCode("src/components/ConfirmActionForm.tsx");
+  assert.match(src, /window\.confirm\(message\)/);
+  assert.match(src, /if \(!window\.confirm\(message\)\) \{\s*e\.preventDefault\(\);/);
+  assert.match(src, /disabled=\{pending\}/, "duplicate submission stays blocked");
+  assert.match(src, /role="alert"/, "failures still use the alert convention");
+});
+
+test("the danger variant is additive, so default callers are unaffected", () => {
+  const form = readCode("src/components/ActionForm.tsx");
+  assert.match(form, /variant = 'default'/, "default is unchanged");
+  assert.match(form, /variant === 'danger'/);
+  assert.match(form, /border-red-300/, "danger uses the established destructive treatment");
+});
+
+test("each variant Save button gets the row's own accessible name", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  // Visible text is unchanged...
+  assert.match(src, /submitLabel="Save variant"/);
+  // ...while the accessible name carries the row context.
+  assert.match(src, /submitAriaLabel=\{`Save variant \$\{variantContextLabel\(/);
+  // Built from the human-readable combination, never an id.
+  assert.match(src, /return formatCombination\(variant, optionNameById, valueLabelById\);/);
+  assert.doesNotMatch(src, /submitAriaLabel=\{`Save variant \$\{variant\.id/);
+});
+
+test("the variant context label falls back safely on every edge case", () => {
+  const src = readCode("src/app/tenant-admin/catalog/page.tsx");
+  const fn = src.slice(src.indexOf("function variantContextLabel"));
+  const body = fn.slice(0, fn.indexOf("\n}") + 2);
+  // No options -> SKU (already user-facing) -> a generic phrase.
+  assert.match(body, /variant\.optionValues\.length > 0/);
+  assert.match(body, /variant\.sku/);
+  assert.match(body, /'without options'/);
+  // formatCombination already handles a missing option or value label.
+  const formatter = src.slice(src.indexOf("function formatCombination"));
+  assert.match(formatter.slice(0, 700), /\?\?\s*'\?'/, "unknown labels degrade, never throw");
+});
+
+test("the accessible-name override cannot change what is submitted", () => {
+  const form = readCode("src/components/ActionForm.tsx");
+  assert.match(form, /submitAriaLabel\?: string;/);
+  assert.match(form, /aria-label=\{submitAriaLabel\}/);
+  // It is presentational only: no name, no value, no formData involvement.
+  const button = form.slice(form.indexOf("<button"), form.indexOf("</button>"));
+  assert.doesNotMatch(button, /name=/, "the override adds no form field");
+  assert.doesNotMatch(button, /value=/);
 });
 
 test("the danger variant is additive, so default callers are unaffected", () => {

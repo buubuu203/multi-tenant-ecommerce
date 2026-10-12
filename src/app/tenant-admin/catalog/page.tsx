@@ -78,6 +78,32 @@ function formatCombination(
     .join(' / ');
 }
 
+/**
+ * The accessible-name suffix for a per-row variant control.
+ *
+ * Prefers the option combination a merchant can actually see ("Color: Red /
+ * Size: Small"), falls back to the SKU — already user-facing — and only then
+ * to a generic phrase. Internal ids and combination keys are never exposed.
+ * Two variants that differ in their options therefore differ in their
+ * accessible names.
+ */
+function variantContextLabel(
+  variant: {
+    sku: string | null;
+    optionValues: { variantOptionId: string; variantOptionValueId: string }[];
+  },
+  optionNameById: Map<string, string>,
+  valueLabelById: Map<string, string>,
+): string {
+  if (variant.optionValues.length > 0) {
+    return formatCombination(variant, optionNameById, valueLabelById);
+  }
+  if (variant.sku && variant.sku.trim().length > 0) {
+    return variant.sku.trim();
+  }
+  return 'without options';
+}
+
 // Step 38: renders the on-hand/reserved/available display plus the
 // adjust-by-signed-amount form for one variant's Inventory row. Reused for
 // both the simple-product path and the variant-bearing table below —
@@ -492,18 +518,20 @@ export default async function CatalogPage({
                           </label>
                         </ActionForm>
                         {discount && (
-                          <ActionForm
+                          // Destructive, so it follows the same pattern as
+                          // option removal and value deletion: danger
+                          // treatment plus a confirmation step. The action,
+                          // its payload and its authorization are unchanged —
+                          // only a gate in front of the submit.
+                          <ConfirmActionForm
                             action={deleteProductDiscountAction}
                             submitLabel="Remove discount"
-                            // Destructive, so it must not render as a filled
-                            // primary next to Save discount. Confirmation
-                            // behaviour is deliberately left exactly as it
-                            // was — see the report.
                             variant="danger"
                             successMessage="Discount removed."
+                            confirmMessage="Remove this discount from the product? It will stop applying immediately and customers will pay the full price. You can add a new discount afterwards."
                           >
                             <input type="hidden" name="productId" value={product.id} />
-                          </ActionForm>
+                          </ConfirmActionForm>
                         )}
                       </div>
                     );
@@ -640,6 +668,18 @@ export default async function CatalogPage({
                                       // NOT folded into Save product — it is
                                       // labelled for its own scope instead.
                                       submitLabel="Save variant"
+                                      // Visible text stays "Save variant"; the
+                                      // accessible name carries the row's
+                                      // identity, so a screen reader listing
+                                      // every button in this table does not
+                                      // read one name N times. Built from the
+                                      // same human-readable combination shown
+                                      // in the adjacent cell — never an id.
+                                      submitAriaLabel={`Save variant ${variantContextLabel(
+                                        variant,
+                                        optionNameById,
+                                        valueLabelById,
+                                      )}`}
                                       successMessage="Variant saved."
                                       className="flex flex-wrap items-end gap-2"
                                     >
