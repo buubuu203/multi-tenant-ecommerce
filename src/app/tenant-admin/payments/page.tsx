@@ -2,6 +2,7 @@ import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
 import { isProviderConfigured } from '@/lib/payments/payment-service';
 import { ActionForm } from '@/components/ActionForm';
+import { ConfirmActionForm } from '@/components/ConfirmActionForm';
 import { updateTenantPaymentMethodAction } from '../actions';
 import {
   adminPageClassName,
@@ -48,6 +49,15 @@ export default async function PaymentsPage() {
   const bankReady = isProviderConfigured(
     bankProvider,
     (bankConfig ?? null) as Record<string, unknown> | null,
+  );
+
+  // Switching provider replaces the stored config with the new provider's
+  // fields (see updateTenantPaymentMethod) — so anything already saved for
+  // the current provider is lost. Confirm only when there is genuinely
+  // something to lose: any non-empty stored value, not just a complete one,
+  // since a half-filled config is still work a merchant would have to redo.
+  const hasStoredBankConfig = Object.values(bankConfig ?? {}).some(
+    (value) => typeof value === 'string' && value.trim() !== '',
   );
 
   // Which specific manual fields are missing, so the helper text can name
@@ -132,11 +142,17 @@ export default async function PaymentsPage() {
             <StatusBadge status={isSepay ? 'SePay' : 'Manual'} tone="info" />
           </div>
         </div>
-        <ActionForm
+        <ConfirmActionForm
           action={updateTenantPaymentMethodAction}
           submitLabel="Save"
           successMessage="Bank transfer settings saved."
           className="max-w-md"
+          // Only a provider CHANGE is guarded. Saving bank details without
+          // touching the provider, or choosing a provider while nothing is
+          // stored yet, submits with no dialog.
+          skipConfirmation={!hasStoredBankConfig}
+          confirmWhen={{ field: 'provider', differsFrom: bankProvider }}
+          confirmMessage="Switch bank transfer provider? The configuration saved for the current provider is replaced by the fields of the one you picked, and cannot be recovered from here. The other provider's details will have to be entered again."
         >
           <input type="hidden" name="method" value="bank_transfer" />
           <label className="flex items-center gap-2 text-sm">
@@ -225,7 +241,7 @@ export default async function PaymentsPage() {
               </span>
             </label>
           </fieldset>
-        </ActionForm>
+        </ConfirmActionForm>
       </section>
 
       {/* MoMo — platform-level credentials (env vars), no per-tenant

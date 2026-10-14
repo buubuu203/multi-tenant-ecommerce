@@ -827,3 +827,70 @@ test("the catalog keeps one page heading and adds no landmark", () => {
   assert.equal((src.match(/<main/g) ?? []).length, 0);
   assert.equal((src.match(/<AdminPageHeader/g) ?? []).length, 1);
 });
+
+// --- Provider switching ---
+
+test("switching a configured payment provider requires confirmation", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  // The bank-transfer form is the confirming variant.
+  assert.match(page, /<ConfirmActionForm/);
+  assert.match(page, /confirmWhen=\{\{ field: 'provider', differsFrom: bankProvider \}\}/);
+  // The copy states what is lost, not merely that something will change.
+  assert.match(page, /Switch bank transfer provider\?/);
+  assert.match(page, /is replaced by the fields of the one you picked/);
+  assert.match(page, /cannot be recovered from here/);
+});
+
+test("confirmation is skipped when there is nothing to lose", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  // Derived from the stored config, on the server.
+  assert.match(page, /const hasStoredBankConfig = Object\.values\(bankConfig \?\? \{\}\)/);
+  assert.match(page, /value\.trim\(\) !== ''/, "a half-filled config still counts");
+  assert.match(page, /skipConfirmation=\{!hasStoredBankConfig\}/);
+});
+
+test("an unchanged provider submits without a dialog", () => {
+  // confirmWhen compares the SUBMITTED value against the stored one, so an
+  // ordinary save of the same form is not gated.
+  const src = readCode("src/components/ConfirmActionForm.tsx");
+  assert.match(src, /if \(skipConfirmation\) return;/);
+  assert.match(
+    src,
+    /String\(formData\.get\(confirmWhen\.field\) \?\? ''\) === confirmWhen\.differsFrom/,
+  );
+});
+
+test("declining a provider switch sends no request", () => {
+  // Structural: the guard is preventDefault() on the form's own submit, the
+  // same mechanism every destructive control in this admin relies on.
+  const src = readCode("src/components/ConfirmActionForm.tsx");
+  assert.match(src, /if \(!window\.confirm\(message\)\) \{\s*e\.preventDefault\(\);/);
+});
+
+test("confirming preserves the existing mutation and payload", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  // Same action, same hidden method field, same provider values, same names.
+  assert.match(page, /action=\{updateTenantPaymentMethodAction\}/);
+  assert.match(page, /name="method" value="bank_transfer"/);
+  assert.match(page, /value="bank_transfer_manual"/);
+  assert.match(page, /value="bank_transfer_sepay_va"/);
+  for (const field of ["bankName", "bankAccountNumber", "bankAccountHolder", "sepayBaUuid"]) {
+    assert.match(page, new RegExp(`name="${field}"`));
+  }
+});
+
+test("provider validation itself is unchanged", () => {
+  const mutations = readCode("src/lib/tenant-payment-mutations.ts");
+  // The server still rejects enabling an incompletely configured provider.
+  assert.match(mutations, /input\.enabled && \(!bankName \|\| !bankAccountNumber/);
+  assert.match(mutations, /input\.enabled && !baUuid/);
+  // And tenantId still comes from the caller, never from form input.
+  assert.match(mutations, /tenantId must be the trusted value|tenantId: string/);
+  assert.doesNotMatch(mutations, /formData/);
+});
+
+test("the conditional-confirmation props default to the previous behaviour", () => {
+  const src = readCode("src/components/ConfirmActionForm.tsx");
+  assert.match(src, /skipConfirmation = false/, "existing callers still always confirm");
+  assert.match(src, /confirmWhen\?: \{ field: string; differsFrom: string \}/);
+});
