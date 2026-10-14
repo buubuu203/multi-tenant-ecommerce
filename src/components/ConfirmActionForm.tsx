@@ -24,6 +24,8 @@ export function ConfirmActionForm<T>({
   successMessage,
   variant = 'default',
   className,
+  confirmWhen,
+  skipConfirmation = false,
 }: {
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children?: React.ReactNode;
@@ -42,6 +44,23 @@ export function ConfirmActionForm<T>({
   /** "danger" reads as destructive; "default" matches ActionForm's button. */
   variant?: 'default' | 'danger';
   className?: string;
+  /**
+   * Ask for confirmation only when this field's submitted value DIFFERS
+   * from `differsFrom`. Lets one form confirm a destructive change — a
+   * provider switch that would replace stored configuration — while an
+   * ordinary save of the same form passes straight through.
+   *
+   * Declarative rather than a predicate function on purpose: this is a
+   * Client Component, and a function prop cannot cross the Server
+   * Component boundary.
+   */
+  confirmWhen?: { field: string; differsFrom: string };
+  /**
+   * Suppresses the confirmation entirely — for the case where there is
+   * nothing to lose yet, such as choosing a provider for the first time.
+   * Decided on the server, where the stored state is known.
+   */
+  skipConfirmation?: boolean;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
@@ -69,10 +88,20 @@ export function ConfirmActionForm<T>({
       onSubmit={(e) => {
         // Read the form's current values before confirming, so a
         // function message sees exactly what is about to be submitted.
+        const formData = new FormData(e.currentTarget);
+
+        // Nothing at stake, or the guarded field was not changed: submit
+        // exactly as a plain ActionForm would, with no dialog.
+        if (skipConfirmation) return;
+        if (
+          confirmWhen &&
+          String(formData.get(confirmWhen.field) ?? '') === confirmWhen.differsFrom
+        ) {
+          return;
+        }
+
         const message =
-          typeof confirmMessage === 'function'
-            ? confirmMessage(new FormData(e.currentTarget))
-            : confirmMessage;
+          typeof confirmMessage === 'function' ? confirmMessage(formData) : confirmMessage;
         if (!window.confirm(message)) {
           e.preventDefault();
         }
