@@ -894,3 +894,41 @@ test("the conditional-confirmation props default to the previous behaviour", () 
   assert.match(src, /skipConfirmation = false/, "existing callers still always confirm");
   assert.match(src, /confirmWhen\?: \{ field: string; differsFrom: string \}/);
 });
+
+// --- Accessible names for repeated actions ---
+
+test("no admin form is left with a bare generic Save", () => {
+  for (const page of TENANT_PAGES) {
+    const src = readCode(page);
+    const generic = src.match(/submitLabel="Save"/g) ?? [];
+    if (generic.length === 0) continue;
+    // A visible "Save" is allowed only where an accessible name supplies
+    // the row's identity — never as the button's only name.
+    assert.equal(
+      generic.length,
+      (src.match(/submitAriaLabel=/g) ?? []).length,
+      `${page} has a Save with no accessible name of its own`,
+    );
+  }
+});
+
+test("each payment method's Save says which method it saves", () => {
+  const page = readCode("src/app/tenant-admin/payments/page.tsx");
+  assert.doesNotMatch(page, /submitLabel="Save"/, "no two methods share one name");
+  for (const label of ["Save cash on delivery", "Save bank transfer", "Save MoMo"]) {
+    assert.match(page, new RegExp(`submitLabel="${label}"`));
+  }
+});
+
+test("repeated per-row saves are distinguished by their own data", () => {
+  const shipping = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(shipping, /submitAriaLabel=\{`Save shipping method \$\{method\.name\}`\}/);
+
+  const banners = readCode("src/app/tenant-admin/banners/page.tsx");
+  assert.match(banners, /submitAriaLabel=\{`Save banner with sort order \$\{banner\.sortOrder\}`\}/);
+
+  // None of these expose an internal id.
+  for (const page of ["src/app/tenant-admin/shipping/page.tsx", "src/app/tenant-admin/banners/page.tsx"]) {
+    assert.doesNotMatch(readCode(page), /submitAriaLabel=\{`[^`]*\.id\}/);
+  }
+});
