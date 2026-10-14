@@ -932,3 +932,68 @@ test("repeated per-row saves are distinguished by their own data", () => {
     assert.doesNotMatch(readCode(page), /submitAriaLabel=\{`[^`]*\.id\}/);
   }
 });
+
+// --- Release-readiness invariants ---
+
+test("application code never writes the order-event ordering key", () => {
+  // `sequence` is assigned by the database inside the insert's own
+  // transaction. If application code ever set it, the audit log's ordering
+  // would become something a caller could get wrong.
+  const events = readCode("src/lib/order-events.ts");
+  // Every single mention of the field is as an ordering direction.
+  assert.equal(
+    (events.match(/sequence:/g) ?? []).length,
+    (events.match(/sequence: "asc"/g) ?? []).length,
+    "sequence appears only as an order key, never as a written value",
+  );
+  assert.equal((events.match(/orderBy: \[\{ sequence: "asc" \}\]/g) ?? []).length, 2);
+
+  for (const file of [
+    "src/lib/order-mutations.ts",
+    "src/lib/payments/payment-service.ts",
+    "src/lib/order-events.ts",
+  ]) {
+    const src = readCode(file);
+    assert.doesNotMatch(src, /sequence:\s*\d/, `${file} must not assign a sequence value`);
+    assert.doesNotMatch(src, /sequence:\s*(nextSequence|counter|\+\+)/);
+  }
+});
+
+test("the order-event migration is additive and safe on a populated table", () => {
+  const sql = readFileSync(
+    join(root, "prisma/migrations/20261014160000_add_order_event_sequence/migration.sql"),
+    "utf8",
+  );
+  // One column, one index. Nothing else.
+  assert.match(sql, /ALTER TABLE "order_events" ADD COLUMN "sequence" SERIAL;/);
+  assert.match(sql, /CREATE INDEX "order_events_tenantId_orderId_sequence_idx"/);
+  // No destructive or resetting statement anywhere in it.
+  for (const forbidden of [
+    /\bDROP\b/i,
+    /\bTRUNCATE\b/i,
+    /\bDELETE\s+FROM\b/i,
+    /\bALTER COLUMN\b/i,
+    /\bUPDATE\s+"?order_events"?\s+SET\b/i,
+  ]) {
+    assert.doesNotMatch(sql, forbidden, `migration must not contain ${forbidden}`);
+  }
+});
+
+test("at most one option-less variant can exist per product", () => {
+  // This is what makes the variant Save buttons' accessible names unique.
+  // An option-less variant has combinationKey '', and the schema makes
+  // (tenantId, productId, combinationKey) unique — so a single product can
+  // never show two buttons both falling back to "without options".
+  const schema = readCode("prisma/schema.prisma");
+  assert.match(schema, /@@unique\(\[tenantId, productId, combinationKey\]\)/);
+
+  // And the fallback chain the label relies on is still in place.
+  const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
+  const fn = catalog.slice(catalog.indexOf("function variantContextLabel"));
+  const body = fn.slice(0, fn.indexOf("\n}") + 2);
+  assert.match(body, /variant\.optionValues\.length > 0/);
+  assert.match(body, /variant\.sku/);
+  assert.match(body, /'without options'/);
+  // Never a database id.
+  assert.doesNotMatch(body, /variant\.id/);
+});
