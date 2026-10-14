@@ -95,6 +95,10 @@ export default async function ShippingPage() {
             <ActionForm
               action={updateShippingMethodAction}
               submitLabel="Save"
+              // One of these per method, so the visible word is enough in
+              // place but useless in a list of buttons. The accessible name
+              // carries the method's own name.
+              submitAriaLabel={`Save shipping method ${method.name}`}
               successMessage="Shipping method saved."
             >
               <input type="hidden" name="methodId" value={method.id} />

@@ -135,6 +135,9 @@ export default async function BannersPage() {
               <ActionForm
                 action={updateBannerAction}
                 submitLabel="Save"
+                // Banners have no name, so the accessible name uses the sort
+                // order already shown in this row's summary.
+                submitAriaLabel={`Save banner with sort order ${banner.sortOrder}`}
                 successMessage="Banner saved."
                 className="flex flex-col gap-4"
               >

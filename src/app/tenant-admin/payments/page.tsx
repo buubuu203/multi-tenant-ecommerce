@@ -98,7 +98,7 @@ export default async function PaymentsPage() {
         </div>
         <ActionForm
           action={updateTenantPaymentMethodAction}
-          submitLabel="Save"
+          submitLabel="Save cash on delivery"
           successMessage="Cash on delivery settings saved."
           className="max-w-md"
         >
@@ -144,7 +144,7 @@ export default async function PaymentsPage() {
         </div>
         <ConfirmActionForm
           action={updateTenantPaymentMethodAction}
-          submitLabel="Save"
+          submitLabel="Save bank transfer"
           successMessage="Bank transfer settings saved."
           className="max-w-md"
           // Only a provider CHANGE is guarded. Saving bank details without
@@ -264,7 +264,7 @@ export default async function PaymentsPage() {
         </div>
         <ActionForm
           action={updateTenantPaymentMethodAction}
-          submitLabel="Save"
+          submitLabel="Save MoMo"
           successMessage="MoMo settings saved."
           className="max-w-md"
         >
