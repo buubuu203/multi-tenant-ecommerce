@@ -802,6 +802,23 @@ model OrderEvent {
 
   createdAt DateTime @default(now())
 
+  // The authoritative creation ORDER of this event.
+  //
+  // createdAt cannot carry that on its own: it is generated client-side at
+  // MILLISECOND precision, so events written close together — two in one
+  // updateOrderStatus transaction, for instance — frequently share an
+  // identical value. Ordering then fell through to a tiebreak on `id`, a
+  // random UUID, so the recorded history of an order could be read back in
+  // an order that never happened. Measured, not assumed: three events
+  // written in one transaction were observed sharing one timestamp on some
+  // runs and splitting across two on others, which is exactly why the old
+  // test failed intermittently rather than always.
+  //
+  // A database-assigned sequence is monotonic, assigned inside the same
+  // transaction as the insert, and needs no clock. Append-only, never
+  // written by application code, never exposed in the read API.
+  sequence Int @default(autoincrement())
+
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   // Composite FK to (id, tenantId), the same tenant-safe pattern Payment
   // and Customer already use, so an event can never be attached to an
@@ -809,7 +826,8 @@ model OrderEvent {
   // cannot leave orphan events behind.
   order Order @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
 
-  // The timeline query is always (tenant, order, chronological).
+  // The timeline query is always (tenant, order, creation order).
+  @@index([tenantId, orderId, sequence])
   @@index([tenantId, orderId, createdAt])
   @@index([tenantId])
   @@map("order_events")

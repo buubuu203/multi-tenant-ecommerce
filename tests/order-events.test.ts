@@ -10,7 +10,7 @@ import { randomUUID } from "node:crypto";
 import { prisma } from "../src/lib/prisma";
 import { createOrder, updateOrderStatus } from "../src/lib/order-mutations";
 import { markManualPaymentReceived, createPaymentForOrder } from "../src/lib/payments/payment-service";
-import { getOrderTimeline } from "../src/lib/order-events";
+import { getOrderTimeline, recordOrderEventInTx, SYSTEM_ACTOR } from "../src/lib/order-events";
 
 const UNIT_PRICE = 100_000;
 const SHIPPING_AMOUNT = 20_000;
@@ -378,4 +378,154 @@ test("a system-initiated transition is recorded as system, not as an admin", asy
 
   const change = timeline.find((e) => e.type === "order_status_changed");
   assert.equal(change?.actorType, "system", "default actor is honest about who acted");
+});
+
+// --- Deterministic creation ordering -----------------------------------
+//
+// These exist because the timeline was previously ordered by createdAt and
+// then by `id`, a random UUID. createdAt's default is CURRENT_TIMESTAMP,
+// which in PostgreSQL is the TRANSACTION timestamp, so events written in
+// one transaction are byte-identical by it and the UUID decided the order —
+// a coin flip per pair. No sleeps here: the point is precisely that
+// same-instant events must still order correctly.
+
+test("events written in ONE transaction come back in creation order", async () => {
+  const orderId = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "sameTx");
+
+  // Three events, one transaction, deliberately in a known order.
+  await prisma.$transaction(async (tx) => {
+    for (const marker of ["first", "second", "third"]) {
+      await recordOrderEventInTx(tx, {
+        tenantId: tenantA.id,
+        orderId,
+        type: "order_status_changed",
+        previousValue: "pending",
+        newValue: "pending",
+        summary: `ordering-probe-${marker}`,
+        actor: SYSTEM_ACTOR,
+      });
+    }
+  });
+
+  const timeline = await getOrderTimeline(tenantA.id, orderId);
+  const probes = timeline.filter((e) => e.summary.startsWith("ordering-probe-"));
+  assert.deepEqual(
+    probes.map((p) => p.summary),
+    ["ordering-probe-first", "ordering-probe-second", "ordering-probe-third"],
+    "creation order is preserved",
+  );
+});
+
+test("ordering survives a byte-identical createdAt", async () => {
+  // The adversarial case, constructed rather than hoped for.
+  //
+  // createdAt is generated client-side at MILLISECOND precision, so three
+  // real events frequently — but not always — share one value. Under the
+  // old `createdAt asc, id asc` ordering, a tie was broken by a random
+  // UUID, so the audit log could be read back in an order that never
+  // happened. Writing the tie explicitly makes that deterministic to test
+  // instead of load-dependent.
+  const orderId = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "tiedAt");
+  const tied = new Date("2026-01-01T00:00:00.000Z");
+
+  for (const marker of ["alpha", "beta", "gamma"]) {
+    await prisma.orderEvent.create({
+      data: {
+        tenantId: tenantA.id,
+        orderId,
+        type: "order_status_changed",
+        previousValue: "pending",
+        newValue: "pending",
+        summary: `tied-${marker}`,
+        actorType: "system",
+        createdAt: tied,
+      },
+    });
+  }
+
+  const rows = await prisma.orderEvent.findMany({
+    where: { tenantId: tenantA.id, orderId, summary: { startsWith: "tied-" } },
+    select: { summary: true, createdAt: true },
+    orderBy: { sequence: "asc" },
+  });
+
+  // The precondition really holds: one timestamp, three events.
+  assert.equal(new Set(rows.map((r) => r.createdAt.getTime())).size, 1);
+  assert.deepEqual(
+    rows.map((r) => r.summary),
+    ["tied-alpha", "tied-beta", "tied-gamma"],
+    "insertion order is recoverable with no usable timestamp at all",
+  );
+
+  // And through the public read path, where it actually matters.
+  const timeline = await getOrderTimeline(tenantA.id, orderId);
+  assert.deepEqual(
+    timeline.filter((e) => e.summary.startsWith("tied-")).map((e) => e.summary),
+    ["tied-alpha", "tied-beta", "tied-gamma"],
+  );
+});
+
+test("order_created precedes later events, deterministically", async () => {
+  // The assertion that used to fail roughly one run in N.
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const orderId = await placeOrder(
+      tenantA.id,
+      variantA.id,
+      shippingMethodA.id,
+      `firstEvt${attempt}`,
+    );
+    await updateOrderStatus(tenantA.id, orderId, "cancelled");
+    const timeline = await getOrderTimeline(tenantA.id, orderId);
+    assert.ok(timeline.length >= 2);
+    assert.equal(timeline[0].type, "order_created", `creation was not first on attempt ${attempt}`);
+  }
+});
+
+test("the ordering key is monotonic across transactions too", async () => {
+  const orderId = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "monotonic");
+  await updateOrderStatus(tenantA.id, orderId, "fulfilled");
+
+  const rows = await prisma.orderEvent.findMany({
+    where: { tenantId: tenantA.id, orderId },
+    orderBy: { sequence: "asc" },
+    select: { sequence: true, createdAt: true },
+  });
+  assert.ok(rows.length >= 2);
+  for (let i = 1; i < rows.length; i++) {
+    assert.ok(
+      rows[i].sequence > rows[i - 1].sequence,
+      "the sequence strictly increases, never ties",
+    );
+  }
+});
+
+test("every event row has an ordering key, including pre-existing ones", async () => {
+  // The column was added as SERIAL, so rows that existed before the
+  // migration were assigned values in physical (append) order rather than
+  // left null. Nothing in the table is unordered.
+  const [{ missing }] = await prisma.$queryRawUnsafe<{ missing: bigint }[]>(
+    'select count(*)::bigint as missing from order_events where "sequence" is null',
+  );
+  assert.equal(Number(missing), 0);
+});
+
+test("the ordering fix did not widen the timeline's public shape", async () => {
+  const orderId = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "shape");
+  const [entry] = await getOrderTimeline(tenantA.id, orderId);
+  assert.ok(entry);
+  // sequence is an internal ordering key, not part of the read API.
+  assert.ok(!("sequence" in entry), "sequence stays out of the timeline entry");
+  for (const field of ["type", "summary", "createdAt", "actorType"]) {
+    assert.ok(field in entry, `${field} is still returned`);
+  }
+});
+
+test("ordering is still scoped to the asking tenant", async () => {
+  const orderA = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "isoA");
+  const orderB = await placeOrder(tenantB.id, variantB.id, shippingMethodB.id, "isoB");
+
+  // Tenant B cannot read tenant A's timeline, sequence or not.
+  assert.equal((await getOrderTimeline(tenantB.id, orderA)).length, 0);
+  assert.equal((await getOrderTimeline(tenantA.id, orderB)).length, 0);
+  assert.ok((await getOrderTimeline(tenantA.id, orderA)).length > 0);
 });
