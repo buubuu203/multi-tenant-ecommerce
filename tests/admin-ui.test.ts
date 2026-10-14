@@ -550,11 +550,36 @@ test("a default-but-disabled shipping method shows both states", () => {
   assert.match(src, /method\.enabled \? 'info' : 'neutral'/, "Default is subordinated, not hidden");
 });
 
-test("the bank-transfer route does not claim checkout reads its fields", () => {
+test("the bank-transfer route no longer writes data checkout ignores", () => {
   const src = readCode("src/app/tenant-admin/bank-transfer/page.tsx");
+  // The whole point: it writes nothing at all now.
+  assert.doesNotMatch(src, /updateBankTransferDetails/, "the dead action is gone");
+  assert.doesNotMatch(src, /<ActionForm/, "no form writes Branding bank fields");
+  assert.doesNotMatch(src, /name="bankName"/);
   assert.doesNotMatch(src, /shown to customers who choose manual bank transfer/);
-  assert.match(src, /Checkout does not read these fields/);
-  assert.match(src, /tenant-admin\/payments/, "it points at the fields that are read");
+  // And it sends the merchant to the one place that does own the config.
+  assert.match(src, /tenant-admin\/payments/);
+  assert.match(src, /read-only/);
+});
+
+test("the dead branding bank-detail writer is removed everywhere", () => {
+  // Branding.bankName/bankAccountNumber/bankAccountHolder had exactly one
+  // writer and no reader. The columns stay (no migration), but nothing in
+  // the app presents them as settings any more.
+  const actions = readCode("src/app/tenant-admin/actions.ts");
+  assert.doesNotMatch(actions, /updateBankTransferDetails/);
+  const branding = readCode("src/lib/branding-mutations.ts");
+  assert.doesNotMatch(branding, /export async function updateBankTransferDetails/);
+});
+
+test("bank transfer state is read from the source checkout actually uses", () => {
+  const src = readCode("src/app/tenant-admin/bank-transfer/page.tsx");
+  assert.match(src, /tenantPaymentMethod\.findUnique/, "it reads TenantPaymentMethod");
+  assert.match(src, /isProviderConfigured/, "readiness uses the checkout predicate");
+  assert.doesNotMatch(src, /branding\.findUnique/, "it no longer reads Branding");
+  // Tenant isolation is unchanged: scoped db plus the trusted tenantId.
+  assert.match(src, /requireTenantAdmin\(\)/);
+  assert.match(src, /getScopedDb\(tenantId\)/);
 });
 
 test("payments and shipping keep exactly one page heading each", () => {

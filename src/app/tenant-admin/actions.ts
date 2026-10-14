@@ -7,7 +7,6 @@ import {
   updateBranding,
   updateBrandingLogoUrl,
   updateBrandingFaviconUrl,
-  updateBankTransferDetails,
   updateDesignTokens,
 } from '@/lib/branding-mutations';
 import { createProduct, updateProduct } from '@/lib/product-mutations';
@@ -111,20 +110,6 @@ export async function uploadBrandingFaviconAction(
   if (!saved.success) return saved as ActionResult<{ url: string }>;
   revalidatePath('/tenant-admin', 'layout');
   return { success: true, data: result };
-}
-
-export async function updateBankTransferDetailsAction(
-  _prevState: ActionResult | null,
-  formData: FormData,
-): Promise<ActionResult> {
-  const { tenantId } = await requireTenantAdmin();
-  const result = await updateBankTransferDetails(tenantId, {
-    bankName: String(formData.get('bankName') ?? ''),
-    bankAccountNumber: String(formData.get('bankAccountNumber') ?? ''),
-    bankAccountHolder: String(formData.get('bankAccountHolder') ?? ''),
-  });
-  if (result.success) revalidatePath('/tenant-admin', 'layout');
-  return result;
 }
 
 export async function uploadDesignTokensAction(formData: FormData): Promise<ActionResult> {
