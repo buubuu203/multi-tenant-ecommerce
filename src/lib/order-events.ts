@@ -143,7 +143,11 @@ export async function getOrderTimeline(
   }
   const events = await prisma.orderEvent.findMany({
     where: { tenantId, orderId },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    // Creation order, from the database-assigned sequence. NOT
+    // createdAt: it is millisecond-precision and client-generated, so
+    // events written close together can tie, and the old tiebreak on a
+    // random UUID could reorder real history.
+    orderBy: [{ sequence: "asc" }],
     select: {
       id: true,
       type: true,
@@ -181,7 +185,11 @@ export async function getOrderTimelinesForOrders(
 
   const events = await prisma.orderEvent.findMany({
     where: { tenantId, orderId: { in: ids } },
-    orderBy: [{ createdAt: "asc" }, { id: "asc" }],
+    // Creation order, from the database-assigned sequence. NOT
+    // createdAt: it is millisecond-precision and client-generated, so
+    // events written close together can tie, and the old tiebreak on a
+    // random UUID could reorder real history.
+    orderBy: [{ sequence: "asc" }],
     select: {
       id: true,
       orderId: true,
