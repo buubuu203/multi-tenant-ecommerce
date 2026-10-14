@@ -1,90 +1,92 @@
+import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
-import { ActionForm } from '@/components/ActionForm';
-import { updateBankTransferDetailsAction } from '../actions';
+import { isProviderConfigured } from '@/lib/payments/payment-service';
 import {
-  adminInputClassName,
-  adminLabelClassName,
+  adminButtonPrimaryClassName,
   adminPageClassName,
   adminPanelClassName,
   adminPanelTitleClassName,
 } from '../styles';
 import { AdminPageHeader } from '../AdminPageHeader';
-import Link from 'next/link';
+import { StatusBadge } from '../StatusBadge';
 
 export const dynamic = 'force-dynamic';
 
+/**
+ * This route used to be a second, competing bank-details form.
+ *
+ * It wrote Branding.bankName / bankAccountNumber / bankAccountHolder, and
+ * nothing read them. What a customer actually sees at checkout and on the
+ * order-lookup page comes from the manual bank-transfer PROVIDER, which
+ * builds its instructions and its VietQR code from
+ * TenantPaymentMethod.config (see manual-bank-transfer-provider.ts and
+ * getPaymentInstructions in payment-service.ts). A merchant could fill this
+ * page in completely and still have an unconfigured store.
+ *
+ * The form is therefore gone rather than rewired. Rewiring it would have
+ * meant writing bank fields into a config object that the existing mutation
+ * replaces wholesale per provider — so saving here while the tenant is on
+ * SePay would have silently destroyed their baUuid — and it would have left
+ * two editors for one record. Payments is the single place that owns this
+ * configuration; this route now points at it and reports the live state.
+ *
+ * Nothing about checkout, the provider, the stored config or the Branding
+ * columns is changed by this commit. The stale Branding values are simply
+ * no longer presented as settings.
+ */
 export default async function BankTransferPage() {
   const { tenantId } = await requireTenantAdmin();
   const db = getScopedDb(tenantId);
-  const branding = await db.branding.findUnique({ where: { tenantId } });
+  const bank = await db.tenantPaymentMethod.findUnique({
+    where: { tenantId_method: { tenantId, method: 'bank_transfer' } },
+  });
+
+  const configured = bank
+    ? isProviderConfigured(bank.provider, bank.config as Record<string, unknown> | null)
+    : false;
+  const isSepay = bank?.provider === 'bank_transfer_sepay_va';
 
   return (
     <div className={adminPageClassName}>
       <AdminPageHeader
         title="Bank transfer instructions"
-        description="A copy of your bank details stored alongside your branding."
+        description="What a customer sees when they pay by bank transfer. These details are configured under Payments."
       />
 
-      {/* The previous description claimed these fields are what a customer
-          sees at checkout. They are not: the manual bank-transfer provider
-          builds its instructions (and the VietQR code) from the config
-          saved under Payments → Bank transfer, and nothing reads the
-          branding copy written here. Saying so is a copy fix — the stores,
-          the actions and the checkout behaviour are all left exactly as
-          they are. */}
-      <p
-        role="note"
-        className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-300"
-      >
-        <strong className="font-semibold">Checkout does not read these fields.</strong> The bank
-        details a customer sees, and the QR code generated for them, come from the manual bank
-        transfer fields under{' '}
-        <Link href="/tenant-admin/payments" className="underline">
-          Payments
-        </Link>
-        . Set them there as well, or instead.
-      </p>
-      {/* One settings section rather than a page-sized card, so this
-          route reads as part of the same Checkout group as Payments. */}
-      <section aria-labelledby="bank-details" className={adminPanelClassName}>
-        <h3 id="bank-details" className={adminPanelTitleClassName}>
-          Stored account details
-        </h3>
-        <ActionForm
-          action={updateBankTransferDetailsAction}
-          submitLabel="Save bank details"
-          successMessage="Bank transfer details saved."
-          className="max-w-md"
-        >
-          <label className={adminLabelClassName}>
-            Bank name
-            <input
-              name="bankName"
-              defaultValue={branding?.bankName ?? ''}
-              placeholder="Vietcombank"
-              className={adminInputClassName}
+      <section aria-labelledby="bank-where" className={adminPanelClassName}>
+        <div className="flex flex-wrap items-start justify-between gap-2 border-b border-border pb-3">
+          <h3 id="bank-where" className={adminPanelTitleClassName}>
+            Current bank transfer setup
+          </h3>
+          <span className="flex flex-wrap items-center gap-1.5">
+            <StatusBadge
+              status={bank?.enabled ? 'Enabled' : 'Disabled'}
+              tone={bank?.enabled ? 'success' : 'neutral'}
             />
-          </label>
-          <label className={adminLabelClassName}>
-            Account number
-            <input
-              name="bankAccountNumber"
-              defaultValue={branding?.bankAccountNumber ?? ''}
-              placeholder="0123456789"
-              className={adminInputClassName}
+            <StatusBadge
+              status={configured ? 'Ready' : 'Needs setup'}
+              tone={configured ? 'success' : 'warning'}
             />
-          </label>
-          <label className={adminLabelClassName}>
-            Account holder name
-            <input
-              name="bankAccountHolder"
-              defaultValue={branding?.bankAccountHolder ?? ''}
-              placeholder="NGUYEN VAN A"
-              className={adminInputClassName}
-            />
-          </label>
-        </ActionForm>
+            <StatusBadge status={isSepay ? 'SePay' : 'Manual'} tone="info" />
+          </span>
+        </div>
+
+        <p className="text-sm text-muted-foreground">
+          {isSepay
+            ? 'This store uses SePay virtual accounts. SePay generates the account details for each order, and confirms payment automatically by webhook.'
+            : 'This store uses manual bank transfer. The bank name, account number and account holder you set under Payments are the ones shown to the customer, and the ones used to build the VietQR code on the order.'}
+        </p>
+
+        <p className="text-sm text-muted-foreground">
+          This page is read-only. Editing happens in one place so the two can never disagree.
+        </p>
+
+        <div>
+          <Link href="/tenant-admin/payments" className={adminButtonPrimaryClassName}>
+            Edit bank transfer under Payments
+          </Link>
+        </div>
       </section>
     </div>
   );
