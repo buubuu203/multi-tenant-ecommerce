@@ -128,9 +128,12 @@ SELECT c.relname AS sequence_name,
 FROM pg_class c WHERE c.relkind = 'S' AND c.relname = 'order_events_sequence_seq';
 
 -- 2.13 Does the expected index exist, and is it valid?
-SELECT i.indexrelid::regclass AS index_name, i.indisvalid, i.indisready
+-- NB: join pg_class for the name. indexrelid::regclass::text QUOTES a
+-- mixed-case identifier, so comparing it to a bare string never matches.
+SELECT ic.relname AS index_name, i.indisvalid, i.indisready
 FROM pg_index i
-WHERE i.indexrelid::regclass::text = 'order_events_tenantId_orderId_sequence_idx';
+JOIN pg_class ic ON ic.oid = i.indexrelid
+WHERE ic.relname = 'order_events_tenantId_orderId_sequence_idx';
 ```
 
 ### Interpreting 2.9–2.13
@@ -545,8 +548,9 @@ WHERE table_name = 'order_events' AND column_name = 'sequence';
 SELECT pg_get_serial_sequence('order_events', 'sequence') AS owned_sequence,
        last_value FROM order_events_sequence_seq;
 
-SELECT indexrelid::regclass, indisvalid FROM pg_index
-WHERE indexrelid::regclass::text = 'order_events_tenantId_orderId_sequence_idx';
+SELECT ic.relname, i.indisvalid
+FROM pg_index i JOIN pg_class ic ON ic.oid = i.indexrelid
+WHERE ic.relname = 'order_events_tenantId_orderId_sequence_idx';
 -- present, indisvalid = true
 ```
 

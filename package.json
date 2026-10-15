@@ -12,7 +12,9 @@
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
     "db:studio": "prisma studio",
-    "test": "node --import tsx --import ./tests/env-setup.ts --test --test-concurrency=1 tests/**/*.test.ts"
+    "test": "node --import tsx --import ./tests/env-setup.ts --test --test-concurrency=1 tests/**/*.test.ts",
+    "release:preflight:order-events": "tsx scripts/order-event-preflight.ts",
+    "release:verify:order-events": "tsx scripts/order-event-verify.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.0",
