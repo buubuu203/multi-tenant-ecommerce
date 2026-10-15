@@ -360,7 +360,11 @@ test('state is conveyed as words, not colour alone', () => {
 
 test('the page states what it cannot tell you', () => {
   const page = source('../src/app/tenant-admin/payment-operations/page.tsx');
-  assert.match(page, /Underpayments, overpayments and unmatched bank transfers are not shown/);
+  // Underpayments and overpayments ARE shown now that rejected
+  // deliveries are persisted. What remains unavailable is unmatched,
+  // and the page must say why rather than going quiet about it.
+  assert.match(page, /Unmatched transfers are not shown here/);
+  assert.match(page, /resolves to[\s\S]{0,20}no tenant/);
   assert.match(page, /not an accounting, tax or banking system/);
   assert.match(page, /never[\s\S]{0,15}confirms that money reached/i);
 });
