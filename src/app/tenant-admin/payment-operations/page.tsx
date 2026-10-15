@@ -115,7 +115,11 @@ export default async function PaymentOperationsPage({
       >
         <label className={adminLabelClassName}>
           Provider
-          <select name="provider" defaultValue={params.provider ?? ''} className={adminInputClassName}>
+          <select
+            name="provider"
+            defaultValue={params.provider ?? ''}
+            className={adminInputClassName}
+          >
             <option value="">All providers</option>
             <option value="cod">Cash on delivery</option>
             <option value="bank_transfer_manual">Bank transfer (manual)</option>
@@ -268,7 +272,9 @@ export default async function PaymentOperationsPage({
                     <dt className="text-muted-foreground">Order status</dt>
                     <dd>{row.orderStatus}</dd>
                     <dt className="text-muted-foreground">Opened</dt>
-                    <dd className="tabular-nums">{row.createdAt.toISOString().slice(0, 16).replace('T', ' ')}</dd>
+                    <dd className="tabular-nums">
+                      {row.createdAt.toISOString().slice(0, 16).replace('T', ' ')}
+                    </dd>
                     {row.expiresAt && (
                       <>
                         <dt className="text-muted-foreground">Expires</dt>
