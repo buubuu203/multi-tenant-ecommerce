@@ -97,7 +97,7 @@ export type OrderListEntry = {
 // combinationKey, which is never read here at all. Module-scoped (not
 // redefined per-call) so both listOrders() and getOrderForCustomer() share
 // exactly one implementation.
-function formatCombination(
+export function formatCombination(
   optionValues: { variantOptionId: string; variantOptionValueId: string }[],
   optionNameById: Map<string, string>,
   valueLabelById: Map<string, string>,

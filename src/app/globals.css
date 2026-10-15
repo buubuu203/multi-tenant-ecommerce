@@ -162,3 +162,64 @@ body {
 :root[data-theme="dark"] .admin-chrome {
   background-color: var(--background);
 }
+
+/* ---------------------------------------------------------------------
+   Order Print Center.
+
+   Screen-only chrome is hidden with Tailwind's print: variant at the
+   element (the admin header and sidebar, and each document's own
+   controls). What needs a real stylesheet is page geometry and the
+   pagination rules Tailwind has no variants for.
+   --------------------------------------------------------------------- */
+@media print {
+  @page {
+    /* A4 by default; a smaller sheet simply scales the same margins. */
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    /* Printers render grey text badly, and these documents are read in a
+       warehouse under poor light. */
+    color: #000;
+  }
+
+  /* The admin shell's grid collapses to a single full-width column so the
+     document is not printed inside a content well. */
+  .admin-chrome,
+  .admin-chrome main {
+    display: block !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .order-print-sheet {
+    box-shadow: none !important;
+  }
+
+  /* A long order spans pages: repeat the column headings on each one. */
+  .order-print-sheet thead {
+    display: table-header-group;
+  }
+
+  /* Never split a line item, and never strand totals on their own page. */
+  .order-print-row,
+  .order-print-totals {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Vietnamese names, addresses and long SKUs must wrap rather than clip. */
+  .order-print-sheet {
+    overflow-wrap: anywhere;
+  }
+
+  /* Printing a URL after every link is noise on an operational document. */
+  .order-print-sheet a::after {
+    content: '' !important;
+  }
+}
