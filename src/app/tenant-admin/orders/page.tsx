@@ -10,7 +10,9 @@ import { BulkOrderStatusForm } from "../BulkOrderStatusForm";
 import { Pagination } from "../Pagination";
 import { listOrders, type ListOrdersOptions } from "@/lib/order-queries";
 import { formatVnd } from "../format";
+import Link from "next/link";
 import { getOrderTimelinesForOrders } from "@/lib/order-events";
+import { DOCUMENT_TITLE, PRINT_DOCUMENTS } from "@/lib/order-print";
 import { OrderTimeline } from "../OrderTimeline";
 import { ExportCsvButton } from "../ExportCsvButton";
 import {
@@ -339,6 +341,28 @@ export default async function OrdersPage({
                     <div className="border-t border-border pt-3">
                       <h4 className={adminEyebrowClassName}>Activity</h4>
                       <OrderTimeline entries={timelines.get(order.id) ?? []} />
+                    </div>
+
+                    {/* Printing is read-only, so these are plain links and
+                        need no confirmation. They stack on narrow screens
+                        rather than squeezing three buttons into one row,
+                        and each carries its own scoped accessible name —
+                        a column of "Print" would be useless to a screen
+                        reader listing them. */}
+                    <div className="border-t border-border pt-3">
+                      <h4 className={adminEyebrowClassName}>Print</h4>
+                      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
+                        {PRINT_DOCUMENTS.map((documentType) => (
+                          <Link
+                            key={documentType}
+                            href={`/tenant-admin/orders/${order.id}/print?document=${documentType}`}
+                            aria-label={`Print ${DOCUMENT_TITLE[documentType].toLowerCase()} for order ${order.id}`}
+                            className={`${adminButtonSecondaryClassName} min-h-11 justify-center sm:w-auto lg:min-h-9`}
+                          >
+                            {DOCUMENT_TITLE[documentType]}
+                          </Link>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </details>
