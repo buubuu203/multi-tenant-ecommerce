@@ -662,6 +662,81 @@ model Payment {
 // payment-service.ts). Deliberately NOT an unbounded raw-log system:
 // one row per genuine webhook delivery, nothing polled/generated
 // speculatively.
+/// Append-only evidence of a webhook delivery this system REJECTED.
+///
+/// PaymentEvent records what was accepted. This records what was not, so
+/// a merchant can see an underpayment or an overpayment that previously
+/// vanished without trace: webhook-service.ts validates the reported
+/// amount before persisting anything, and a mismatch was simply dropped.
+///
+/// TENANT ATTRIBUTION IS DELIBERATELY NULLABLE. A webhook carries no
+/// storefront context; the only trustworthy source of tenant identity is
+/// the Payment row found via the provider's own correlation key. So:
+///
+///   - amount mismatch  -> the Payment was found, tenantId is VERIFIED,
+///                         and the row is visible to that tenant.
+///   - unknown payment  -> nothing resolves, so tenantId stays null and
+///                         the row is platform-level only. It is never
+///                         shown in a tenant's queue, because guessing an
+///                         owner from a name or an amount is exactly the
+///                         wrong thing to do.
+///   - invalid signature -> never recorded at all. An unauthenticated
+///                         request must not be able to write rows.
+///
+/// No raw payload is stored. `payloadDigest` is a SHA-256 of the body,
+/// which is one-way and used only to recognise a repeat delivery when the
+/// provider gives no stable event id.
+model PaymentRejection {
+  id String @id @default(uuid())
+
+  /// Null when no Payment resolved, which is also when the row is
+  /// platform-level and invisible to every tenant.
+  tenantId String?
+  provider PaymentProviderType
+
+  /// Stable per-provider key: the provider's own event id where it gives
+  /// one, otherwise the payload digest. Never a random retry id.
+  dedupeKey String
+  /// How many times this same rejected delivery has arrived. Incremented
+  /// in place, so a provider retrying forever cannot grow the table.
+  occurrences Int @default(1)
+
+  /// Safe, bounded, normalised reason. Never provider prose.
+  reason PaymentRejectionReason
+
+  /// The provider's correlation key, as supplied. Already the value
+  /// stored on Payment.providerOrderId for a resolved payment.
+  providerOrderId String?
+  /// Populated only when a Payment really was found.
+  paymentId String?
+  orderId   String?
+
+  /// Both in VND minor-unit-free integers, the same convention as
+  /// Payment.amount. Null when the payload did not yield a trustworthy
+  /// number — never a zero standing in for "unknown".
+  expectedAmount Int?
+  reportedAmount Int?
+
+  /// SHA-256 of the raw body. One-way; never rendered.
+  payloadDigest String
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([provider, dedupeKey])
+  @@index([tenantId, firstSeenAt])
+  @@map("payment_rejections")
+}
+
+enum PaymentRejectionReason {
+  /// Reported amount did not equal the amount the payment was opened for.
+  amount_mismatch
+  /// The provider's correlation key resolved to no payment in any tenant.
+  unknown_payment
+  /// Signature passed but the body could not be parsed into a usable event.
+  invalid_payload
+}
+
 model PaymentEvent {
   id              String              @id @default(uuid())
   paymentId       String
