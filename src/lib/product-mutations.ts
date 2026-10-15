@@ -77,7 +77,12 @@ function validateMedia(media: { url: string; type: MediaKind }[] | undefined): {
   return null;
 }
 
-function validateProductInput(
+/**
+ * Exported so the CSV import PREVIEW can apply the identical rule without
+ * touching the database. Pure, and the only validator createProduct() uses
+ * — sharing it is what stops preview and import from drifting apart.
+ */
+export function validateProductInput(
   input: ProductInput,
 ): { name: string; price: number; status: ProductStatusInput; description: string | null } | { error: string } {
   const name = input.name.trim();

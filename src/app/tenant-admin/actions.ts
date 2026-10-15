@@ -1,6 +1,12 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { getScopedDb } from '@/lib/db/tenant-db';
+import {
+  buildImportPreview,
+  csvFingerprint,
+  type ImportPreview,
+} from '@/lib/product-csv-preview';
 import { redirect } from 'next/navigation';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -302,6 +308,47 @@ export async function reorderProductMediaAction(formData: FormData): Promise<Act
 // Same rule: independently re-checks auth + authorization; tenantId is
 // NEVER read from the CSV file or formData. Each row is imported via the
 // existing createProduct() — no duplicated/conflicting validation.
+/**
+ * Read-only validation pass over a product CSV.
+ *
+ * Authorizes exactly like every other admin action, reads the tenant's own
+ * product names through the scoped client, and hands both to a pure
+ * classifier. It never calls importProductsFromCsv() and performs no write
+ * of any kind — see product-csv-preview.ts.
+ */
+export async function previewProductsImportAction(
+  _prevState: ActionResult<ImportPreview> | null,
+  formData: FormData,
+): Promise<ActionResult<ImportPreview>> {
+  const { tenantId } = await requireTenantAdmin();
+
+  const file = formData.get('file');
+  if (!(file instanceof File)) {
+    return { success: false, error: 'No file selected.' };
+  }
+  if (file.size === 0) {
+    return { success: false, error: 'That file is empty.' };
+  }
+
+  const csvText = await file.text();
+
+  // Scoped read: only this tenant's names can ever reach the classifier,
+  // so a conflict can never be raised against another tenant's catalog.
+  const existing = await getScopedDb(tenantId).product.findMany({
+    where: { tenantId },
+    select: { name: true },
+  });
+
+  const preview = buildImportPreview(
+    csvText,
+    existing.map((product) => product.name),
+  );
+  if ('error' in preview) {
+    return { success: false, error: preview.error };
+  }
+  return { success: true, data: preview };
+}
+
 export async function importProductsAction(
   _prevState: ActionResult<ImportSummary> | null,
   formData: FormData,
@@ -314,6 +361,25 @@ export async function importProductsAction(
   }
 
   const csvText = await file.text();
+
+  // Stale-confirmation guard. The client sends back the fingerprint of the
+  // file it previewed; if the bytes differ, the operator is confirming a
+  // preview that no longer describes this file. Optional, so the action
+  // behaves exactly as before for any caller that does not send it — and
+  // it is an integrity check, never an authority: the import below still
+  // re-validates every row from the file itself, and no client-supplied
+  // count is ever trusted.
+  const expected = formData.get('previewFingerprint');
+  if (typeof expected === 'string' && expected !== '') {
+    if (csvFingerprint(csvText) !== expected) {
+      return {
+        success: false,
+        error:
+          'This file has changed since it was previewed. Preview it again before importing.',
+      };
+    }
+  }
+
   const result = await importProductsFromCsv(tenantId, csvText);
 
   if (result.success) {
