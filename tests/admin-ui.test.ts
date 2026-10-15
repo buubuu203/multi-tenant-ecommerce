@@ -624,11 +624,30 @@ test("the catalog has exactly one dominant Add product action", () => {
 test("import and export are secondary tools, not competing primaries", () => {
   const importForm = readCode("src/app/tenant-admin/ImportProductsForm.tsx");
   const exportButton = readCode("src/app/tenant-admin/ExportCsvButton.tsx");
-  // Neither uses the filled primary treatment.
-  assert.doesNotMatch(importForm, /bg-foreground/, "import is not a filled primary");
   assert.doesNotMatch(exportButton, /bg-foreground/, "export is not a filled primary");
-  // Both are scoped by name.
-  assert.match(importForm, /Import products/);
+
+  // The ENTRY POINT must not compete with "Add a product". "Preview
+  // import" is the first action and is secondary; the filled primary
+  // appears only on the confirm step, which exists solely after a valid
+  // preview and is that workflow's one primary action.
+  const previewButton = importForm.slice(
+    importForm.indexOf("Preview import") - 900,
+    importForm.indexOf("Preview import"),
+  );
+  assert.doesNotMatch(previewButton, /bg-foreground/, "Preview import is secondary");
+  assert.match(previewButton, /border border-border/);
+
+  const confirmButton = importForm.slice(
+    importForm.indexOf("Importing…") - 700,
+    importForm.indexOf("Importing…"),
+  );
+  assert.match(confirmButton, /bg-foreground/, "confirm is the primary of its own step");
+  // Exactly one filled primary in the whole component.
+  assert.equal((importForm.match(/bg-foreground/g) ?? []).length, 1);
+  // Both are scoped by name. The confirm label also states the count, so a
+  // merchant sees how many rows they are about to create.
+  assert.match(importForm, /Preview import/);
+  assert.match(importForm, /`Import \$\{preview\.importableRows\} product/);
   assert.match(exportButton, /Export \$\{label\}/);
   // And both live behind the CSV disclosure rather than beside Add product.
   const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
@@ -815,10 +834,17 @@ test("the danger variant is additive, so default callers are unaffected", () => 
 
 test("import reports pending, success and failure accessibly", () => {
   const src = readCode("src/app/tenant-admin/ImportProductsForm.tsx");
-  assert.match(src, /Importing…/, "pending state is visible, not only disabled");
-  assert.match(src, /disabled=\{pending\}/, "duplicate submission is blocked");
+  assert.match(src, /Checking…/, "the preview pass shows a pending state");
+  assert.match(src, /Importing…/, "so does the import pass");
+  // Every actionable button is disabled while either pass is in flight.
+  assert.match(src, /const busy =/);
+  assert.equal(
+    (src.match(/disabled=\{busy\}/g) ?? []).length >= 3,
+    true,
+    "duplicate submission is blocked on every control",
+  );
   assert.match(src, /role="alert"/, "parse/validation errors are announced");
-  assert.match(src, /role="status"/, "the import summary is announced");
+  assert.match(src, /role="status"/, "progress and the summary are announced");
   assert.match(src, /failed/, "partial failure is still reported, never silent");
 });
 

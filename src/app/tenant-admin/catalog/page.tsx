@@ -6,6 +6,7 @@ import { ConfirmActionForm } from '@/components/ConfirmActionForm';
 import {
   updateProductAction,
   importProductsAction,
+  previewProductsImportAction,
   createVariantOptionAction,
   createVariantOptionValueAction,
   deleteVariantOptionValueAction,
@@ -271,7 +272,10 @@ export default async function CatalogPage({
                 Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
                 Media can be added afterwards from the product editor.
               </p>
-              <ImportProductsForm action={importProductsAction} />
+              <ImportProductsForm
+                previewAction={previewProductsImportAction}
+                importAction={importProductsAction}
+              />
             </div>
 
             <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
