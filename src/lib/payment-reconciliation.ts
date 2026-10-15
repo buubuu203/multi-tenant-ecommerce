@@ -66,7 +66,8 @@ export const REVIEW_REASON_LABEL: Record<ReviewReason, string> = {
 export const REVIEW_REASON_ACTION: Record<ReviewReason, string> = {
   pending_past_expiry:
     'Check with the provider whether the transfer arrived, then confirm or cancel the order.',
-  paid_for_cancelled_order: 'Refund the customer outside this system, then record it in your books.',
+  paid_for_cancelled_order:
+    'Refund the customer outside this system, then record it in your books.',
   fulfilled_without_payment: 'Confirm payment on the order, or follow up with the customer.',
   cod_awaiting_confirmation: 'Confirm the courier remitted the cash. This system cannot verify it.',
 };
