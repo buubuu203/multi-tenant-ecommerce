@@ -71,13 +71,7 @@ export default async function OrderPrintPage({
   );
 }
 
-function DocumentFor({
-  document,
-  order,
-}: {
-  document: PrintDocument;
-  order: PrintableOrder;
-}) {
+function DocumentFor({ document, order }: { document: PrintDocument; order: PrintableOrder }) {
   switch (document) {
     case 'order-summary':
       return <OrderSummaryDocument order={order} />;

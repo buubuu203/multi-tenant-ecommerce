@@ -50,11 +50,21 @@ export function OrderSummaryDocument({ order }: { order: PrintableOrder }) {
       <table className="w-full border-collapse text-left text-xs">
         <thead>
           <tr className="border-b border-foreground">
-            <th scope="col" className="py-1.5 pr-2 font-semibold">Item</th>
-            <th scope="col" className="py-1.5 pr-2 font-semibold">SKU</th>
-            <th scope="col" className="py-1.5 pr-2 text-right font-semibold">Qty</th>
-            <th scope="col" className="py-1.5 pr-2 text-right font-semibold">Unit price</th>
-            <th scope="col" className="py-1.5 text-right font-semibold">Line total</th>
+            <th scope="col" className="py-1.5 pr-2 font-semibold">
+              Item
+            </th>
+            <th scope="col" className="py-1.5 pr-2 font-semibold">
+              SKU
+            </th>
+            <th scope="col" className="py-1.5 pr-2 text-right font-semibold">
+              Qty
+            </th>
+            <th scope="col" className="py-1.5 pr-2 text-right font-semibold">
+              Unit price
+            </th>
+            <th scope="col" className="py-1.5 text-right font-semibold">
+              Line total
+            </th>
           </tr>
         </thead>
         <tbody>

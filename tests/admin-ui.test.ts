@@ -84,6 +84,10 @@ test("the page header wraps rather than overflowing on narrow screens", () => {
 
 test("every Tenant Admin page uses the shared header", () => {
   for (const page of TENANT_PAGES) {
+    // A print route renders a DOCUMENT, not an admin screen: the admin
+    // header is deliberately absent so it never reaches paper. It has its
+    // own heading structure, asserted in tests/order-print.test.ts.
+    if (page.includes("/print/")) continue;
     assert.match(readCode(page), /<AdminPageHeader/, `${page} must use AdminPageHeader`);
   }
 });
@@ -154,8 +158,9 @@ test("every admin route is reachable from the navigation", () => {
       .replace("/page.tsx", "")
       .replace(/^\/tenant-admin$/, "/tenant-admin");
     // products/new is reached from the Catalog page's primary action, not
-    // from the top-level nav, which stays at section level.
-    if (route.includes("/products/new")) continue;
+    // from the top-level nav, which stays at section level. Print routes
+    // belong to one order and are reached from that order's own row.
+    if (route.includes("/products/new") || route.includes("/print")) continue;
     assert.ok(src.includes(`"${route}"`), `${route} must appear in the nav`);
   }
 });
@@ -352,8 +357,9 @@ test("every navigable route appears in the grouped navigation", () => {
   for (const page of TENANT_PAGES) {
     const route = page.replace("src/app", "").replace("/page.tsx", "");
     // products/new is an action reached from Catalog's primary button, not
-    // a destination; the sidebar lists places rather than verbs.
-    if (route.includes("/products/new")) continue;
+    // a destination; the sidebar lists places rather than verbs. A print
+    // route is per-order and is reached from the order itself.
+    if (route.includes("/products/new") || route.includes("/print")) continue;
     assert.ok(src.includes(`"${route}"`), `${route} must be reachable from the nav`);
   }
 });
@@ -1044,4 +1050,12 @@ test("at most one option-less variant can exist per product", () => {
   assert.match(body, /'without options'/);
   // Never a database id.
   assert.doesNotMatch(body, /variant\.id/);
+});
+
+test("print routes stay reachable even though they are not in the nav", () => {
+  // The exemptions above must not let a print route become unreachable.
+  // Every document type is linked from the order it belongs to.
+  const orders = readCode("src/app/tenant-admin/orders/page.tsx");
+  assert.match(orders, /\/tenant-admin\/orders\/\$\{order\.id\}\/print\?document=/);
+  assert.match(orders, /PRINT_DOCUMENTS\.map/, "all three types are offered");
 });
