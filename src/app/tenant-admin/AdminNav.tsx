@@ -45,6 +45,7 @@ const GROUPS = [
     label: "Checkout",
     items: [
       ["/tenant-admin/payments", "Payments"],
+      ["/tenant-admin/payment-operations", "Payment operations"],
       ["/tenant-admin/bank-transfer", "Bank transfer"],
       ["/tenant-admin/shipping", "Shipping"],
     ],
