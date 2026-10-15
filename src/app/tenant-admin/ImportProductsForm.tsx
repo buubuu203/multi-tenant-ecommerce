@@ -2,8 +2,7 @@
 
 import { useId, useRef, useState } from 'react';
 import type { ActionResult } from '@/lib/action-result';
-import type { ImportSummary } from '@/lib/product-csv';
-import type { ImportPreview, PreviewRow } from '@/lib/product-csv-preview-types';
+import type { ImportOutcomeView, ImportPreview, PreviewRow } from '@/lib/product-csv-preview-types';
 import { PREVIEW_DISPLAY_LIMIT } from '@/lib/product-csv-preview-types';
 
 /**
@@ -28,24 +27,38 @@ type Phase =
   | { kind: 'previewFailed'; error: string }
   | { kind: 'previewReady'; preview: ImportPreview }
   | { kind: 'importing'; preview: ImportPreview }
-  | { kind: 'imported'; summary: ImportSummary }
+  | { kind: 'imported'; summary: ImportOutcomeView }
   | { kind: 'importFailed'; preview: ImportPreview; error: string };
 
 const ACTION_LABEL: Record<PreviewRow['action'], string> = {
   create: 'Create',
-  conflict: 'Create (duplicate name)',
-  invalid: 'Skipped — invalid',
+  update: 'Update',
+  unchanged: 'No change',
+  conflict: 'Conflict — blocks import',
+  invalid: 'Invalid — blocks import',
 };
 
 // Word + shape, never colour alone.
 const ACTION_STYLE: Record<PreviewRow['action'], string> = {
   create:
     'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
+  update:
+    'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300',
+  unchanged: 'border-border bg-surface-muted text-muted-foreground',
   conflict:
     'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   invalid:
     'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
 };
+
+function confirmLabel(preview: ImportPreview): string {
+  const { create, update } = preview.counts;
+  if (create > 0 && update > 0) {
+    return `Import ${create} new and update ${update}`;
+  }
+  if (update > 0) return `Apply ${update} update${update === 1 ? '' : 's'}`;
+  return `Import ${create} product${create === 1 ? '' : 's'}`;
+}
 
 export function ImportProductsForm({
   previewAction,
@@ -56,9 +69,9 @@ export function ImportProductsForm({
     formData: FormData,
   ) => Promise<ActionResult<ImportPreview>>;
   importAction: (
-    prevState: ActionResult<ImportSummary> | null,
+    prevState: ActionResult<ImportOutcomeView> | null,
     formData: FormData,
-  ) => Promise<ActionResult<ImportSummary>>;
+  ) => Promise<ActionResult<ImportOutcomeView>>;
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [file, setFile] = useState<File | null>(null);
@@ -178,42 +191,51 @@ export function ImportProductsForm({
             Preview — nothing has been imported yet
           </h4>
 
-          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-4">
+          <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs sm:grid-cols-5">
             <div>
               <dt className="text-muted-foreground">Rows in file</dt>
               <dd className="font-medium tabular-nums">{preview.totalRows}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Will create</dt>
+              <dt className="text-muted-foreground">Create</dt>
               <dd className="font-medium tabular-nums">{preview.counts.create}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Duplicate names</dt>
-              <dd className="font-medium tabular-nums">{preview.counts.conflict}</dd>
+              <dt className="text-muted-foreground">Update</dt>
+              <dd className="font-medium tabular-nums">{preview.counts.update}</dd>
             </div>
             <div>
-              <dt className="text-muted-foreground">Invalid (skipped)</dt>
-              <dd className="font-medium tabular-nums">{preview.counts.invalid}</dd>
+              <dt className="text-muted-foreground">No change</dt>
+              <dd className="font-medium tabular-nums">{preview.counts.unchanged}</dd>
+            </div>
+            <div>
+              <dt className="text-muted-foreground">Blocking</dt>
+              <dd className="font-medium tabular-nums">
+                {preview.counts.invalid + preview.counts.conflict}
+              </dd>
             </div>
           </dl>
 
           {/* The import has no update path, so saying so is more honest than
               rendering two permanently-zero counters. */}
           <p className="text-xs text-muted-foreground">
-            CSV import only creates products — it never updates or matches existing ones. A row
-            whose name already exists creates a second product.
+            {preview.format === 'v1-minimal'
+              ? 'This file uses the simple name,price format, which has no SKU and can only create products.'
+              : 'Rows are matched to existing products by SKU. A new SKU creates; a known SKU updates.'}
+            {preview.inventoryChanges > 0
+              ? ` ${preview.inventoryChanges} stock change${preview.inventoryChanges === 1 ? '' : 's'} included.`
+              : ''}
           </p>
 
-          <p className="text-xs text-amber-700 dark:text-amber-500">
-            Rows are imported one at a time and are <strong>not</strong> all-or-nothing: if a row
-            fails partway through, the rows before it stay imported.
+          <p className="text-xs text-muted-foreground">
+            The whole file is imported in one transaction: if any row fails, nothing is saved.
           </p>
 
-          {preview.counts.invalid > 0 && (
+          {preview.counts.invalid + preview.counts.conflict > 0 && (
             <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-              {preview.counts.invalid} row{preview.counts.invalid === 1 ? '' : 's'} will be skipped.
-              Invalid rows are never imported silently — fix the file and preview again if you need
-              them.
+              {preview.counts.invalid} invalid and {preview.counts.conflict} conflicting row
+              {preview.counts.invalid + preview.counts.conflict === 1 ? '' : 's'} block this import.
+              Nothing is imported until every row is valid — rows are never skipped silently.
             </p>
           )}
 
@@ -237,10 +259,7 @@ export function ImportProductsForm({
                       Name
                     </th>
                     <th scope="col" className="py-1.5 pr-2 font-medium">
-                      Price
-                    </th>
-                    <th scope="col" className="py-1.5 pr-2 font-medium">
-                      Status
+                      SKU
                     </th>
                     <th scope="col" className="py-1.5 pr-2 font-medium">
                       Action
@@ -255,8 +274,7 @@ export function ImportProductsForm({
                     <tr key={row.rowNumber} className="border-b border-border last:border-0">
                       <td className="py-1.5 pr-2 align-top tabular-nums">{row.rowNumber}</td>
                       <td className="py-1.5 pr-2 align-top break-words">{row.name || '—'}</td>
-                      <td className="py-1.5 pr-2 align-top tabular-nums">{row.price || '—'}</td>
-                      <td className="py-1.5 pr-2 align-top">{row.status || '—'}</td>
+                      <td className="py-1.5 pr-2 align-top break-all">{row.sku ?? '—'}</td>
                       <td className="py-1.5 pr-2 align-top">
                         <span
                           className={`inline-flex rounded-full border px-2 py-0.5 font-medium whitespace-nowrap ${ACTION_STYLE[row.action]}`}
@@ -265,7 +283,9 @@ export function ImportProductsForm({
                         </span>
                       </td>
                       <td className="py-1.5 align-top break-words text-muted-foreground">
-                        {row.message ?? '—'}
+                        {row.changes.length > 0
+                          ? row.changes.map((c) => `${c.field}: ${c.from} → ${c.to}`).join('; ')
+                          : (row.message ?? '—')}
                       </td>
                     </tr>
                   ))}
@@ -280,7 +300,7 @@ export function ImportProductsForm({
             </div>
           </details>
 
-          {preview.importableRows === 0 ? (
+          {!preview.importable ? (
             <p role="alert" className="text-sm text-red-600">
               No row in this file can be imported. Fix the errors above and preview again.
             </p>
@@ -292,9 +312,7 @@ export function ImportProductsForm({
                 disabled={busy}
                 className="w-fit rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
               >
-                {phase.kind === 'importing'
-                  ? 'Importing…'
-                  : `Import ${preview.importableRows} product${preview.importableRows === 1 ? '' : 's'}`}
+                {phase.kind === 'importing' ? 'Importing…' : confirmLabel(preview)}
               </button>
               <button
                 type="button"
@@ -324,18 +342,14 @@ export function ImportProductsForm({
       {phase.kind === 'imported' && (
         <div role="status" className="flex flex-col gap-2 border-t border-border pt-3 text-sm">
           <p>
-            Imported {phase.summary.imported} of {phase.summary.totalRows} rows
-            {phase.summary.failed > 0 ? ` (${phase.summary.failed} failed)` : ''}.
+            Imported successfully: {phase.summary.created} created, {phase.summary.updated} updated,{' '}
+            {phase.summary.unchanged} unchanged
+            {phase.summary.inventoryChanged > 0
+              ? `, ${phase.summary.inventoryChanged} stock change${phase.summary.inventoryChanged === 1 ? '' : 's'}`
+              : ''}
+            .
           </p>
-          {phase.summary.failures.length > 0 && (
-            <ul className="list-disc pl-5 text-red-600">
-              {phase.summary.failures.map((failure) => (
-                <li key={failure.row}>
-                  Row {failure.row}: {failure.reason}
-                </li>
-              ))}
-            </ul>
-          )}
+
           <button
             type="button"
             onClick={reset}

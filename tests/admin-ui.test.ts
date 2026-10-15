@@ -647,7 +647,10 @@ test("import and export are secondary tools, not competing primaries", () => {
   // Both are scoped by name. The confirm label also states the count, so a
   // merchant sees how many rows they are about to create.
   assert.match(importForm, /Preview import/);
-  assert.match(importForm, /`Import \$\{preview\.importableRows\} product/);
+  // The confirm label states the scope and the count rather than "Import".
+  assert.match(importForm, /function confirmLabel/);
+  assert.match(importForm, /Apply \$\{update\} update/);
+  assert.match(importForm, /Import \$\{create\} product/);
   assert.match(exportButton, /Export \$\{label\}/);
   // And both live behind the CSV disclosure rather than beside Add product.
   const catalog = readCode("src/app/tenant-admin/catalog/page.tsx");
@@ -845,7 +848,12 @@ test("import reports pending, success and failure accessibly", () => {
   );
   assert.match(src, /role="alert"/, "parse/validation errors are announced");
   assert.match(src, /role="status"/, "progress and the summary are announced");
-  assert.match(src, /failed/, "partial failure is still reported, never silent");
+  // The import is now one transaction, so there is no partial failure to
+  // report — and the UI must say that rather than implying rows can land
+  // independently.
+  assert.match(src, /one transaction: if any row fails, nothing is saved/);
+  assert.doesNotMatch(src, /summary\.failures/, "there is no per-row failure list any more");
+  assert.match(src, /blocking|block this import/i, "blocking rows are announced");
 });
 
 test("catalog save feedback uses the shared accessible status conventions", () => {

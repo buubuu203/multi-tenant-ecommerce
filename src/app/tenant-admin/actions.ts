@@ -1,12 +1,13 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
-import { getScopedDb } from '@/lib/db/tenant-db';
 import {
-  buildImportPreview,
   csvFingerprint,
+  toPreview,
   type ImportPreview,
+  type ImportOutcomeView,
 } from '@/lib/product-csv-preview';
+import { planProductCsv, applyProductCsv } from '@/lib/product-csv-apply';
 import { redirect } from 'next/navigation';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -30,7 +31,7 @@ import {
   removeProductMedia,
   reorderProductMedia,
 } from '@/lib/product-media-mutations';
-import { importProductsFromCsv, type ImportSummary } from '@/lib/product-csv';
+
 import { createVariantOption } from '@/lib/variant-option-mutations';
 import {
   createVariantOptionValue,
@@ -332,27 +333,23 @@ export async function previewProductsImportAction(
 
   const csvText = await file.text();
 
-  // Scoped read: only this tenant's names can ever reach the classifier,
-  // so a conflict can never be raised against another tenant's catalog.
-  const existing = await getScopedDb(tenantId).product.findMany({
-    where: { tenantId },
-    select: { name: true },
-  });
-
-  const preview = buildImportPreview(
-    csvText,
-    existing.map((product) => product.name),
-  );
-  if ('error' in preview) {
-    return { success: false, error: preview.error };
+  // Read-only: planProductCsv parses, resolves existing SKUs through the
+  // tenant-scoped client and classifies. It writes nothing.
+  const planned = await planProductCsv(tenantId, csvText);
+  if ('error' in planned) {
+    return { success: false, error: planned.error };
   }
-  return { success: true, data: preview };
+
+  return {
+    success: true,
+    data: toPreview(planned.plan, csvFingerprint(csvText)),
+  };
 }
 
 export async function importProductsAction(
-  _prevState: ActionResult<ImportSummary> | null,
+  _prevState: ActionResult<ImportOutcomeView> | null,
   formData: FormData,
-): Promise<ActionResult<ImportSummary>> {
+): Promise<ActionResult<ImportOutcomeView>> {
   const { tenantId } = await requireTenantAdmin();
 
   const file = formData.get('file');
@@ -380,7 +377,9 @@ export async function importProductsAction(
     }
   }
 
-  const result = await importProductsFromCsv(tenantId, csvText);
+  // One transaction for the whole file — see applyProductCsv. Replaces the
+  // old row-at-a-time loop, which left earlier rows behind on failure.
+  const result = await applyProductCsv(tenantId, csvText, csvFingerprint(csvText));
 
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
