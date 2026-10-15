@@ -285,3 +285,207 @@ export async function listPaymentReconciliation(
 
   return { rows, totalCount, summary: { counts, needsReview, paidAmount } };
 }
+
+// ---------------------------------------------------------------------
+// Rejected-delivery exceptions.
+//
+// These exist only because payment_rejections now persists evidence that
+// was previously discarded. Every category below is read off stored
+// columns — expectedAmount and reportedAmount captured at rejection time
+// — and none is inferred.
+//
+// Only rejections with a VERIFIED tenant are ever returned here. A
+// rejection that resolved to no payment has a null tenantId and stays
+// platform-level: it is real evidence, but it belongs to nobody, and
+// showing it to a merchant would mean guessing.
+// ---------------------------------------------------------------------
+
+export const EXCEPTION_CATEGORIES = ['underpaid', 'overpaid', 'invalid', 'duplicate'] as const;
+export type ExceptionCategory = (typeof EXCEPTION_CATEGORIES)[number];
+
+export const EXCEPTION_LABEL: Record<ExceptionCategory, string> = {
+  underpaid: 'Underpaid',
+  overpaid: 'Overpaid',
+  invalid: 'Rejected as invalid',
+  duplicate: 'Repeated rejection',
+};
+
+export const EXCEPTION_ACTION: Record<ExceptionCategory, string> = {
+  underpaid:
+    'The customer sent less than the order total. Ask for the difference, or cancel the order.',
+  overpaid:
+    'The customer sent more than the order total. Refund the difference outside this system.',
+  invalid: 'The provider sent something this store could not read. Nothing was applied.',
+  duplicate: 'The same rejected delivery arrived more than once. It was rejected every time.',
+};
+
+/**
+ * Classifies one stored rejection.
+ *
+ * Returns null when the facts needed are absent — an amount mismatch
+ * whose amounts were not parseable is NOT guessed into underpaid.
+ */
+export function exceptionCategoryFor(rejection: {
+  reason: string;
+  expectedAmount: number | null;
+  reportedAmount: number | null;
+  occurrences: number;
+}): ExceptionCategory | null {
+  if (rejection.reason === 'invalid_payload') return 'invalid';
+
+  if (rejection.reason === 'amount_mismatch') {
+    const { expectedAmount, reportedAmount } = rejection;
+    if (expectedAmount === null || reportedAmount === null) return null;
+    if (reportedAmount < expectedAmount) return 'underpaid';
+    if (reportedAmount > expectedAmount) return 'overpaid';
+    // Equal amounts cannot be a mismatch; treat as unclassifiable rather
+    // than inventing a category for an impossible row.
+    return null;
+  }
+
+  // unknown_payment is never tenant-visible, so it never reaches here.
+  return null;
+}
+
+export type PaymentExceptionRow = {
+  provider: string;
+  category: ExceptionCategory;
+  /** Null when the rejection resolved no order. */
+  orderReference: string | null;
+  expectedAmount: number | null;
+  reportedAmount: number | null;
+  /** reported − expected. Null when either side is unknown. */
+  difference: number | null;
+  occurrences: number;
+  firstSeenAt: Date;
+  lastSeenAt: Date;
+};
+
+export type ExceptionFilters = {
+  provider?: string;
+  category?: ExceptionCategory;
+  search?: string;
+  page?: number;
+};
+
+/**
+ * Tenant-visible rejection evidence.
+ *
+ * The `tenantId: tenantId` filter is doing real work: rows with a null
+ * tenantId — every unmatched delivery — are excluded by it, which is the
+ * mechanism that keeps platform-level evidence out of merchant queues.
+ */
+export async function listPaymentExceptions(
+  tenantId: string,
+  filters: ExceptionFilters = {},
+): Promise<{ rows: PaymentExceptionRow[]; totalCount: number }> {
+  const db = getScopedDb(tenantId);
+  const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
+  const take = Math.min(PAGE_SIZE, MAX_PAGE_SIZE);
+  const search = filters.search?.trim();
+
+  const where = {
+    tenantId,
+    ...(filters.provider ? { provider: filters.provider as never } : {}),
+    ...(search
+      ? {
+          OR: [
+            { orderId: { contains: search, mode: 'insensitive' as const } },
+            { providerOrderId: { contains: search, mode: 'insensitive' as const } },
+          ],
+        }
+      : {}),
+  };
+
+  const [rejections, totalCount] = await Promise.all([
+    db.paymentRejection.findMany({
+      where,
+      orderBy: [{ lastSeenAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * take,
+      take,
+      select: {
+        provider: true,
+        reason: true,
+        orderId: true,
+        expectedAmount: true,
+        reportedAmount: true,
+        occurrences: true,
+        firstSeenAt: true,
+        lastSeenAt: true,
+        // payloadDigest, dedupeKey, paymentId and tenantId are NOT
+        // selected: nothing that is not shown should leave the database.
+      },
+    }),
+    db.paymentRejection.count({ where }),
+  ]);
+
+  const rows = rejections
+    .map((rejection): PaymentExceptionRow | null => {
+      const category = exceptionCategoryFor(rejection);
+      if (!category) return null;
+      const difference =
+        rejection.expectedAmount !== null && rejection.reportedAmount !== null
+          ? rejection.reportedAmount - rejection.expectedAmount
+          : null;
+      return {
+        provider: rejection.provider,
+        category,
+        orderReference: rejection.orderId,
+        expectedAmount: rejection.expectedAmount,
+        reportedAmount: rejection.reportedAmount,
+        difference,
+        occurrences: rejection.occurrences,
+        firstSeenAt: rejection.firstSeenAt,
+        lastSeenAt: rejection.lastSeenAt,
+      };
+    })
+    .filter((row): row is PaymentExceptionRow => row !== null)
+    .filter((row) => (filters.category ? row.category === filters.category : true));
+
+  return { rows, totalCount };
+}
+
+/**
+ * How many payments in the WHOLE tenant dataset need review, not just the
+ * current page.
+ *
+ * The review rules join payment state with order state, so this cannot be
+ * a single groupBy. It is instead three narrow counts, each expressing one
+ * rule directly in SQL — bounded, index-friendly, and no per-row work.
+ */
+export async function countPaymentsNeedingReview(
+  tenantId: string,
+  now: Date = new Date(),
+): Promise<number> {
+  const db = getScopedDb(tenantId);
+
+  const [pendingPastExpiry, paidForCancelled, fulfilledWithoutPayment] = await Promise.all([
+    db.payment.count({
+      where: { tenantId, status: 'pending', expiresAt: { not: null, lt: now } },
+    }),
+    db.payment.count({
+      where: { tenantId, status: 'succeeded', order: { status: 'cancelled' } },
+    }),
+    // Covers both the COD and the non-COD wording; they are one rule with
+    // two labels, so they are one count here.
+    db.payment.count({
+      where: { tenantId, status: { not: 'succeeded' }, order: { status: 'fulfilled' } },
+    }),
+  ]);
+
+  // A payment can trip more than one rule — pending past expiry on a
+  // fulfilled order, for instance. Counting rows, not reasons, means
+  // taking the union, which needs one more narrow count to subtract.
+  const bothPendingExpiredAndFulfilled = await db.payment.count({
+    where: {
+      tenantId,
+      status: 'pending',
+      expiresAt: { not: null, lt: now },
+      order: { status: 'fulfilled' },
+    },
+  });
+
+  return (
+    pendingPastExpiry + paidForCancelled + fulfilledWithoutPayment - bothPendingExpiredAndFulfilled
+  );
+}
