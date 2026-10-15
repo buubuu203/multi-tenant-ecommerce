@@ -529,3 +529,73 @@ test("ordering is still scoped to the asking tenant", async () => {
   assert.equal((await getOrderTimeline(tenantA.id, orderB)).length, 0);
   assert.ok((await getOrderTimeline(tenantA.id, orderA)).length > 0);
 });
+
+test("ORDER ISOLATION — one order's sequence never pulls in another's events", async () => {
+  // The sequence is global, so two orders in the same tenant interleave in
+  // it. The timeline must still be scoped per order rather than ordered
+  // globally and sliced.
+  const first = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "isoOrd1");
+  const second = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "isoOrd2");
+  await updateOrderStatus(tenantA.id, first, "fulfilled");
+  await updateOrderStatus(tenantA.id, second, "cancelled");
+
+  const firstTimeline = await getOrderTimeline(tenantA.id, first);
+  const secondTimeline = await getOrderTimeline(tenantA.id, second);
+
+  assert.ok(firstTimeline.length >= 2);
+  assert.ok(secondTimeline.length >= 2);
+
+  // Interleaved in the global sequence...
+  const firstRows = await prisma.orderEvent.findMany({
+    where: { tenantId: tenantA.id, orderId: first },
+    select: { sequence: true },
+    orderBy: { sequence: "asc" },
+  });
+  const secondRows = await prisma.orderEvent.findMany({
+    where: { tenantId: tenantA.id, orderId: second },
+    select: { sequence: true },
+    orderBy: { sequence: "asc" },
+  });
+  assert.ok(
+    firstRows[0].sequence < secondRows[0].sequence,
+    "the two orders really do share one ascending sequence",
+  );
+
+  // ...yet each timeline is strictly its own, and still correctly ordered.
+  for (const [orderId, timeline] of [
+    [first, firstTimeline],
+    [second, secondTimeline],
+  ] as const) {
+    assert.equal(timeline[0].type, "order_created", `order ${orderId} still starts at creation`);
+  }
+  assert.equal(
+    firstTimeline.filter((e) => e.type === "order_created").length,
+    1,
+    "no event from the sibling order leaked in",
+  );
+  assert.equal(secondTimeline.filter((e) => e.type === "order_created").length, 1);
+});
+
+test("the recorded payload and actor survive the ordering change unchanged", async () => {
+  const orderId = await placeOrder(tenantA.id, variantA.id, shippingMethodA.id, "payload");
+  await updateOrderStatus(tenantA.id, orderId, "cancelled");
+
+  const rows = await prisma.orderEvent.findMany({
+    where: { tenantId: tenantA.id, orderId },
+    orderBy: { sequence: "asc" },
+  });
+
+  const created = rows.find((r) => r.type === "order_created");
+  assert.ok(created, "creation event present");
+  // order_created has no meaningful previous value — unchanged convention.
+  assert.equal(created.previousValue, null);
+  assert.equal(created.actorType, "system");
+  assert.ok(created.summary.length > 0);
+
+  const changed = rows.find((r) => r.type === "order_status_changed");
+  assert.ok(changed, "status change present");
+  // The real transition is still snapshotted as plain text, both sides.
+  assert.equal(changed.previousValue, "pending");
+  assert.equal(changed.newValue, "cancelled");
+  assert.ok(changed.summary.length > 0);
+});

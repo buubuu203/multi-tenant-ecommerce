@@ -4,6 +4,11 @@ import { useActionState, useEffect } from 'react';
 import type { ActionResult } from '@/lib/action-result';
 import { showToast } from './Toast';
 import { callerOwnsFormLayout, mergeFormClassName } from './ActionForm';
+import {
+  resolveConfirmMessage,
+  shouldRequestConfirmation,
+  type ConfirmWhen,
+} from './confirm-policy';
 
 /**
  * ActionForm's sibling for actions that should not fire on a single
@@ -54,7 +59,7 @@ export function ConfirmActionForm<T>({
    * Client Component, and a function prop cannot cross the Server
    * Component boundary.
    */
-  confirmWhen?: { field: string; differsFrom: string };
+  confirmWhen?: ConfirmWhen;
   /**
    * Suppresses the confirmation entirely — for the case where there is
    * nothing to lose yet, such as choosing a provider for the first time.
@@ -92,17 +97,14 @@ export function ConfirmActionForm<T>({
 
         // Nothing at stake, or the guarded field was not changed: submit
         // exactly as a plain ActionForm would, with no dialog.
-        if (skipConfirmation) return;
-        if (
-          confirmWhen &&
-          String(formData.get(confirmWhen.field) ?? '') === confirmWhen.differsFrom
-        ) {
-          return;
-        }
+        const needsConfirmation = shouldRequestConfirmation({
+          skipConfirmation,
+          confirmWhen,
+          readField: (name) => String(formData.get(name) ?? ''),
+        });
+        if (!needsConfirmation) return;
 
-        const message =
-          typeof confirmMessage === 'function' ? confirmMessage(formData) : confirmMessage;
-        if (!window.confirm(message)) {
+        if (!window.confirm(resolveConfirmMessage(confirmMessage, formData))) {
           e.preventDefault();
         }
       }}
