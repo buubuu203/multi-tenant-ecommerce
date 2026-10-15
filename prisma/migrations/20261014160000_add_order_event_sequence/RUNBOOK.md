@@ -56,6 +56,124 @@ means not letting this script run against a large table — that is Option B.
 
 ---
 
+## 1a. Tooling
+
+Two scripts automate the read-only parts of this runbook. **Neither can
+execute a migration, and neither chooses Option A or B.**
+
+| Command | Purpose | When |
+|---|---|---|
+| `npm run release:preflight:order-events` | Gathers everything in §2 and prints a verdict | Before deciding, per environment |
+| `npm run release:verify:order-events` | Checks the end state (§7.1–7.3) | After Option A or B completes |
+
+### Required environment variable
+
+```bash
+RELEASE_CHECK_DATABASE_URL="postgresql://…"   # the target you intend to inspect
+```
+
+One variable, and it is **not** `DATABASE_URL`. The scripts never fall back
+to it: running "the check" against your dev database while believing you
+checked production is the mistake this prevents. With the variable unset
+they exit **2** and explain themselves, having connected to nothing.
+
+Supply it only for the command, so it does not linger in your shell:
+
+```bash
+RELEASE_CHECK_DATABASE_URL="…" npm run release:preflight:order-events
+```
+
+### Read-only guarantee
+
+Enforced by PostgreSQL, not by the scripts. Every statement runs inside
+`BEGIN TRANSACTION READ ONLY`, always rolled back, with a 15s
+`statement_timeout` so a check cannot become the slow query that causes an
+incident. `tests/release-tooling.test.ts` proves this against the local
+database by attempting an `INSERT`, `UPDATE`, `DELETE`, `CREATE`, `ALTER`,
+`DROP` and `TRUNCATE` and asserting the server refuses each one.
+
+Output never contains a connection string. Only `host:port/database` is
+printed; an unparseable value is reported as `(unparseable connection
+string)` rather than echoed, since it may be the credential itself. Output
+is therefore safe to paste into a ticket.
+
+### Exit codes
+
+| Code | Meaning |
+|---|---|
+| `0` | Preflight: `APPLIED` or `PENDING`. Verify: all checks passed. |
+| `1` | Preflight: `STOP` — partial/inconsistent state. Verify: at least one check failed. |
+| `2` | Usage error: the target variable is unset, or the connection failed. Nothing was inspected. |
+
+### Sample output shape
+
+Values below are illustrative, not from any real environment:
+
+```
+OrderEvent migration preflight  —  READ ONLY
+Target: db.example.internal:5432/shop
+Migration: 20261014160000_add_order_event_sequence
+
+Environment
+  PostgreSQL version                 17.11
+  SET NOT NULL fast path (PG 12+)    available
+
+Table
+  Exact rows                         4,812,003
+  Planner estimate                   4811920
+  Heap size                          1402.5 MB
+  Index size                         655.2 MB
+  Events written in last hour        1884
+
+Activity
+  Transactions open > 30s            0
+  Ungranted locks on order_events    0
+
+Schema state
+  sequence column                    absent
+  sequence object                    absent
+
+Indexes  (Phase 7 audit — this tool never drops anything)
+    order_events_tenantId_orderId_createdAt_idx   91422 scans
+  expected sequence index            absent
+  legacy createdAt index             present (keep for now)
+
+Migration history
+  _prisma_migrations row             absent
+
+────────────────────────────────────────────────────────────────
+VERDICT: PENDING
+────────────────────────────────────────────────────────────────
+Migration is PENDING on this target.
+  Estimated rewrite/lock risk        HIGH
+```
+
+### Interpreting a partial state
+
+`VERDICT: STOP` means the target is in a state no option should be run
+through. The script lists which condition tripped. The ones that matter
+most:
+
+- **column exists but the migration is unrecorded** — almost certainly a
+  half-finished Option B. Resume at §5 from the first failing check in
+  `release:verify:order-events`; do **not** start over and do not run
+  Option A.
+- **migration recorded but the column is missing** — the history and the
+  schema disagree. Escalate; do not reconcile by guesswork.
+- **rows with a NULL sequence** — an incomplete backfill. Resume §5.6.
+- **an INVALID index** — an interrupted `CREATE INDEX CONCURRENTLY`. See §6.
+- **a failed or rolled-back `_prisma_migrations` row** — escalate.
+
+### Order of use
+
+1. `release:preflight:order-events` against the target.
+2. If `STOP`, stop. If `APPLIED`, go to step 5.
+3. Take the numbers to §3 and choose Option A or B **with a human**.
+4. Execute §4 or §5.
+5. `release:verify:order-events` against the same target.
+6. Application smoke tests, §7.4. The verifier covers schema and stored
+   ordering only — it does not exercise the application.
+
 ## 2. Preflight — read-only, run against the target environment
 
 None of these modify anything. Run them all and record the output; the
@@ -593,7 +711,17 @@ Through the UI or normal API, on a test tenant:
 4. Open the Tenant Admin order timeline and confirm the order reads correctly.
 5. Open any destructive confirmation only to **cancel** it.
 
-### 7.5 Health
+### 7.5 Automated check
+
+```bash
+RELEASE_CHECK_DATABASE_URL="…" npm run release:verify:order-events
+```
+
+Covers 7.1–7.3 plus the migration-history row and the timeline DTO. Exits
+non-zero naming each discrepancy. It repairs nothing, and it is not a
+substitute for 7.4.
+
+### 7.6 Health
 
 - Application error rate and logs — no Prisma errors mentioning `sequence`.
 - `pg_stat_activity` / 2.8 — no lingering lock waits.
