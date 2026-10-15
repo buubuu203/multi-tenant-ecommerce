@@ -414,7 +414,10 @@ test("enabled, default and stock states are words, not only colour", () => {
 test("a store with no shipping method is told checkout is blocked", () => {
   const src = readCode("src/app/tenant-admin/shipping/page.tsx");
   assert.match(src, /role="alert"/, "an unsellable store is announced, not styled red");
-  assert.match(src, /Checkout is blocked/);
+  // The copy now lives in the shared predicate the page renders.
+  assert.match(src, /blockedReason/);
+  const lib = readCode("src/lib/shipping-availability.ts");
+  assert.match(lib, /Checkout is blocked/);
 });
 
 test("the one-default rule is stated on the control it governs", () => {
@@ -537,11 +540,14 @@ test("bank-transfer provider fields are grouped per provider", () => {
 });
 
 test("an all-disabled shipping list is announced as blocked too", () => {
-  const src = readCode("src/app/tenant-admin/shipping/page.tsx");
-  assert.match(src, /enabledCount/, "the blocked state is derived, not assumed from length");
-  assert.match(src, /no shipping method is configured/);
-  assert.match(src, /all shipping methods are disabled/);
-  assert.match(src, /role="alert"/);
+  const lib = readCode("src/lib/shipping-availability.ts");
+  assert.match(lib, /enabledShippingMethodCount/, "derived, not assumed from length");
+  assert.match(lib, /no shipping method is configured/);
+  assert.match(lib, /all shipping methods are disabled/);
+
+  const page = readCode("src/app/tenant-admin/shipping/page.tsx");
+  assert.match(page, /shippingBlockedReason\(shippingMethods\)/, "the page uses the predicate");
+  assert.match(page, /role="alert"/);
 });
 
 test("a default-but-disabled shipping method shows both states", () => {
@@ -750,8 +756,11 @@ test("cancelling a confirmation sends no request", () => {
   // preventDefault(), so the action is never invoked. Asserted at the
   // component, which is what every destructive catalog control shares.
   const src = readCode("src/components/ConfirmActionForm.tsx");
-  assert.match(src, /window\.confirm\(message\)/);
-  assert.match(src, /if \(!window\.confirm\(message\)\) \{\s*e\.preventDefault\(\);/);
+  assert.match(
+    src,
+    /if \(!window\.confirm\(resolveConfirmMessage\(confirmMessage, formData\)\)\) \{\s*e\.preventDefault\(\);/,
+    "a declined dialog still prevents the submit",
+  );
   assert.match(src, /disabled=\{pending\}/, "duplicate submission stays blocked");
   assert.match(src, /role="alert"/, "failures still use the alert convention");
 });
@@ -852,19 +861,21 @@ test("confirmation is skipped when there is nothing to lose", () => {
 test("an unchanged provider submits without a dialog", () => {
   // confirmWhen compares the SUBMITTED value against the stored one, so an
   // ordinary save of the same form is not gated.
+  const policy = readCode("src/components/confirm-policy.ts");
+  assert.match(policy, /if \(options\.skipConfirmation\) return false;/);
+  assert.match(policy, /return options\.readField\(when\.field\) !== when\.differsFrom;/);
+  // And the component delegates rather than keeping its own copy.
   const src = readCode("src/components/ConfirmActionForm.tsx");
-  assert.match(src, /if \(skipConfirmation\) return;/);
-  assert.match(
-    src,
-    /String\(formData\.get\(confirmWhen\.field\) \?\? ''\) === confirmWhen\.differsFrom/,
-  );
+  assert.match(src, /shouldRequestConfirmation\(\{/);
+  assert.match(src, /if \(!needsConfirmation\) return;/);
 });
 
 test("declining a provider switch sends no request", () => {
   // Structural: the guard is preventDefault() on the form's own submit, the
   // same mechanism every destructive control in this admin relies on.
   const src = readCode("src/components/ConfirmActionForm.tsx");
-  assert.match(src, /if \(!window\.confirm\(message\)\) \{\s*e\.preventDefault\(\);/);
+  assert.match(src, /e\.preventDefault\(\);/);
+  assert.match(src, /!window\.confirm\(/);
 });
 
 test("confirming preserves the existing mutation and payload", () => {
@@ -892,7 +903,10 @@ test("provider validation itself is unchanged", () => {
 test("the conditional-confirmation props default to the previous behaviour", () => {
   const src = readCode("src/components/ConfirmActionForm.tsx");
   assert.match(src, /skipConfirmation = false/, "existing callers still always confirm");
-  assert.match(src, /confirmWhen\?: \{ field: string; differsFrom: string \}/);
+  assert.match(src, /confirmWhen\?: ConfirmWhen;/);
+  const policy = readCode("src/components/confirm-policy.ts");
+  assert.match(policy, /export type ConfirmWhen = \{ field: string; differsFrom: string \}/);
+  assert.match(policy, /if \(!when\) return true;/, "absent means always confirm, as before");
 });
 
 // --- Accessible names for repeated actions ---

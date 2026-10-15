@@ -15,6 +15,7 @@ import {
   adminLabelClassName,
   adminRequiredClassName,
 } from '../styles';
+import { shippingBlockedReason } from '@/lib/shipping-availability';
 import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge } from '../StatusBadge';
 
@@ -33,16 +34,9 @@ export default async function ShippingPage() {
 
   // Checkout requires at least one ENABLED method, so "no methods" was
   // never the only blocked state — a store with three methods all switched
-  // off is equally unable to take an order, and previously said nothing at
-  // all. Derived from the rows already fetched; no behaviour changes here,
-  // the blocked state simply becomes visible.
-  const enabledCount = shippingMethods.filter((method) => method.enabled).length;
-  const blockedReason =
-    shippingMethods.length === 0
-      ? 'Checkout is blocked because no shipping method is configured.'
-      : enabledCount === 0
-        ? 'Checkout is blocked because all shipping methods are disabled.'
-        : null;
+  // off is equally unable to take an order. Derived from the rows already
+  // fetched, by a shared pure predicate so the rule can be tested directly.
+  const blockedReason = shippingBlockedReason(shippingMethods);
 
   return (
     <div className={adminPageClassName}>
