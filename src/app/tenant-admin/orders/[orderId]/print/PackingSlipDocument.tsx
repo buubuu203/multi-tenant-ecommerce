@@ -40,10 +40,18 @@ export function PackingSlipDocument({ order }: { order: PrintableOrder }) {
       <table className="w-full border-collapse text-left text-xs">
         <thead>
           <tr className="border-b border-foreground">
-            <th scope="col" className="py-1.5 pr-2 font-semibold">Item</th>
-            <th scope="col" className="py-1.5 pr-2 font-semibold">SKU</th>
-            <th scope="col" className="py-1.5 text-right font-semibold">Qty</th>
-            <th scope="col" className="w-16 py-1.5 text-right font-semibold">Packed</th>
+            <th scope="col" className="py-1.5 pr-2 font-semibold">
+              Item
+            </th>
+            <th scope="col" className="py-1.5 pr-2 font-semibold">
+              SKU
+            </th>
+            <th scope="col" className="py-1.5 text-right font-semibold">
+              Qty
+            </th>
+            <th scope="col" className="w-16 py-1.5 text-right font-semibold">
+              Packed
+            </th>
           </tr>
         </thead>
         <tbody>
@@ -61,7 +69,10 @@ export function PackingSlipDocument({ order }: { order: PrintableOrder }) {
               </td>
               {/* A box to tick on paper — the whole point of a packing slip. */}
               <td className="py-2 text-right align-top">
-                <span className="inline-block h-4 w-4 border border-foreground" aria-hidden="true" />
+                <span
+                  className="inline-block h-4 w-4 border border-foreground"
+                  aria-hidden="true"
+                />
                 <span className="sr-only">Packed checkbox</span>
               </td>
             </tr>
