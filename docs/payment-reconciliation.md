@@ -22,22 +22,80 @@ Five, each mapping directly to a stored `Payment.status`:
 An unrecognised status is mapped to **nothing** rather than guessed into a
 bucket.
 
-## What this page cannot tell you
+## Rejected webhook deliveries
 
-Four things a reconciliation view would normally show are **absent**, and
-the reason is the same in each case: the data is never stored.
+A webhook this store refused is now **recorded as evidence** in
+`payment_rejections`. Before, it was discarded: `webhook-service.ts`
+validates the reported amount and resolves the payment _before_
+persisting anything, so an underpayment or an overpayment left no trace
+at all. That is why these categories were previously impossible — not
+difficult, impossible.
 
-| Not shown              | Why                                                                                                                                                                                         |
-| ---------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Underpayment**       | `webhook-service.ts` compares the reported amount with `Payment.amount` **before** recording anything and rejects a mismatch. Nothing is persisted — no event, no status change, no marker. |
-| **Overpayment**        | Same path, same rejection.                                                                                                                                                                  |
-| **Unmatched transfer** | A webhook whose payment cannot be found is rejected the same way. There is no "unmatched transactions" table.                                                                               |
-| **Duplicate webhook**  | `(provider, providerEventId)` is unique. A repeat delivery is reported back as accepted and discarded, so a duplicate is a non-event rather than an exception.                              |
-| **Processing**         | Not a value in `PaymentStatus`.                                                                                                                                                             |
+**Nothing about the rejection itself changed.** A mismatched amount is
+still refused, still writes no `PaymentEvent`, and still leaves `Payment`
+untouched. An underpayment has never marked anything paid and still does
+not.
 
-Showing a count of zero for any of these would be a lie, so they are not
-offered. Surfacing them would require retaining rejected webhooks — a
-change to the webhook contract, not to this page.
+### Tenant attribution
+
+A webhook carries no storefront context. The only trustworthy source of
+tenant identity is the `Payment` row found via the provider's own
+correlation key, so each rejection point is treated differently:
+
+| Rejection         | Recorded? | Tenant       | Visible to the merchant                                           |
+| ----------------- | --------- | ------------ | ----------------------------------------------------------------- |
+| Invalid signature | **No**    | —            | Never. An unauthenticated request must not be able to write rows. |
+| Invalid payload   | Yes       | **null**     | No — nothing identifies an owner                                  |
+| Unknown payment   | Yes       | **null**     | **No** — platform-level only                                      |
+| Amount mismatch   | Yes       | **verified** | Yes                                                               |
+
+`tenantId` is nullable for exactly this reason. Ownership is never
+inferred from a customer name, an amount or a reference. The tenant
+query filters on `tenantId`, and that filter is what keeps null-tenant
+rows out of every merchant's queue.
+
+### Exception categories
+
+| Category    | Rule                                                                   |
+| ----------- | ---------------------------------------------------------------------- |
+| `underpaid` | reported amount < expected amount                                      |
+| `overpaid`  | reported amount > expected amount                                      |
+| `invalid`   | signature passed, body could not be parsed                             |
+| `duplicate` | shown as an occurrence count on the row it repeats, not a separate row |
+
+A category is **never guessed**. An amount mismatch whose amounts were
+not parseable classifies as nothing rather than as underpaid.
+
+### Still unsupported
+
+| Not shown              | Why                                                                                                                |
+| ---------------------- | ------------------------------------------------------------------------------------------------------------------ |
+| **Unmatched transfer** | Recorded, but with no tenant. Showing it to a merchant would mean guessing who it belongs to. Platform-level only. |
+| **Processing**         | Not a value in `PaymentStatus`.                                                                                    |
+
+### Deduplication
+
+One row per `(provider, dedupeKey)`. The key is the provider's own stable
+event id where it supplies one, otherwise the SHA-256 payload digest,
+which is stable for a byte-identical retry. **Never a random
+per-request id.** A repeat bumps `occurrences` and `lastSeenAt` in place,
+so a provider retrying indefinitely cannot grow the table.
+
+Where a provider supplies no stable id and varies the body between
+retries, the digest differs and the deliveries are **not** deduplicated.
+That is the documented limit of the fallback.
+
+### Redaction and retention
+
+**No raw payload is stored.** `payloadDigest` is a SHA-256 of the body:
+one-way, never rendered, used only to recognise a repeat. No signature,
+token or API key is persisted, and the UI projection does not even select
+`payloadDigest`, `dedupeKey`, `paymentId` or `tenantId`.
+
+**There is no retention policy and no automatic pruning.** Rows are kept
+indefinitely. They contain no payload, so the exposure is bounded to
+amounts, a provider reference and timestamps — but an operator wanting a
+retention window must add one.
 
 ## Needs review
 
@@ -98,9 +156,10 @@ column surfaced on the order.
 
 - 25 rows per page, hard-capped at 100. Ordered by `(createdAt desc, id
 desc)` so pagination is deterministic when timestamps tie.
-- The **needs-review count is computed over the current page**, not the
-  whole dataset, because the rules join payment and order state. A tenant
-  with many payments should filter before relying on that number.
+- The **needs-review count covers the whole tenant dataset**, not the page.
+  It is four narrow SQL counts — one per rule, plus one subtracting the
+  overlap where a payment trips two rules at once — so it never iterates
+  rows and never double-counts. The list below it paginates independently.
 - **No CSV export.** The existing export pattern is sound, but the useful
   columns here would be the ones that do not exist — received amount,
   difference, unmatched transactions. Exporting state counts a merchant
@@ -108,10 +167,26 @@ desc)` so pagination is deterministic when timestamps tie.
   exporting fields the system does not have.
 - No refunds, partial refunds, settlement, payouts or fee accounting.
 
+## Migration and deployment
+
+`20261016120000_add_payment_rejections` is additive: one enum, one table,
+two indexes. Nothing existing is altered and no backfill is possible —
+rejections before this migration were never recorded and cannot be
+recovered.
+
+It has been applied to the **local development database only**, with
+`migrate deploy` after confirming no drift. **It is a release blocker for
+every other environment.** Never use `prisma migrate dev` against a
+deployed database: it can reset it.
+
+Rolling the application back is safe without touching the database — the
+previous code simply never reads the table.
+
 ## Future work
 
-Underpayment, overpayment and unmatched-transfer detection all need the
-same prerequisite: persisting rejected webhook deliveries with their
-reported amount, so there is something to reconcile against. That is a
-change to the webhook contract and deserves its own design — including
-how long such records are kept, given they contain provider payloads.
+- **Unmatched transfers** are recorded but unattributable. Making them
+  useful needs a platform-level operator view, not a tenant one.
+- **Retention.** Rows accumulate indefinitely today.
+- **Partial payments** remain out of scope: a short transfer is refused,
+  not applied against the balance.
+- Refunds, settlement, payouts and fee accounting are all absent.
