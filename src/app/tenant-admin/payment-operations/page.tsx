@@ -1,6 +1,12 @@
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
+  countPaymentsNeedingReview,
+  listPaymentExceptions,
+  EXCEPTION_ACTION,
+  EXCEPTION_LABEL,
+  type ExceptionCategory,
+  EXCEPTION_CATEGORIES,
   listPaymentReconciliation,
   RECONCILIATION_CATEGORIES,
   REVIEW_REASON_ACTION,
@@ -45,6 +51,10 @@ function isCategory(value: string | undefined): value is ReconciliationCategory 
   );
 }
 
+function isExceptionCategory(value: string | undefined): value is ExceptionCategory {
+  return typeof value === 'string' && (EXCEPTION_CATEGORIES as readonly string[]).includes(value);
+}
+
 export default async function PaymentOperationsPage({
   searchParams,
 }: {
@@ -53,6 +63,7 @@ export default async function PaymentOperationsPage({
     category?: string;
     search?: string;
     review?: string;
+    exception?: string;
     page?: string;
   }>;
 }) {
@@ -63,15 +74,26 @@ export default async function PaymentOperationsPage({
   const needsReview = params.review === '1';
   const page = Number(params.page ?? '1');
 
-  const { rows, totalCount, summary } = await listPaymentReconciliation(tenantId, {
-    provider: params.provider || undefined,
-    category,
-    needsReview,
-    search: params.search,
-    page: Number.isFinite(page) ? page : 1,
-  });
+  const safePage = Number.isFinite(page) ? page : 1;
+  const [{ rows, totalCount, summary }, reviewTotal, exceptions] = await Promise.all([
+    listPaymentReconciliation(tenantId, {
+      provider: params.provider || undefined,
+      category,
+      needsReview,
+      search: params.search,
+      page: safePage,
+    }),
+    // Counted across the WHOLE tenant dataset, not the page below.
+    countPaymentsNeedingReview(tenantId),
+    listPaymentExceptions(tenantId, {
+      provider: params.provider || undefined,
+      category: isExceptionCategory(params.exception) ? params.exception : undefined,
+      search: params.search,
+      page: safePage,
+    }),
+  ]);
 
-  const exceptions = rows.filter((row) => row.reviewReasons.length > 0);
+  const reviewRows = rows.filter((row) => row.reviewReasons.length > 0);
 
   return (
     <div className={adminPageClassName}>
@@ -101,6 +123,29 @@ export default async function PaymentOperationsPage({
             </Link>
           ))}
         </div>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div className="flex flex-col gap-1 rounded-lg border border-amber-300 bg-surface p-4 dark:border-amber-800">
+            <span className="text-xs font-medium text-muted-foreground">
+              Needs review (all payments)
+            </span>
+            <span className="money text-2xl font-semibold tabular-nums">{reviewTotal}</span>
+            <span className="text-xs text-muted-foreground">
+              Counted across every payment in this store, not just the page below.
+            </span>
+          </div>
+          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
+            <span className="text-xs font-medium text-muted-foreground">
+              Rejected deliveries (all)
+            </span>
+            <span className="money text-2xl font-semibold tabular-nums">
+              {exceptions.totalCount}
+            </span>
+            <span className="text-xs text-muted-foreground">
+              Webhooks this store rejected. Nothing was applied to an order.
+            </span>
+          </div>
+        </div>
+
         <p className="text-xs text-muted-foreground">
           Paid payments were opened for {formatVnd(summary.paidAmount)} in total. This is the amount
           each payment was created for — the system never observes a bank balance, so it is not a
@@ -147,6 +192,21 @@ export default async function PaymentOperationsPage({
             className={`${adminInputClassName} sm:w-72`}
           />
         </label>
+        <label className={adminLabelClassName}>
+          Exception type
+          <select
+            name="exception"
+            defaultValue={params.exception ?? ''}
+            className={adminInputClassName}
+          >
+            <option value="">All exceptions</option>
+            {EXCEPTION_CATEGORIES.map((key) => (
+              <option key={key} value={key}>
+                {EXCEPTION_LABEL[key]}
+              </option>
+            ))}
+          </select>
+        </label>
         <label className="flex items-center gap-2 pb-2 text-xs">
           <input type="checkbox" name="review" value="1" defaultChecked={needsReview} />
           Needs review only
@@ -167,7 +227,7 @@ export default async function PaymentOperationsPage({
           </p>
         </div>
 
-        {exceptions.length === 0 ? (
+        {reviewRows.length === 0 ? (
           <div className={adminSubtleClassName}>
             <p className={adminPanelTitleClassName}>Nothing to review on this page</p>
             <p className="text-xs text-muted-foreground">
@@ -176,7 +236,7 @@ export default async function PaymentOperationsPage({
           </div>
         ) : (
           <ul className="flex flex-col gap-3">
-            {exceptions.map((row) => (
+            {reviewRows.map((row) => (
               <li key={row.orderReference} className={adminPanelClassName}>
                 <div className="flex flex-wrap items-start justify-between gap-2">
                   <div className="flex min-w-0 flex-col gap-0.5">
@@ -222,6 +282,94 @@ export default async function PaymentOperationsPage({
                     </p>
                   )}
                 </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section aria-labelledby="rejections" className="flex flex-col gap-3">
+        <div className="flex flex-col gap-1">
+          <h3 id="rejections" className={adminPanelTitleClassName}>
+            Rejected payment deliveries
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Webhooks this store refused. Each was rejected at the time and nothing was applied to an
+            order — an underpayment never marked anything paid.
+          </p>
+        </div>
+
+        {exceptions.rows.length === 0 ? (
+          <div className={adminSubtleClassName}>
+            <p className={adminPanelTitleClassName}>No rejected deliveries</p>
+            <p className="text-xs text-muted-foreground">
+              Nothing has been refused for this store.
+            </p>
+          </div>
+        ) : (
+          <ul className="flex flex-col gap-2">
+            {exceptions.rows.map((row, index) => (
+              <li key={`${row.orderReference ?? 'none'}-${index}`}>
+                <details className={`group ${adminPanelClassName}`}>
+                  <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 marker:content-none">
+                    <span className="inline-flex min-w-0 items-center gap-1.5">
+                      <span className="text-muted-foreground transition-transform group-open:rotate-90">
+                        ›
+                      </span>
+                      <span className="truncate font-mono text-xs">
+                        {row.orderReference ?? 'No order resolved'}
+                      </span>
+                    </span>
+                    <span className="flex flex-wrap items-center gap-1.5">
+                      {row.difference !== null && (
+                        <span className="money text-sm font-medium whitespace-nowrap">
+                          {row.difference > 0 ? '+' : ''}
+                          {formatVnd(row.difference)}
+                        </span>
+                      )}
+                      <StatusBadge
+                        status={EXCEPTION_LABEL[row.category]}
+                        tone={row.category === 'overpaid' ? 'info' : 'danger'}
+                      />
+                    </span>
+                  </summary>
+                  <div className="mt-3 flex flex-col gap-2 border-t border-border pt-3">
+                    <p className="text-xs text-muted-foreground">
+                      {EXCEPTION_ACTION[row.category]}
+                    </p>
+                    <dl className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      <dt className="text-muted-foreground">Provider</dt>
+                      <dd>{row.provider}</dd>
+                      <dt className="text-muted-foreground">Order total expected</dt>
+                      <dd className="tabular-nums">
+                        {row.expectedAmount === null ? 'unknown' : formatVnd(row.expectedAmount)}
+                      </dd>
+                      <dt className="text-muted-foreground">Amount reported</dt>
+                      <dd className="tabular-nums">
+                        {row.reportedAmount === null ? 'unknown' : formatVnd(row.reportedAmount)}
+                      </dd>
+                      <dt className="text-muted-foreground">Times received</dt>
+                      <dd className="tabular-nums">{row.occurrences}</dd>
+                      <dt className="text-muted-foreground">First seen</dt>
+                      <dd className="tabular-nums">
+                        {row.firstSeenAt.toISOString().slice(0, 16).replace('T', ' ')}
+                      </dd>
+                      <dt className="text-muted-foreground">Last seen</dt>
+                      <dd className="tabular-nums">
+                        {row.lastSeenAt.toISOString().slice(0, 16).replace('T', ' ')}
+                      </dd>
+                    </dl>
+                    {row.orderReference && (
+                      <Link
+                        href={`/tenant-admin/orders?search=${encodeURIComponent(row.orderReference)}`}
+                        aria-label={`Open order ${row.orderReference}`}
+                        className={`${adminButtonSecondaryClassName} w-fit min-h-11 lg:min-h-9`}
+                      >
+                        Open order
+                      </Link>
+                    )}
+                  </div>
+                </details>
               </li>
             ))}
           </ul>
@@ -303,11 +451,11 @@ export default async function PaymentOperationsPage({
           What this page cannot tell you
         </h3>
         <p className="text-xs text-muted-foreground">
-          Underpayments, overpayments and unmatched bank transfers are not shown, because they are
-          never stored: a webhook whose amount does not match, or whose order cannot be found, is
-          rejected before anything is written. Duplicate webhook deliveries are likewise discarded
-          rather than recorded. This is not an accounting, tax or banking system, and it never
-          confirms that money reached your bank account.
+          Unmatched transfers are not shown here. A webhook whose order cannot be found resolves to
+          no tenant, so attributing it to your store would be a guess; those are kept at platform
+          level instead. Underpayments and overpayments above are deliveries this store rejected —
+          nothing was applied to an order. This is not an accounting, tax or banking system, and it
+          never confirms that money reached your bank account.
         </p>
       </section>
     </div>
