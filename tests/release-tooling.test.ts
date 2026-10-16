@@ -183,3 +183,174 @@ test('the verifier repairs nothing', () => {
   // It reports and exits; it must not contain remediation SQL.
   assert.doesNotMatch(src, /ALTER TABLE|CREATE INDEX|UPDATE order_events/);
 });
+
+// --- Release checks executed for real -------------------------------
+//
+// The tests above prove the read-only guarantee at the connection level.
+// These run the actual commands as subprocesses against the LOCAL
+// database and assert their exit codes, because an exit code is the only
+// thing CI will ever look at.
+
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
+
+const execFileAsync = promisify(execFile);
+
+type RunResult = { code: number; stdout: string; stderr: string };
+
+async function runScript(script: string, targetUrl: string | null): Promise<RunResult> {
+  const env = { ...process.env };
+  if (targetUrl === null) delete env[TARGET_ENV_VAR];
+  else env[TARGET_ENV_VAR] = targetUrl;
+
+  try {
+    const { stdout, stderr } = await execFileAsync('npx', ['tsx', script], {
+      cwd: new URL('../', import.meta.url).pathname,
+      env,
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    const failure = error as { code?: number; stdout?: string; stderr?: string };
+    return { code: failure.code ?? 1, stdout: failure.stdout ?? '', stderr: failure.stderr ?? '' };
+  }
+}
+
+/** A real local database that has no application tables at all. */
+function emptyDatabaseUrl(): string | null {
+  const base = process.env.DATABASE_URL;
+  if (!base) return null;
+  const url = new URL(base);
+  url.pathname = '/postgres';
+  return url.toString();
+}
+
+const SCRIPTS = [
+  'scripts/release-preflight.ts',
+  'scripts/order-event-preflight.ts',
+  'scripts/order-event-verify.ts',
+  'scripts/prune-payment-rejections.ts',
+];
+
+test('every release command exits 2 when no target is chosen', async () => {
+  for (const script of SCRIPTS) {
+    const result = await runScript(script, null);
+    assert.equal(result.code, EXIT_USAGE, `${script} must exit 2 without a target`);
+    assert.match(result.stderr, /RELEASE_CHECK_DATABASE_URL/);
+    // The message must not hint that DATABASE_URL would work.
+    assert.match(result.stderr, /never (guesses a target and never )?falls back/);
+  }
+});
+
+test('release preflight reports an up-to-date target and exits 0', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const result = await runScript('scripts/release-preflight.ts', process.env.DATABASE_URL);
+  assert.equal(result.code, EXIT_OK);
+  assert.match(result.stdout, /READ ONLY/);
+  assert.match(result.stdout, /VERDICT: (UP TO DATE|PENDING)/);
+  assert.match(result.stdout, /Migrations in repository\s+\d+/);
+  // It never decides the deployment strategy for anyone.
+  assert.doesNotMatch(result.stdout, /running Option A|applying now/i);
+});
+
+test('release preflight STOPS with a non-zero exit on a database with no history', async (t) => {
+  const empty = emptyDatabaseUrl();
+  if (!empty) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const result = await runScript('scripts/release-preflight.ts', empty);
+  assert.equal(result.code, EXIT_FAIL, 'release safety not satisfied must be non-zero');
+  assert.match(result.stdout, /VERDICT: STOP/);
+  assert.match(result.stdout, /no Prisma migration history/);
+});
+
+test('verification fails non-zero when the expected schema is absent', async (t) => {
+  const empty = emptyDatabaseUrl();
+  if (!empty) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const result = await runScript('scripts/order-event-verify.ts', empty);
+  assert.equal(result.code, EXIT_FAIL);
+  // It reports the missing relation rather than passing silently.
+  assert.match(`${result.stdout}${result.stderr}`, /order_events/);
+});
+
+test('verification passes against the local database, which has the migration', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const result = await runScript('scripts/order-event-verify.ts', process.env.DATABASE_URL);
+  assert.equal(result.code, EXIT_OK);
+  assert.match(result.stdout, /VERIFIED: all \d+ checks passed/);
+});
+
+test('no release command prints a connection string', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const url = new URL(process.env.DATABASE_URL);
+  for (const script of ['scripts/release-preflight.ts', 'scripts/order-event-preflight.ts']) {
+    const result = await runScript(script, process.env.DATABASE_URL);
+    const output = `${result.stdout}${result.stderr}`;
+    assert.ok(!output.includes(process.env.DATABASE_URL), `${script} leaked the full URL`);
+    if (url.password) assert.ok(!output.includes(url.password), `${script} leaked a password`);
+    // Only host:port/database is acceptable.
+    assert.match(output, new RegExp(`${url.hostname}:\\d+/`));
+  }
+});
+
+test('a preflight run leaves the database unchanged', async (t) => {
+  if (!process.env.DATABASE_URL) {
+    t.skip('no local DATABASE_URL');
+    return;
+  }
+  const { prisma } = await import('../src/lib/prisma');
+  const before = {
+    orders: await prisma.order.count(),
+    events: await prisma.orderEvent.count(),
+    rejections: await prisma.paymentRejection.count(),
+  };
+  await runScript('scripts/release-preflight.ts', process.env.DATABASE_URL);
+  await runScript('scripts/order-event-preflight.ts', process.env.DATABASE_URL);
+  assert.deepEqual(
+    {
+      orders: await prisma.order.count(),
+      events: await prisma.orderEvent.count(),
+      rejections: await prisma.paymentRejection.count(),
+    },
+    before,
+    'preflight is read-only in practice, not only by intent',
+  );
+});
+
+test('both local-only migrations carry a deployment risk note', () => {
+  const code = source('scripts/release-preflight.ts');
+  for (const migration of [
+    '20261014160000_add_order_event_sequence',
+    '20261016120000_add_payment_rejections',
+  ]) {
+    assert.ok(code.includes(migration), `${migration} must have a risk note`);
+  }
+  // The rewrite risk is stated for the one that has it, and the additive
+  // one is not described as risky.
+  assert.match(code, /rewrites order_events under ACCESS EXCLUSIVE/);
+  assert.match(code, /Additive: one enum, one table, two indexes/);
+});
+
+test('the preflight detects history that disagrees with the repository', () => {
+  const code = source('scripts/release-preflight.ts');
+  // Drift in both directions, plus failed and rolled-back attempts.
+  assert.match(code, /Recorded but not in repo/);
+  assert.match(code, /FAILED/);
+  assert.match(code, /ROLLED BACK/);
+  assert.match(
+    code,
+    /const inconsistent = failed\.length > 0 \|\| rolledBack\.length > 0 \|\| unknown\.length > 0/,
+  );
+});
