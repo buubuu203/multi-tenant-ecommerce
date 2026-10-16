@@ -1,5 +1,6 @@
 import { requireTenantAdmin, NotTenantAdminError } from "@/lib/auth/require-tenant-admin";
 import { toCsv, csvFilename } from "@/lib/csv";
+import { buildCustomersExport } from "@/lib/exports/customers-export";
 import { buildProductsExport } from "@/lib/exports/products-export";
 import { buildOrdersExport } from "@/lib/exports/orders-export";
 
@@ -29,16 +30,19 @@ export const dynamic = "force-dynamic";
 
 /**
  * The only exportable datasets. An allowlist, so the [dataset] path segment
- * can never select anything but these two — it is never interpolated into a
- * query, a model name or a filename beyond this lookup.
+ * can never select anything but these three — it is never interpolated into
+ * a query, a model name or a filename beyond this lookup.
  *
- * `customers` is intentionally absent: no tenant-scoped customer aggregate
- * query exists in this codebase, and order count / lifetime value would
- * require inventing a definition. Omitted rather than guessed.
+ * `customers` was previously absent because order count and order value
+ * would have required inventing a definition. Both are now defined once in
+ * customer-queries.ts and reused by the screen and this export alike, so
+ * the two cannot disagree. It carries PII, and the UI warns before
+ * download.
  */
 const DATASETS = {
   products: { build: buildProductsExport, label: "products" },
   orders: { build: buildOrdersExport, label: "orders" },
+  customers: { build: buildCustomersExport, label: "customers" },
 } as const;
 
 type DatasetKey = keyof typeof DATASETS;

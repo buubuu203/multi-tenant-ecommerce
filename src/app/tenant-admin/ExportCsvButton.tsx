@@ -33,7 +33,7 @@ export function ExportCsvButton({
   dataset,
   label,
 }: {
-  dataset: "products" | "orders";
+  dataset: "products" | "orders" | "customers";
   label: string;
 }) {
   const [pending, setPending] = useState(false);
