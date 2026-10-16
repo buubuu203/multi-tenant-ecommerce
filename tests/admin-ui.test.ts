@@ -163,7 +163,8 @@ test("every admin route is reachable from the navigation", () => {
     if (
       route.includes("/products/new") ||
       route.includes("/print") ||
-      route.includes("/customers/[")
+      route.includes("/customers/[") ||
+      route.includes("/help")
     ) {
       continue;
     }
@@ -367,10 +368,13 @@ test("every navigable route appears in the grouped navigation", () => {
     // route is per-order and is reached from the order itself.
     // A per-customer page belongs to one record and is reached from the
     // customer list, exactly like a print route is reached from an order.
+    // The user guide is reached from the "?" icon in the shared header,
+    // deliberately not from the sidebar: it is help, not a destination.
     if (
       route.includes("/products/new") ||
       route.includes("/print") ||
-      route.includes("/customers/[")
+      route.includes("/customers/[") ||
+      route.includes("/help")
     ) {
       continue;
     }
