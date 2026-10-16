@@ -56,6 +56,54 @@ UI says so on both the list and the detail page.
 Shipping **is** included. Cancelled orders are **excluded** from value but
 **included** in count.
 
+## Sorting
+
+Four server-side modes. The default is unchanged from v1.
+
+| Mode                           | Order                                  |
+| ------------------------------ | -------------------------------------- |
+| **Newest customers** (default) | `Customer.createdAt DESC, id DESC`     |
+| **Last order**                 | `lastOrderAt DESC NULLS LAST, id DESC` |
+| **Order count**                | `orderCount DESC, id DESC`             |
+| **Order value**                | `orderValue DESC, id DESC`             |
+
+Every mode ends in `id DESC`, so a page is reproducible when the leading
+key ties.
+
+**Customers with no orders** stay visible in every mode. They sort as
+**zero** for count and value, and **last** for last-order — via an
+explicit `NULLS LAST`, because PostgreSQL defaults a `DESC` sort to
+`NULLS FIRST`, which would otherwise put people who have never ordered at
+the top of a "last order" list. **No placeholder date is invented.**
+
+The metrics are the ones defined above, unchanged: count includes
+cancelled orders, value excludes them, shipping is included, unpaid
+orders still count toward value, and **value is not revenue**.
+
+Note one consequence worth knowing: a cancelled order still counts as
+_contact_, so it can be a customer's most recent order under **Last
+order** while contributing nothing under **Order value**.
+
+Sorting happens in the database. The page's customer ids are selected by
+one aggregate query with `LIMIT`/`OFFSET`, so sorting by an order metric
+never loads the tenant's whole customer list. Search text, phone
+variants, limit and offset are bound parameters; the only fixed SQL
+fragment is the `ORDER BY`, chosen from a closed set by key. An unknown
+or malformed `sort` value falls back to the default — it neither errors
+nor widens the query.
+
+Sort and search share one GET form, so applying either preserves the
+other and returns to the first page. Paging preserves the sort. The
+customer count always reflects the **filtered set**, never the page.
+
+### CSV ordering
+
+**The export ignores the selected sort.** It keeps its own deterministic
+default ordering, so the file you download does not change because of
+what you were looking at. Everything else about it — the 5000-row bound,
+tenant scoping, BOM, escaping, formula protection and the PII warning —
+is unchanged.
+
 ## Not derivable, and therefore absent
 
 None of the following exists in the schema, so none is shown — not even
@@ -106,11 +154,10 @@ the file is saved.
 
 ## Limitations
 
-- **No sorting by last-order date.** The list is ordered newest-customer
-  first. Sorting by order recency would need an aggregate across every
-  customer before paging; v1 keeps the query bounded instead.
 - **No merge, edit or delete**, by design.
-- **No sorting or filtering by order value or count.**
+- **No filtering** by order value, count or date range — only sorting.
+- **No ascending sort.** Every mode is descending; the useful question is
+  always "who most", not "who least".
 - Export is capped at 5000 customers.
 - Customers with no orders appear in the list, because a `Customer` row
   can exist without one.
