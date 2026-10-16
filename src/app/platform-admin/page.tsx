@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import { platformDb } from "@/lib/db/platform-db";
 import { requirePlatformAdmin, NotAuthenticatedError } from "@/lib/auth/require-platform-admin";
@@ -87,6 +88,18 @@ export default async function PlatformAdminHomePage({
 
   return (
     <div className="flex flex-col gap-6">
+      {/* Platform-only operational views. Payment exception evidence
+          lives here rather than in Tenant Admin because its unattributed
+          rows belong to no tenant. */}
+      <nav aria-label="Platform operations" className="flex flex-wrap gap-2">
+        <Link
+          href="/platform-admin/payment-rejections"
+          className="inline-flex min-h-11 items-center rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:min-h-9"
+        >
+          Payment exception evidence
+        </Link>
+      </nav>
+
       <section className={adminSectionClassName}>
         <div className="flex flex-col gap-1">
           <h2 className="text-lg font-medium tracking-tight">Create tenant</h2>
