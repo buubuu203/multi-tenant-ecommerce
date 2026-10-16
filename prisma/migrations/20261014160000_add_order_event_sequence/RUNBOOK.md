@@ -23,18 +23,18 @@ CREATE INDEX "order_events_tenantId_orderId_sequence_idx"
 
 `SERIAL` gives the column a `nextval(...)` default, which PostgreSQL
 classifies as **volatile** (`pg_proc.provolatile = 'v'`). PostgreSQL 11+
-adds a column with a *constant* default as a metadata-only change, but a
+adds a column with a _constant_ default as a metadata-only change, but a
 volatile default forces a **full table rewrite** so the default can be
 evaluated once per row.
 
 Measured on a 100-row probe table rather than assumed. `pg_class.relfilenode`
 identifies the file backing the table, so a change means a rewrite:
 
-| Statement | relfilenode | Rewrite |
-|---|---|---|
-| *(baseline)* | 16922 | — |
-| `ADD COLUMN seq SERIAL` | 16927 | **yes** |
-| `ADD COLUMN seq2 integer` (nullable, no default) | 16927 | no |
+| Statement                                        | relfilenode | Rewrite |
+| ------------------------------------------------ | ----------- | ------- |
+| _(baseline)_                                     | 16922       | —       |
+| `ADD COLUMN seq SERIAL`                          | 16927       | **yes** |
+| `ADD COLUMN seq2 integer` (nullable, no default) | 16927       | no      |
 
 Locks observed in `pg_locks` while the statement ran:
 
@@ -51,20 +51,28 @@ write an `OrderEvent` inside their own transaction, so while this lock is
 held **checkout blocks too**.
 
 **A follow-up migration cannot fix this.** Prisma applies migrations in
-order, so anything added later runs *after* the rewrite. Avoiding the lock
+order, so anything added later runs _after_ the rewrite. Avoiding the lock
 means not letting this script run against a large table — that is Option B.
 
 ---
 
 ## 1a. Tooling
 
+> **Two migrations are local-only.**
+> `20261014160000_add_order_event_sequence` and
+> `20261016120000_add_payment_rejections` have been applied to the local
+> development database only. Both are release blockers for every other
+> environment. The second is additive and brief; the first is the one this
+> runbook exists for.
+
 Two scripts automate the read-only parts of this runbook. **Neither can
 execute a migration, and neither chooses Option A or B.**
 
-| Command | Purpose | When |
-|---|---|---|
-| `npm run release:preflight:order-events` | Gathers everything in §2 and prints a verdict | Before deciding, per environment |
-| `npm run release:verify:order-events` | Checks the end state (§7.1–7.3) | After Option A or B completes |
+| Command                                  | Purpose                                                                                             | When                             |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------- |
+| `npm run release:preflight:order-events` | Gathers everything in §2 and prints a verdict                                                       | Before deciding, per environment |
+| `npm run release:verify:order-events`    | Checks the end state (§7.1–7.3)                                                                     | After Option A or B completes    |
+| `npm run release:preflight`              | Lists which migrations this target is missing, and flags history that disagrees with the repository | **First**, before anything else  |
 
 ### Required environment variable
 
@@ -99,11 +107,11 @@ is therefore safe to paste into a ticket.
 
 ### Exit codes
 
-| Code | Meaning |
-|---|---|
-| `0` | Preflight: `APPLIED` or `PENDING`. Verify: all checks passed. |
-| `1` | Preflight: `STOP` — partial/inconsistent state. Verify: at least one check failed. |
-| `2` | Usage error: the target variable is unset, or the connection failed. Nothing was inspected. |
+| Code | Meaning                                                                                     |
+| ---- | ------------------------------------------------------------------------------------------- |
+| `0`  | Preflight: `APPLIED` or `PENDING`. Verify: all checks passed.                               |
+| `1`  | Preflight: `STOP` — partial/inconsistent state. Verify: at least one check failed.          |
+| `2`  | Usage error: the target variable is unset, or the connection failed. Nothing was inspected. |
 
 ### Sample output shape
 
@@ -166,6 +174,10 @@ most:
 
 ### Order of use
 
+0. `release:preflight` against the target, to see what it is missing and
+   whether its history is consistent at all. Exits non-zero on a database
+   with no Prisma history, on a failed or rolled-back migration, and on a
+   migration recorded there but absent from this checkout.
 1. `release:preflight:order-events` against the target.
 2. If `STOP`, stop. If `APPLIED`, go to step 5.
 3. Take the numbers to §3 and choose Option A or B **with a human**.
@@ -256,13 +268,13 @@ WHERE ic.relname = 'order_events_tenantId_orderId_sequence_idx';
 
 ### Interpreting 2.9–2.13
 
-| Result | Meaning |
-|---|---|
-| 2.9 empty, 2.10 empty | Clean target. Proceed to §3. |
-| 2.9 has `finished_at` and 2.10 shows the column | Already deployed. Run §7 verification only; do nothing else. |
-| 2.9 empty but 2.10 shows the column | Schema was changed outside Prisma. **Stop.** Do not run either option; reconcile first (likely a partially completed Option B — resume at §5 from the first failing check). |
-| 2.9 has `rolled_back_at`, or `finished_at` is null | A previous attempt failed. **Stop and escalate.** |
-| 2.13 shows `indisvalid = false` | A previous `CREATE INDEX CONCURRENTLY` aborted. See §6. |
+| Result                                             | Meaning                                                                                                                                                                     |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 2.9 empty, 2.10 empty                              | Clean target. Proceed to §3.                                                                                                                                                |
+| 2.9 has `finished_at` and 2.10 shows the column    | Already deployed. Run §7 verification only; do nothing else.                                                                                                                |
+| 2.9 empty but 2.10 shows the column                | Schema was changed outside Prisma. **Stop.** Do not run either option; reconcile first (likely a partially completed Option B — resume at §5 from the first failing check). |
+| 2.9 has `rolled_back_at`, or `finished_at` is null | A previous attempt failed. **Stop and escalate.**                                                                                                                           |
+| 2.13 shows `indisvalid = false`                    | A previous `CREATE INDEX CONCURRENTLY` aborted. See §6.                                                                                                                     |
 
 ---
 
@@ -273,13 +285,13 @@ width, bloat, disk throughput and concurrent load. The only trustworthy
 number is one measured on a Preview database restored to production scale.
 The sizes below are a starting point for that measurement, not permission.
 
-| Condition | Action |
-|---|---|
-| Size and traffic both **known**, measured lock duration on a production-scale Preview copy is **within an approved maintenance window**, and checkout downtime for that period is signed off | **Option A** (§4) |
-| Table is large, **or** measured lock duration exceeds the approved window, **or** checkout cannot tolerate blocking writes at all | **Option B** (§5) |
-| Size **unknown**, traffic **unknown**, or preflight not run against this environment | **Stop and investigate.** Neither option is authorised. |
-| Active incident, elevated error rates, ongoing peak traffic, or any unresolved lock wait from 2.7/2.8 | **Do not run either option.** Reschedule. |
-| Preflight 2.9/2.10 disagree (§2 table) | **Stop and escalate.** |
+| Condition                                                                                                                                                                                    | Action                                                  |
+| -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| Size and traffic both **known**, measured lock duration on a production-scale Preview copy is **within an approved maintenance window**, and checkout downtime for that period is signed off | **Option A** (§4)                                       |
+| Table is large, **or** measured lock duration exceeds the approved window, **or** checkout cannot tolerate blocking writes at all                                                            | **Option B** (§5)                                       |
+| Size **unknown**, traffic **unknown**, or preflight not run against this environment                                                                                                         | **Stop and investigate.** Neither option is authorised. |
+| Active incident, elevated error rates, ongoing peak traffic, or any unresolved lock wait from 2.7/2.8                                                                                        | **Do not run either option.** Reschedule.               |
+| Preflight 2.9/2.10 disagree (§2 table)                                                                                                                                                       | **Stop and escalate.**                                  |
 
 As a rough orientation only, and subject to the measurement above: tables
 in the low tens of thousands of rows typically rewrite in well under a
@@ -425,7 +437,7 @@ default does not rewrite the table.
 The backfill does **not** require stopping writes — 5.4 makes concurrent
 inserts safe and correctly ordered relative to each other and to history.
 
-Pause writers only if you need the *historical* rows' relative order to be
+Pause writers only if you need the _historical_ rows' relative order to be
 as faithful as possible and the table is still receiving events that would
 interleave in `createdAt` with the tail of history. In practice this is
 rarely worth an outage; see 5.7 for why perfect historical order is
@@ -470,7 +482,7 @@ millisecond-precision field whose ties are the reason this column exists.
 Where two historical rows share a timestamp, their relative order is decided
 by a random UUID — arbitrary, though stable once written.
 
-Note the trade-off honestly: `ADD COLUMN SERIAL` (Option A) does *better*
+Note the trade-off honestly: `ADD COLUMN SERIAL` (Option A) does _better_
 here, assigning values in physical table order, which on an append-only
 table never updated in place is true insertion order. Verified locally —
 100 pre-existing rows received `1..100` matching insertion order exactly.
@@ -580,16 +592,16 @@ Deploy or restart the application so it runs the code that orders by
 
 ### What is transactional and what is not
 
-| Step | Transactional | If it fails |
-|---|---|---|
-| Option A, whole migration | Yes — one script | Fully rolled back; migration stays **pending** (§4.3) |
-| 5.1 add column | Yes | Nothing added; safe to retry |
-| 5.3 create sequence | Yes | Nothing created; safe to retry |
-| 5.4 set default | Yes | Default unset; **re-run before resuming 5.6** |
-| 5.6 each batch | Yes, per batch | That batch is undone; earlier batches persist |
-| 5.9 `SET NOT NULL` | Yes | Column stays nullable; safe to retry |
-| 5.9 `CREATE INDEX CONCURRENTLY` | **No** | May leave an **invalid** index (see below) |
-| 5.11 `migrate resolve` | Metadata only | Re-runnable |
+| Step                            | Transactional    | If it fails                                           |
+| ------------------------------- | ---------------- | ----------------------------------------------------- |
+| Option A, whole migration       | Yes — one script | Fully rolled back; migration stays **pending** (§4.3) |
+| 5.1 add column                  | Yes              | Nothing added; safe to retry                          |
+| 5.3 create sequence             | Yes              | Nothing created; safe to retry                        |
+| 5.4 set default                 | Yes              | Default unset; **re-run before resuming 5.6**         |
+| 5.6 each batch                  | Yes, per batch   | That batch is undone; earlier batches persist         |
+| 5.9 `SET NOT NULL`              | Yes              | Column stays nullable; safe to retry                  |
+| 5.9 `CREATE INDEX CONCURRENTLY` | **No**           | May leave an **invalid** index (see below)            |
+| 5.11 `migrate resolve`          | Metadata only    | Re-runnable                                           |
 
 ### Pausing and resuming
 
