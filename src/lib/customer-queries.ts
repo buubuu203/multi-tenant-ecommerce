@@ -1,3 +1,4 @@
+import { prisma } from './prisma';
 import { getScopedDb } from './db/tenant-db';
 import { normalizedPhoneVariants } from './validation/phone';
 
@@ -57,9 +58,45 @@ export type CustomerListRow = {
   possibleDuplicatePhone: boolean;
 };
 
+/**
+ * Sort modes. A closed set, and the ONLY values that ever reach SQL — the
+ * ORDER BY clause is chosen from this map by key, never built from input.
+ */
+export const CUSTOMER_SORTS = ['newest', 'last_order', 'order_count', 'order_value'] as const;
+export type CustomerSort = (typeof CUSTOMER_SORTS)[number];
+
+export const DEFAULT_CUSTOMER_SORT: CustomerSort = 'newest';
+
+export function isCustomerSort(value: string | undefined): value is CustomerSort {
+  return typeof value === 'string' && (CUSTOMER_SORTS as readonly string[]).includes(value);
+}
+
+export const CUSTOMER_SORT_LABEL: Record<CustomerSort, string> = {
+  newest: 'Newest customers',
+  last_order: 'Last order',
+  order_count: 'Order count',
+  order_value: 'Order value',
+};
+
+/**
+ * The ORDER BY for each mode. Every one ends in `c.id DESC`, so a page is
+ * reproducible even when the leading key ties.
+ *
+ * last_order uses NULLS LAST explicitly: PostgreSQL defaults a DESC sort
+ * to NULLS FIRST, which would put customers who have never ordered at the
+ * top of a "last order" list — the opposite of what it means.
+ */
+const ORDER_BY: Record<CustomerSort, string> = {
+  newest: 'c."createdAt" DESC, c.id DESC',
+  last_order: 'agg.last_order_at DESC NULLS LAST, c.id DESC',
+  order_count: 'COALESCE(agg.order_count, 0) DESC, c.id DESC',
+  order_value: 'COALESCE(agg.order_value, 0) DESC, c.id DESC',
+};
+
 export type CustomerFilters = {
   search?: string;
   page?: number;
+  sort?: CustomerSort;
 };
 
 type OrderFacts = {
@@ -104,6 +141,91 @@ function searchWhere(search: string) {
 }
 
 /**
+ * Selects ONE PAGE of customer ids, already ordered.
+ *
+ * Why raw SQL: ordering by order value means summing
+ * `price × quantity` across each customer's order items and excluding
+ * cancelled orders. Prisma can order by a relation's `_count`, but not by
+ * a computed sum over a nested relation, so the aggregate has to happen
+ * in the database — doing it in JavaScript would mean loading every
+ * customer in the tenant before paging, which is exactly what must not
+ * happen.
+ *
+ * Safety, since this bypasses the Prisma tenant-scope extension (that
+ * extension hooks model operations, not raw queries — the same reason
+ * inventory-mutations states its tenantId explicitly):
+ *
+ *   - `c."tenantId" = $1` is always present, with the trusted tenantId
+ *     from requireTenantAdmin(), so the result can only ever be this
+ *     tenant's customers.
+ *   - Every user-supplied value — search text, phone variants, limit,
+ *     offset — is a bound parameter. None is interpolated.
+ *   - The only interpolated fragment is the ORDER BY, and it is looked up
+ *     from ORDER_BY by a key already narrowed to the CustomerSort union.
+ *     An unknown sort cannot reach here; callers resolve it to the
+ *     default first.
+ */
+async function orderedCustomerIds(
+  tenantId: string,
+  sort: CustomerSort,
+  search: string | undefined,
+  limit: number,
+  offset: number,
+): Promise<string[]> {
+  const params: unknown[] = [tenantId];
+  let searchClause = '';
+
+  if (search) {
+    const phoneVariants = normalizedPhoneVariants(search);
+    params.push(`%${search}%`);
+    const likeParam = `$${params.length}`;
+    if (phoneVariants.length > 0) {
+      params.push(phoneVariants);
+      searchClause = `AND (c.name ILIKE ${likeParam} OR c.email ILIKE ${likeParam} OR c.phone = ANY($${params.length}))`;
+    } else {
+      params.push(`%${search}%`);
+      searchClause = `AND (c.name ILIKE ${likeParam} OR c.email ILIKE ${likeParam} OR c.phone LIKE $${params.length})`;
+    }
+  }
+
+  params.push(limit);
+  const limitParam = `$${params.length}`;
+  params.push(offset);
+  const offsetParam = `$${params.length}`;
+
+  const sql = `
+    WITH order_totals AS (
+      SELECT o.id,
+             o."customerId",
+             o.status::text AS status,
+             o."createdAt",
+             o."shippingAmount" + COALESCE(SUM(i.price * i.quantity), 0) AS total
+      FROM orders o
+      LEFT JOIN order_items i ON i."orderId" = o.id AND i."tenantId" = o."tenantId"
+      WHERE o."tenantId" = $1
+      GROUP BY o.id
+    ),
+    agg AS (
+      SELECT "customerId",
+             COUNT(*) AS order_count,
+             MAX("createdAt") AS last_order_at,
+             COALESCE(SUM(CASE WHEN status <> 'cancelled' THEN total ELSE 0 END), 0) AS order_value
+      FROM order_totals
+      GROUP BY "customerId"
+    )
+    SELECT c.id
+    FROM customers c
+    LEFT JOIN agg ON agg."customerId" = c.id
+    WHERE c."tenantId" = $1 ${searchClause}
+    ORDER BY ${ORDER_BY[sort]}
+    LIMIT ${limitParam} OFFSET ${offsetParam}
+  `;
+
+  const rows = await prisma.$queryRawUnsafe<{ id: string }[]>(sql, ...params);
+  return rows.map((row) => row.id);
+}
+
+/**
  * One page of customers with their order facts.
  *
  * Three queries regardless of page size: the customers, their count, and
@@ -123,22 +245,29 @@ export async function listCustomers(
   const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
   const search = filters.search?.trim();
 
+  const sort = filters.sort ?? DEFAULT_CUSTOMER_SORT;
   const where = { tenantId, ...(search ? searchWhere(search) : {}) };
 
-  const [customers, totalCount] = await Promise.all([
-    db.customer.findMany({
-      where,
-      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-      skip: (page - 1) * CUSTOMER_PAGE_SIZE,
-      take: CUSTOMER_PAGE_SIZE,
-      select: { id: true, name: true, phone: true, email: true },
-    }),
+  // The ordering and the page are decided in the database, so sorting by
+  // an order metric never means loading the tenant's whole customer list.
+  // The count is of the filtered SET, not the page.
+  const [customerIds, totalCount] = await Promise.all([
+    orderedCustomerIds(tenantId, sort, search, CUSTOMER_PAGE_SIZE, (page - 1) * CUSTOMER_PAGE_SIZE),
     db.customer.count({ where }),
   ]);
 
-  if (customers.length === 0) return { rows: [], totalCount };
+  if (customerIds.length === 0) return { rows: [], totalCount };
 
-  const customerIds = customers.map((customer) => customer.id);
+  const unordered = await db.customer.findMany({
+    where: { tenantId, id: { in: customerIds } },
+    select: { id: true, name: true, phone: true, email: true },
+  });
+  // findMany does not preserve the `in` order, so restore the order the
+  // database chose. Anything missing is dropped rather than guessed.
+  const byId = new Map(unordered.map((customer) => [customer.id, customer]));
+  const customers = customerIds
+    .map((id) => byId.get(id))
+    .filter((customer): customer is (typeof unordered)[number] => customer !== undefined);
   const orders = await db.order.findMany({
     where: { tenantId, customerId: { in: customerIds } },
     orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],

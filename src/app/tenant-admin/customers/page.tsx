@@ -1,6 +1,13 @@
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
-import { listCustomers, CUSTOMER_PAGE_SIZE } from '@/lib/customer-queries';
+import {
+  listCustomers,
+  CUSTOMER_PAGE_SIZE,
+  CUSTOMER_SORTS,
+  CUSTOMER_SORT_LABEL,
+  DEFAULT_CUSTOMER_SORT,
+  isCustomerSort,
+} from '@/lib/customer-queries';
 import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge, toneForStatus } from '../StatusBadge';
 import { formatVnd } from '../format';
@@ -30,16 +37,21 @@ function formatDate(value: Date | null): string {
 export default async function CustomersPage({
   searchParams,
 }: {
-  searchParams: Promise<{ search?: string; page?: string }>;
+  searchParams: Promise<{ search?: string; page?: string; sort?: string }>;
 }) {
   const { tenantId } = await requireTenantAdmin();
   const params = await searchParams;
   const rawPage = Number(params.page ?? '1');
   const page = Number.isFinite(rawPage) && rawPage > 0 ? Math.floor(rawPage) : 1;
 
+  // An unknown or malformed sort falls back to the default rather than
+  // erroring or widening the query — it never reaches SQL.
+  const sort = isCustomerSort(params.sort) ? params.sort : DEFAULT_CUSTOMER_SORT;
+
   const { rows, totalCount } = await listCustomers(tenantId, {
     search: params.search,
     page,
+    sort,
   });
 
   return (
@@ -68,6 +80,19 @@ export default async function CustomersPage({
             className={`${adminInputClassName} sm:w-80`}
           />
         </label>
+        <label className={adminLabelClassName}>
+          Sort customers by
+          <select name="sort" defaultValue={sort} className={adminInputClassName}>
+            {CUSTOMER_SORTS.map((option) => (
+              <option key={option} value={option}>
+                {CUSTOMER_SORT_LABEL[option]}
+              </option>
+            ))}
+          </select>
+        </label>
+        {/* Submitting the form drops `page`, so changing the sort or the
+            search always lands on the first page — the same behaviour the
+            other admin filter forms have. */}
         <button type="submit" className={`${adminButtonSecondaryClassName} min-h-11 lg:min-h-9`}>
           Search customers
         </button>
@@ -84,6 +109,8 @@ export default async function CustomersPage({
       <p className="text-xs text-muted-foreground">
         Phone search matches both <code>0912…</code> and <code>+84912…</code> forms. Order value
         means items plus shipping for orders that were not cancelled — it is not settled revenue.
+        Sorting by last order puts customers who have never ordered at the end, rather than
+        pretending they ordered long ago.
       </p>
 
       {rows.length === 0 ? (
