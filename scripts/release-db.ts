@@ -89,6 +89,53 @@ export async function withReadOnlyConnection<T>(
   }
 }
 
+/**
+ * A WRITABLE connection, for the one maintenance task that must delete.
+ *
+ * Deliberately separate from withReadOnlyConnection and deliberately
+ * harder to reach: it takes the same explicitly-chosen target variable,
+ * never falls back to DATABASE_URL, and sets both a statement timeout and
+ * a lock timeout so a maintenance run against a busy database fails fast
+ * instead of blocking it. The caller owns its own transactions.
+ */
+export async function withWritableConnection<T>(
+  fn: (query: QueryFn) => Promise<T>,
+): Promise<{ target: string; result: T }> {
+  const url = process.env[TARGET_ENV_VAR];
+  if (!url || url.trim() === '') {
+    throw new UsageError(
+      `${TARGET_ENV_VAR} is not set.\n\n` +
+        `This command never guesses a target and never falls back to DATABASE_URL.\n`,
+    );
+  }
+
+  const client = new Client({
+    connectionString: url,
+    statement_timeout: 30_000,
+    query_timeout: 30_000,
+  });
+  try {
+    await client.connect();
+  } catch (error) {
+    throw new UsageError(
+      `Could not connect to ${describeTarget(url)}: ${
+        error instanceof Error ? error.message : 'unknown error'
+      }`,
+    );
+  }
+
+  try {
+    await client.query("SET lock_timeout = '5s'");
+    const query: QueryFn = async (text, values) => {
+      const res = await client.query(text, values);
+      return res.rows as Record<string, unknown>[];
+    };
+    return { target: describeTarget(url), result: await fn(query) };
+  } finally {
+    await client.end();
+  }
+}
+
 export type QueryFn = (text: string, values?: unknown[]) => Promise<Record<string, unknown>[]>;
 
 /** Narrow a single scalar out of a one-row result without casting tricks. */
