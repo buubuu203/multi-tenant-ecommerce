@@ -339,6 +339,66 @@ export const HELP_SECTIONS: HelpSection[] = [
     ],
   },
   {
+    id: 'phan-tich',
+    title: 'Phân tích vận hành',
+    route: '/tenant-admin/analytics',
+    purpose:
+      'Đếm chính xác những gì cửa hàng đã ghi nhận: đơn hàng, thanh toán, khách hàng và tồn kho. Mọi con số đều được định nghĩa ngay trên trang.',
+    canDo: [
+      'Chọn khoảng ngày để xem số đơn và giá trị đơn trong khoảng đó.',
+      'Xem số đơn theo từng trạng thái: chờ xử lý, đã xử lý, đã huỷ.',
+      'Xem số thanh toán theo từng trạng thái.',
+      'Xem số lần hệ thống từ chối thông báo thanh toán, theo lý do.',
+      'Xem tổng số khách, số khách đã từng mua và số khách mua từ hai đơn trở lên.',
+      'Xem số sản phẩm, số mẫu mã hết hàng và sắp hết hàng.',
+    ],
+    workflow: [
+      'Mặc định trang hiển thị 30 ngày gần nhất.',
+      'Đổi ngày bắt đầu và ngày kết thúc rồi bấm Áp dụng.',
+      'Bấm Đặt lại để quay về 30 ngày gần nhất.',
+    ],
+    concepts: [
+      {
+        term: 'Giá trị đơn',
+        meaning:
+          'Tiền hàng cộng phí vận chuyển của các đơn chưa huỷ, tính cả đơn khách chưa trả tiền. Đây KHÔNG phải doanh thu đã thu được.',
+      },
+      {
+        term: 'Thanh toán thành công',
+        meaning:
+          'Hệ thống đã nhận và kiểm tra xác nhận từ nhà cung cấp, số tiền báo về khớp với đơn. Điều này không chứng minh tiền đã về tài khoản ngân hàng.',
+      },
+      {
+        term: 'COD đang chờ',
+        meaning:
+          'Là bình thường, không phải lỗi. Tiền mặt được thu qua người giao hàng và hệ thống không bao giờ biết kết quả, nên đơn COD luôn ở trạng thái chờ.',
+      },
+      {
+        term: 'Thông báo thanh toán bị từ chối',
+        meaning:
+          'Đếm số trường hợp từ chối khác nhau được ghi nhận lần đầu trong khoảng ngày, mỗi trường hợp tính một lần dù nhà cung cấp gửi lại nhiều lần. Đây là bằng chứng, không phải đã đối soát hay đã xử lý xong.',
+      },
+      {
+        term: 'Mốc ngày',
+        meaning:
+          'Tính theo giờ Việt Nam (UTC+7), cố định cho mọi cửa hàng. Cả ngày bắt đầu và ngày kết thúc đều được tính vào. Một khoảng tối đa 366 ngày.',
+      },
+      {
+        term: 'Có thể bán',
+        meaning: 'Số tồn kho thực tế trừ đi số đã giữ cho các đơn đã đặt nhưng chưa xử lý xong.',
+      },
+    ],
+    limits: [
+      'Trang này chỉ xem, không sửa được gì.',
+      'Số sản phẩm, tồn kho và tổng số khách là số liệu hiện tại, không theo khoảng ngày.',
+      'Không có doanh thu đã thu, tiền đã về ngân hàng, hay việc đã thu tiền COD.',
+      'Không có thông tin giao hàng, đơn vị vận chuyển, phí vận chuyển thực tế hay tình trạng giao.',
+      'Không có trả hàng, hoàn tiền, lợi nhuận, biên lợi nhuận, thuế hay VAT.',
+      'Không có nguồn khách, tỉ lệ chuyển đổi hay thông tin đồng ý nhận quảng cáo.',
+      'Đây không phải chứng từ kế toán, thuế hay ngân hàng.',
+    ],
+  },
+  {
     id: 'thuong-hieu',
     title: 'Thương hiệu',
     route: '/tenant-admin/branding',
