@@ -32,6 +32,7 @@ const GROUPS = [
     items: [
       ["/tenant-admin/orders", "Orders"],
       ["/tenant-admin/customers", "Customers"],
+      ["/tenant-admin/fulfillment", "Fulfillment"],
       ["/tenant-admin/catalog", "Catalog"],
     ],
   },
