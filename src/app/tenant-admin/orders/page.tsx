@@ -1,20 +1,20 @@
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { ActionForm } from "@/components/ActionForm";
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { ActionForm } from '@/components/ActionForm';
 import {
   updateOrderStatusAction,
   markManualPaymentReceivedAction,
   bulkUpdateOrderStatusAction,
-} from "../actions";
-import { OrderStatusForm } from "../OrderStatusForm";
-import { BulkOrderStatusForm } from "../BulkOrderStatusForm";
-import { Pagination } from "../Pagination";
-import { listOrders, type ListOrdersOptions } from "@/lib/order-queries";
-import { formatVnd } from "../format";
-import Link from "next/link";
-import { getOrderTimelinesForOrders } from "@/lib/order-events";
-import { DOCUMENT_TITLE, PRINT_DOCUMENTS } from "@/lib/order-print";
-import { OrderTimeline } from "../OrderTimeline";
-import { ExportCsvButton } from "../ExportCsvButton";
+} from '../actions';
+import { OrderStatusForm } from '../OrderStatusForm';
+import { BulkOrderStatusForm } from '../BulkOrderStatusForm';
+import { Pagination } from '../Pagination';
+import { listOrders, type ListOrdersOptions } from '@/lib/order-queries';
+import { formatVnd } from '../format';
+import Link from 'next/link';
+import { getOrderTimelinesForOrders } from '@/lib/order-events';
+import { DOCUMENT_TITLE, PRINT_DOCUMENTS } from '@/lib/order-print';
+import { OrderTimeline } from '../OrderTimeline';
+import { ExportCsvButton } from '../ExportCsvButton';
 import {
   adminPageClassName,
   adminPanelClassName,
@@ -22,19 +22,19 @@ import {
   adminInputClassName,
   adminButtonSecondaryClassName,
   adminEyebrowClassName,
-} from "../styles";
-import { AdminPageHeader } from "../AdminPageHeader";
-import { StatusBadge, toneForStatus } from "../StatusBadge";
+} from '../styles';
+import { AdminPageHeader } from '../AdminPageHeader';
+import { StatusBadge, toneForStatus } from '../StatusBadge';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
-const ORDER_STATUSES = ["pending", "fulfilled", "cancelled"] as const;
+const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled'] as const;
 
 const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: "Cash on delivery",
-  momo: "MoMo",
-  bank_transfer: "Bank transfer",
+  cod: 'Cash on delivery',
+  momo: 'MoMo',
+  bank_transfer: 'Bank transfer',
 };
 
 // Order and payment status now render through the shared StatusBadge, which
@@ -48,8 +48,8 @@ export default async function OrdersPage({
 }) {
   const { tenantId } = await requireTenantAdmin();
   const params = await searchParams;
-  const q = typeof params.q === "string" ? params.q : "";
-  const status = typeof params.status === "string" ? params.status : "";
+  const q = typeof params.q === 'string' ? params.q : '';
+  const status = typeof params.status === 'string' ? params.status : '';
   const page = Number(params.page) > 0 ? Math.floor(Number(params.page)) : 1;
 
   const listOptions: ListOrdersOptions = {
@@ -81,8 +81,8 @@ export default async function OrdersPage({
         description="Every order placed in this store. Select orders to update several at once."
         meta={
           <span className={adminEyebrowClassName}>
-            {totalCount} {totalCount === 1 ? "order" : "orders"}
-            {(q || status) && " matching"}
+            {totalCount} {totalCount === 1 ? 'order' : 'orders'}
+            {(q || status) && ' matching'}
           </span>
         }
       />
@@ -95,6 +95,7 @@ export default async function OrdersPage({
         className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface p-3"
         method="get"
         role="search"
+        aria-label="Search and filter orders"
       >
         <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs sm:flex-none">
           Search
@@ -152,8 +153,8 @@ export default async function OrdersPage({
       {orders.length === 0 ? (
         <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
           {q || status
-            ? "No orders match these filters."
-            : "No orders yet. Orders placed on your storefront will appear here."}
+            ? 'No orders match these filters.'
+            : 'No orders yet. Orders placed on your storefront will appear here.'}
         </p>
       ) : (
         /* ONE rendering of each order, not two.
@@ -213,7 +214,7 @@ export default async function OrdersPage({
                             {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
                           </span>
                           <span className="text-xs text-muted-foreground">
-                            {order.itemCount} item{order.itemCount === 1 ? "" : "s"}
+                            {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
                           </span>
                         </div>
                       </div>
@@ -229,10 +230,10 @@ export default async function OrdersPage({
                           dateTime={order.createdAt.toISOString()}
                           className="text-xs text-muted-foreground"
                         >
-                          {order.createdAt.toLocaleDateString("en-GB", {
-                            day: "2-digit",
-                            month: "short",
-                            year: "numeric",
+                          {order.createdAt.toLocaleDateString('en-GB', {
+                            day: '2-digit',
+                            month: 'short',
+                            year: 'numeric',
                           })}
                         </time>
                       </div>
@@ -265,7 +266,9 @@ export default async function OrdersPage({
                         )}
                         <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
                         {order.shippingNote && (
-                          <p className="text-xs text-muted-foreground">Note: {order.shippingNote}</p>
+                          <p className="text-xs text-muted-foreground">
+                            Note: {order.shippingNote}
+                          </p>
                         )}
                       </div>
                     </div>
@@ -287,7 +290,7 @@ export default async function OrdersPage({
                                 {item.productName}
                                 {item.combinationLabel && (
                                   <span className="text-muted-foreground">
-                                    {" "}
+                                    {' '}
                                     — {item.combinationLabel}
                                   </span>
                                 )}
@@ -325,10 +328,10 @@ export default async function OrdersPage({
                         <div className="flex items-center justify-between text-muted-foreground">
                           <span>
                             Shipping
-                            {order.shippingMethodName ? ` (${order.shippingMethodName})` : ""}
+                            {order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}
                           </span>
                           <span className="money">
-                            {order.shippingAmount === 0 ? "Free" : formatVnd(order.shippingAmount)}
+                            {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
                           </span>
                         </div>
                         <div className="flex items-center justify-between font-medium">
@@ -371,16 +374,16 @@ export default async function OrdersPage({
               {/* Actions stay OUT of the disclosure: fulfilling an order is
                   the job this page exists for, and burying it behind a
                   toggle would cost a click on every order. */}
-              {(order.status === "pending" ||
-                (order.paymentProvider === "bank_transfer_manual" &&
-                  order.paymentStatus === "pending")) && (
+              {(order.status === 'pending' ||
+                (order.paymentProvider === 'bank_transfer_manual' &&
+                  order.paymentStatus === 'pending')) && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
                   {/* Manual bank transfer never gets a webhook — this is the
                     only way its Payment leaves "pending". Never shown for
                     bank_transfer_sepay_va, whose webhook is the sole
                     source of truth. */}
-                  {order.paymentProvider === "bank_transfer_manual" &&
-                    order.paymentStatus === "pending" && (
+                  {order.paymentProvider === 'bank_transfer_manual' &&
+                    order.paymentStatus === 'pending' && (
                       <ActionForm
                         action={markManualPaymentReceivedAction}
                         submitLabel="Mark as paid"
@@ -390,7 +393,7 @@ export default async function OrdersPage({
                         <input type="hidden" name="orderId" value={order.id} />
                       </ActionForm>
                     )}
-                  {order.status === "pending" && (
+                  {order.status === 'pending' && (
                     <div className="ml-auto flex flex-wrap items-center gap-2">
                       <OrderStatusForm
                         action={updateOrderStatusAction}
