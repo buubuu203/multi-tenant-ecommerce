@@ -1,17 +1,18 @@
-import type { ReactNode } from "react";
-import { requireTenantAdmin, NotTenantAdminError } from "@/lib/auth/require-tenant-admin";
-import { getScopedDb } from "@/lib/db/tenant-db";
-import { resolveBranding } from "../_storefront/resolve-branding";
-import { TenantTheme } from "@/components/TenantTheme";
-import { Toaster } from "@/components/Toast";
-import { AdminNav } from "./AdminNav";
+import type { ReactNode } from 'react';
+import { requireTenantAdmin, NotTenantAdminError } from '@/lib/auth/require-tenant-admin';
+import { getScopedDb } from '@/lib/db/tenant-db';
+import { resolveBranding } from '../_storefront/resolve-branding';
+import { TenantTheme } from '@/components/TenantTheme';
+import { Toaster } from '@/components/Toast';
+import { AdminNav } from './AdminNav';
 import {
   adminContainerClassName,
   adminEyebrowClassName,
   adminButtonSecondaryClassName,
-} from "./styles";
-import { AdminAccountBar } from "@/components/AdminAccountBar";
-import { AdminDenied } from "@/components/AdminDenied";
+} from './styles';
+import Link from 'next/link';
+import { AdminAccountBar } from '@/components/AdminAccountBar';
+import { AdminDenied } from '@/components/AdminDenied';
 
 // Phase 1 of the admin route split: this layout now owns the chrome
 // (theme, header, tab nav) that used to live inside the single giant
@@ -37,7 +38,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   const db = getScopedDb(tenantId);
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
-  const themeBranding = resolveBranding(tenant ?? { name: "Store" }, branding);
+  const themeBranding = resolveBranding(tenant ?? { name: 'Store' }, branding);
   const primaryDomain = await db.domain.findFirst({ where: { tenantId, isPrimary: true } });
 
   return (
@@ -49,7 +50,9 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
           "where can I go": the two layers do different jobs, and letting
           them share one space is what made the old header crowded. */}
       <header className="sticky top-0 z-20 border-b border-border bg-surface print:hidden">
-        <div className={`${adminContainerClassName} flex flex-wrap items-center justify-between gap-3 py-3`}>
+        <div
+          className={`${adminContainerClassName} flex flex-wrap items-center justify-between gap-3 py-3`}
+        >
           <div className="flex min-w-0 flex-col gap-0.5">
             {/* The STORE is the h1, not "Tenant Admin". The operator knows
                 which tool they are in; what they need confirmed before
@@ -57,7 +60,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
                 is which shop this is. */}
             <p className={adminEyebrowClassName}>Tenant Admin</p>
             <h1 className="truncate text-lg font-semibold tracking-tight">
-              {tenant?.name ?? "(unknown tenant)"}
+              {tenant?.name ?? '(unknown tenant)'}
             </h1>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -73,6 +76,17 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
                 <span className="sr-only">(opens in a new tab)</span>
               </a>
             )}
+            {/* Lối vào duy nhất của hướng dẫn sử dụng. Một link bình
+                thường, không cần JavaScript, đặt cạnh phần tài khoản và
+                dùng chung cho mọi trang trong khu vực quản trị. */}
+            <Link
+              href="/tenant-admin/help"
+              aria-label="Mở hướng dẫn sử dụng"
+              title="Hướng dẫn sử dụng"
+              className="inline-flex size-11 items-center justify-center rounded-md border border-border text-sm font-semibold transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:size-9"
+            >
+              <span aria-hidden="true">?</span>
+            </Link>
             <AdminAccountBar />
           </div>
         </div>
