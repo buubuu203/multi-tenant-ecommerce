@@ -245,7 +245,10 @@ export async function listCustomers(
   const page = filters.page && filters.page > 0 ? Math.floor(filters.page) : 1;
   const search = filters.search?.trim();
 
-  const sort = filters.sort ?? DEFAULT_CUSTOMER_SORT;
+  // Validated HERE, not only by the page. A library function must not
+  // depend on its caller having checked: an unvalidated value would make
+  // ORDER_BY[sort] undefined and splice "undefined" into the SQL.
+  const sort = isCustomerSort(filters.sort) ? filters.sort : DEFAULT_CUSTOMER_SORT;
   const where = { tenantId, ...(search ? searchWhere(search) : {}) };
 
   // The ordering and the page are decided in the database, so sorting by

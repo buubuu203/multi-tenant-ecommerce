@@ -431,12 +431,6 @@ export default async function PaymentOperationsPage({
                         </dd>
                       </>
                     )}
-                    {row.providerTransactionId && (
-                      <>
-                        <dt className="text-muted-foreground">Transaction reference</dt>
-                        <dd className="font-mono break-all">{row.providerTransactionId}</dd>
-                      </>
-                    )}
                   </dl>
                 </details>
               </li>

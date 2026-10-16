@@ -297,7 +297,11 @@ export default async function CatalogPage({
             state to lose on refresh, shareable URL. "Add a product" used to
             share this row; it is now the page header's primary action, so
             there is exactly one of it. */}
-          <form className="flex w-full flex-wrap items-end gap-2" method="get">
+          <form
+            className="flex w-full flex-wrap items-end gap-2"
+            method="get"
+            aria-label="Search and filter products"
+          >
             <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs sm:flex-none">
               Search
               <input

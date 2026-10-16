@@ -83,11 +83,6 @@ export type PaymentRow = {
   orderStatus: string;
   createdAt: Date;
   expiresAt: Date | null;
-  /**
-   * The provider's own transaction id, already stored as a plain column
-   * and shown on the order. Never a signature, token or payload.
-   */
-  providerTransactionId: string | null;
   reviewReasons: ReviewReason[];
   /** Only bank_transfer_manual has an existing confirm action. */
   canConfirmManually: boolean;
@@ -222,7 +217,6 @@ export async function listPaymentReconciliation(
         amount: true,
         expiresAt: true,
         createdAt: true,
-        providerTransactionId: true,
         order: { select: { status: true, paymentMethod: true } },
       },
     }),
@@ -270,7 +264,6 @@ export async function listPaymentReconciliation(
         orderStatus: payment.order.status,
         createdAt: payment.createdAt,
         expiresAt: payment.expiresAt,
-        providerTransactionId: payment.providerTransactionId,
         reviewReasons,
         canConfirmManually:
           payment.provider === 'bank_transfer_manual' && payment.status === 'pending',

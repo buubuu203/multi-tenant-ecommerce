@@ -1,41 +1,44 @@
-import Link from "next/link";
-import { redirect } from "next/navigation";
-import { platformDb } from "@/lib/db/platform-db";
-import { requirePlatformAdmin, NotAuthenticatedError } from "@/lib/auth/require-platform-admin";
-import { AdminDenied } from "@/components/AdminDenied";
-import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } from "./actions";
-import { ActionForm } from "@/components/ActionForm";
-import { TenantStatusForm } from "./TenantStatusForm";
-import { adminInputClassName, adminLabelClassName, adminSectionClassName } from "../tenant-admin/styles";
+import Link from 'next/link';
+import { redirect } from 'next/navigation';
+import { platformDb } from '@/lib/db/platform-db';
+import { requirePlatformAdmin, NotAuthenticatedError } from '@/lib/auth/require-platform-admin';
+import { AdminDenied } from '@/components/AdminDenied';
+import { createTenantAction, updateTenantNameAction, updateTenantStatusAction } from './actions';
+import { ActionForm } from '@/components/ActionForm';
+import { TenantStatusForm } from './TenantStatusForm';
+import {
+  adminInputClassName,
+  adminLabelClassName,
+  adminSectionClassName,
+} from '../tenant-admin/styles';
 
-
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 // Same per-file badge-map convention Tenant Admin already uses for order
 // and payment status — colour carries the meaning at a glance rather than
 // making an operator read four near-identical words.
 const STATUS_BADGE: Record<string, string> = {
   active:
-    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
   pending:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   suspended:
-    "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
-  archived: "border-border bg-surface-muted text-muted-foreground",
+    'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
+  archived: 'border-border bg-surface-muted text-muted-foreground',
 };
 
 function statusHelpText(status: string): string {
   switch (status) {
-    case "active":
-      return "Storefront is live";
-    case "pending":
-      return "Storefront shows “coming soon”";
-    case "suspended":
-      return "Storefront shows “unavailable”";
-    case "archived":
-      return "Storefront shows “unavailable”";
+    case 'active':
+      return 'Storefront is live';
+    case 'pending':
+      return 'Storefront shows “coming soon”';
+    case 'suspended':
+      return 'Storefront shows “unavailable”';
+    case 'archived':
+      return 'Storefront shows “unavailable”';
     default:
-      return "";
+      return '';
   }
 }
 
@@ -61,13 +64,13 @@ export default async function PlatformAdminHomePage({
     await requirePlatformAdmin();
   } catch (e) {
     if (e instanceof NotAuthenticatedError) {
-      redirect("/sign-in");
+      redirect('/sign-in');
     }
     return <AdminDenied surface="Platform Admin" />;
   }
 
   const params = await searchParams;
-  const q = typeof params.q === "string" ? params.q.trim() : "";
+  const q = typeof params.q === 'string' ? params.q.trim() : '';
 
   const tenants = await platformDb.tenant.findMany({
     // Platform Admin is the one surface that legitimately sees every
@@ -77,13 +80,13 @@ export default async function PlatformAdminHomePage({
     where: q
       ? {
           OR: [
-            { name: { contains: q, mode: "insensitive" } },
-            { slug: { contains: q, mode: "insensitive" } },
+            { name: { contains: q, mode: 'insensitive' } },
+            { slug: { contains: q, mode: 'insensitive' } },
           ],
         }
       : {},
     include: { domains: { where: { isPrimary: true } } },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: 'asc' },
   });
 
   return (
@@ -128,10 +131,10 @@ export default async function PlatformAdminHomePage({
       <section className={adminSectionClassName}>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
           <h2 className="text-lg font-medium tracking-tight">
-            Tenants{" "}
+            Tenants{' '}
             <span className="text-sm font-normal text-muted-foreground">({tenants.length})</span>
           </h2>
-          <form method="get" className="flex items-end gap-2">
+          <form method="get" className="flex items-end gap-2" aria-label="Search tenants">
             <label className="flex flex-col gap-1 text-xs">
               <span className="sr-only">Search tenants</span>
               <input
@@ -153,7 +156,7 @@ export default async function PlatformAdminHomePage({
 
         {tenants.length === 0 ? (
           <p className="rounded-lg border border-dashed border-border px-4 py-8 text-center text-sm text-muted-foreground">
-            {q ? `No tenants match “${q}”.` : "No tenants yet — create the first one above."}
+            {q ? `No tenants match “${q}”.` : 'No tenants yet — create the first one above.'}
           </p>
         ) : (
           <ul className="flex flex-col gap-3">
@@ -167,7 +170,7 @@ export default async function PlatformAdminHomePage({
                     <h3 className="font-medium">{tenant.name}</h3>
                     <span
                       className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${
-                        STATUS_BADGE[tenant.status] ?? "border-border"
+                        STATUS_BADGE[tenant.status] ?? 'border-border'
                       }`}
                     >
                       {tenant.status}
@@ -180,7 +183,7 @@ export default async function PlatformAdminHomePage({
                     <span className="font-mono">{tenant.slug}</span>
                     <span aria-hidden="true">·</span>
                     <span className="font-mono break-all">
-                      {tenant.domains[0]?.hostname ?? "no primary domain"}
+                      {tenant.domains[0]?.hostname ?? 'no primary domain'}
                     </span>
                   </div>
                 </div>
@@ -195,7 +198,11 @@ export default async function PlatformAdminHomePage({
                     <input type="hidden" name="tenantId" value={tenant.id} />
                     <label className={adminLabelClassName}>
                       Display name
-                      <input name="name" defaultValue={tenant.name} className={adminInputClassName} />
+                      <input
+                        name="name"
+                        defaultValue={tenant.name}
+                        className={adminInputClassName}
+                      />
                     </label>
                   </ActionForm>
 
