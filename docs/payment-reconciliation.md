@@ -85,17 +85,86 @@ Where a provider supplies no stable id and varies the body between
 retries, the digest differs and the deliveries are **not** deduplicated.
 That is the documented limit of the fallback.
 
-### Redaction and retention
+### Redaction
 
 **No raw payload is stored.** `payloadDigest` is a SHA-256 of the body:
 one-way, never rendered, used only to recognise a repeat. No signature,
-token or API key is persisted, and the UI projection does not even select
-`payloadDigest`, `dedupeKey`, `paymentId` or `tenantId`.
+token or API key is persisted. Neither the merchant projection nor the
+platform projection even _selects_ `payloadDigest`, `dedupeKey`,
+`paymentId` or `tenantId`.
 
-**There is no retention policy and no automatic pruning.** Rows are kept
-indefinitely. They contain no payload, so the exposure is bounded to
-amounts, a provider reference and timestamps — but an operator wanting a
-retention window must add one.
+### Platform-only view of unattributed evidence
+
+Rows with a null tenant are readable at
+`/platform-admin/payment-rejections`, and nowhere else. They are the
+deliveries that resolved to no payment: real evidence, belonging to
+nobody this system can prove.
+
+Authorization is `requirePlatformAdmin()` before any read — which matters
+more here than usual, because the query reads through `platformDb` and
+has no tenant filter to fall back on. The page is `force-dynamic` with
+`revalidate = 0`, and is not linked from, or reachable through, Tenant
+Admin.
+
+Safe fields only: provider, reason, whether a tenant exists, whether a
+payment resolved, the provider reference, both amounts, the signed
+difference, occurrence count and the two timestamps. **`attribution` is a
+label, never the tenant id** — an operator can see that an owner is known
+without seeing who.
+
+Search on the provider reference is **exact match**. A substring search
+would let an operator enumerate references they do not already hold.
+
+Ordering is `occurrences desc, lastSeenAt desc, id desc`: the rows worth
+attention first, deterministic for pagination.
+
+Metrics are counts of stored rows — total, attributed, unattributed,
+repeated, recent, and breakdowns by provider and reason. None is called a
+settled, recovered or reconciled amount, because none is.
+
+### Retention
+
+Evidence is kept for a **configurable window, default 180 days**,
+measured from `lastSeenAt`.
+
+That field choice is the policy's main safeguard: `lastSeenAt` advances
+every time the same rejected delivery arrives again, so **a row a
+provider is still retrying is never old and is never pruned**. Only quiet
+evidence ages out, and high-occurrence rows protect themselves without a
+special rule.
+
+**No legal retention requirement is encoded here.** None has been
+verified, and this document makes no compliance claim. The window is an
+operational default; set it to whatever your own policy requires.
+
+Deletion is **hard** and is **never the default**.
+
+```bash
+# Report only. Cannot delete — it runs in a READ ONLY transaction.
+RELEASE_CHECK_DATABASE_URL="…" npm run release:prune:rejections
+
+# Delete, in bounded batches.
+RELEASE_CHECK_DATABASE_URL="…" npm run release:prune:rejections -- \
+  --retention-days=180 --apply --batch=500
+```
+
+Safeguards: the target variable is explicit with **no fallback to
+`DATABASE_URL`**; only `host:port/database` is printed; dry run uses the
+read-only connection so the server itself refuses a delete; `--apply`
+uses a separate writable connection with a statement timeout and a lock
+timeout; the cutoff and batch size are query parameters, never
+interpolated; a retention window under one day or a batch outside
+1..10000 is a usage error; and **exactly one table is named anywhere in
+the command**. There are no foreign keys into or out of
+`payment_rejections`, verified against `information_schema`, so deletion
+cannot cascade.
+
+Tests run the real command against a local database and assert that a dry
+run leaves a 400-day-old row in place, that `--apply` removes it while
+sparing a same-day row with 42 occurrences, and that payments, orders,
+order events, payment events and tenants are all unchanged.
+
+No schema change was needed for retention.
 
 ## Needs review
 
