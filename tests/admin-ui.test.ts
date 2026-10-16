@@ -160,7 +160,13 @@ test("every admin route is reachable from the navigation", () => {
     // products/new is reached from the Catalog page's primary action, not
     // from the top-level nav, which stays at section level. Print routes
     // belong to one order and are reached from that order's own row.
-    if (route.includes("/products/new") || route.includes("/print")) continue;
+    if (
+      route.includes("/products/new") ||
+      route.includes("/print") ||
+      route.includes("/customers/[")
+    ) {
+      continue;
+    }
     assert.ok(src.includes(`"${route}"`), `${route} must appear in the nav`);
   }
 });
@@ -359,7 +365,15 @@ test("every navigable route appears in the grouped navigation", () => {
     // products/new is an action reached from Catalog's primary button, not
     // a destination; the sidebar lists places rather than verbs. A print
     // route is per-order and is reached from the order itself.
-    if (route.includes("/products/new") || route.includes("/print")) continue;
+    // A per-customer page belongs to one record and is reached from the
+    // customer list, exactly like a print route is reached from an order.
+    if (
+      route.includes("/products/new") ||
+      route.includes("/print") ||
+      route.includes("/customers/[")
+    ) {
+      continue;
+    }
     assert.ok(src.includes(`"${route}"`), `${route} must be reachable from the nav`);
   }
 });
@@ -1058,4 +1072,11 @@ test("print routes stay reachable even though they are not in the nav", () => {
   const orders = readCode("src/app/tenant-admin/orders/page.tsx");
   assert.match(orders, /\/tenant-admin\/orders\/\$\{order\.id\}\/print\?document=/);
   assert.match(orders, /PRINT_DOCUMENTS\.map/, "all three types are offered");
+});
+
+test("the customer detail route stays reachable from the list", () => {
+  const list = readCode("src/app/tenant-admin/customers/page.tsx");
+  assert.match(list, /\/tenant-admin\/customers\/\$\{customer\.id\}/);
+  const nav = readCode("src/app/tenant-admin/AdminNav.tsx");
+  assert.match(nav, /\["\/tenant-admin\/customers", "Customers"\]/);
 });
