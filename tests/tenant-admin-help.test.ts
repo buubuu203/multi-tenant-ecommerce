@@ -217,6 +217,25 @@ test("order and fulfillment sections refuse to imply delivery or COD collection"
   assert.match(limits, /đã giao, giao thất bại, bị trả lại/);
 });
 
+test("the analytics section keeps order value and payment state honest", () => {
+  // Pinned here, beside the other section guarantees, because this is
+  // the file a maintainer edits help-content.ts against.
+  const analytics = HELP_SECTIONS.find((s) => s.id === "phan-tich");
+  assert.ok(analytics, "the analytics route must have a guide section");
+
+  const text = JSON.stringify(analytics);
+  assert.match(text, /KHÔNG phải doanh thu đã thu được/, "order value is not settled revenue");
+  assert.match(
+    text,
+    /không chứng minh tiền đã về tài khoản ngân hàng/,
+    "a succeeded payment is not settlement",
+  );
+
+  const limits = analytics.limits.join(" ");
+  assert.match(limits, /COD/, "COD collection must be named as unsupported");
+  assert.match(limits, /trả hàng, hoàn tiền/, "returns and refunds must be named as unsupported");
+});
+
 test("money wording never claims settled revenue", () => {
   for (const id of ["tong-quan", "khach-hang"]) {
     const section = HELP_SECTIONS.find((s) => s.id === id);

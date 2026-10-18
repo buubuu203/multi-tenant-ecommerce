@@ -9,8 +9,8 @@ A multi-tenant e-commerce platform built with Next.js, TypeScript, and Prisma.
 
 - Node.js 20+
 - npm
-- A PostgreSQL database (local or hosted) — only needed once database features are
-  implemented; not required to run the current scaffold
+- A PostgreSQL database (local or hosted) — required. The application is backed by
+  Prisma throughout, and `npm run build` runs `prisma generate`.
 
 ## Installation
 
@@ -21,8 +21,10 @@ npm install
 ## Environment Variables
 
 1. Copy `.env.example` to `.env.local`
-2. Fill in real values — at minimum, `DATABASE_URL` once you have a database to
-   connect to
+2. Fill in real values — at minimum `DATABASE_URL`. Payment providers are
+   optional and each stays disabled until its variables are set: `MOMO_*`
+   (partner code, access key, secret key, endpoint, IPN and redirect URLs) and
+   `SEPAY_*` (API base URL, API token, webhook secret).
 
 ```bash
 cp .env.example .env.local
@@ -52,7 +54,14 @@ npm run build
 
 ## Tests
 
-No test suite exists yet. This section will be updated once tests are added.
+```bash
+npm test
+```
+
+738 tests on the Node test runner, run serially (`--test-concurrency=1`) because
+the database-backed ones share one local database. They require `DATABASE_URL`
+to point at a local development database: several provision and delete their own
+tenants. Never point them at Preview or Production.
 
 ## Other Scripts
 
@@ -63,3 +72,24 @@ No test suite exists yet. This section will be updated once tests are added.
 | `npm run db:generate` | Regenerate the Prisma client from schema |
 | `npm run db:migrate` | Create/apply a database migration (dev) |
 | `npm run db:studio` | Open Prisma Studio (visual DB browser) |
+
+## Release
+
+Release readiness, the outstanding migration blockers and the full QA status are
+documented in [docs/release-readiness.md](docs/release-readiness.md), with the
+step-by-step procedure in [RELEASE-CHECKLIST.md](RELEASE-CHECKLIST.md).
+
+These commands are read-only checks against an explicitly chosen target. They
+never fall back to `DATABASE_URL`, and they exit 2 if no target is set.
+
+| Command | Purpose |
+|---|---|
+| `npm run release:preflight` | Migration-history drift across the whole release |
+| `npm run release:preflight:order-events` | Pre-migration checks for the OrderEvent sequence |
+| `npm run release:verify:order-events` | Post-migration verification of that migration |
+| `npm run release:prune:rejections` | Payment-rejection retention pruning (dry run unless `--apply`) |
+
+```bash
+RELEASE_CHECK_DATABASE_URL="postgresql://..." npm run release:preflight
+```
+
