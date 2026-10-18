@@ -40,6 +40,40 @@ export function describeTarget(url: string): string {
 export class UsageError extends Error {}
 
 /**
+ * The npm script the operator actually invoked, for the usage message.
+ *
+ * Without this every script printed the order-events example, so running
+ * `release:preflight` or `release:prune:rejections` without a target told
+ * you to run a DIFFERENT command than the one you had just typed. A
+ * release check that misnames itself is a small thing that costs real
+ * time at exactly the wrong moment.
+ *
+ * Falls back to the generic form rather than guessing, so an unmapped or
+ * directly-invoked script still prints something true.
+ */
+const SCRIPT_TO_NPM: Record<string, string> = {
+  'release-preflight.ts': 'npm run release:preflight',
+  'order-event-preflight.ts': 'npm run release:preflight:order-events',
+  'order-event-verify.ts': 'npm run release:verify:order-events',
+  'prune-payment-rejections.ts': 'npm run release:prune:rejections',
+};
+
+export function invokedCommand(): string {
+  const entry = process.argv[1] ?? '';
+  const base = entry.slice(entry.lastIndexOf('/') + 1);
+  return SCRIPT_TO_NPM[base] ?? `tsx scripts/${base || '<script>'}`;
+}
+
+function missingTargetMessage(): string {
+  return (
+    `${TARGET_ENV_VAR} is not set.\n\n` +
+    `This check never guesses a target and never falls back to DATABASE_URL.\n` +
+    `Set it explicitly for the environment you intend to inspect:\n` +
+    `  ${TARGET_ENV_VAR}="postgresql://..." ${invokedCommand()}\n`
+  );
+}
+
+/**
  * Runs `fn` inside a read-only, always-rolled-back transaction.
  *
  * statement_timeout is set so a check against a busy production database
@@ -50,12 +84,7 @@ export async function withReadOnlyConnection<T>(
 ): Promise<{ target: string; result: T }> {
   const url = process.env[TARGET_ENV_VAR];
   if (!url || url.trim() === '') {
-    throw new UsageError(
-      `${TARGET_ENV_VAR} is not set.\n\n` +
-        `This check never guesses a target and never falls back to DATABASE_URL.\n` +
-        `Set it explicitly for the environment you intend to inspect, e.g.\n` +
-        `  ${TARGET_ENV_VAR}="postgresql://..." npm run release:preflight:order-events\n`,
-    );
+    throw new UsageError(missingTargetMessage());
   }
 
   const client = new Client({ connectionString: url, statement_timeout: 15_000 });
@@ -103,10 +132,7 @@ export async function withWritableConnection<T>(
 ): Promise<{ target: string; result: T }> {
   const url = process.env[TARGET_ENV_VAR];
   if (!url || url.trim() === '') {
-    throw new UsageError(
-      `${TARGET_ENV_VAR} is not set.\n\n` +
-        `This command never guesses a target and never falls back to DATABASE_URL.\n`,
-    );
+    throw new UsageError(missingTargetMessage());
   }
 
   const client = new Client({

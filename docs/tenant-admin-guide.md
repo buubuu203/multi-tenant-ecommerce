@@ -58,17 +58,19 @@ inside the print and customer sections.
 
 Tests pin the wording for each area so it cannot quietly soften:
 
-| Area                | Must say                                                                               |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| Print               | Not a VAT or e-invoice; the shipping note is not a carrier waybill; no tracking number |
-| Orders              | A fulfilled order does not prove pickup, delivery or COD collection                    |
-| Overview, Customers | Order value is _không phải doanh thu đã thu_                                           |
-| Payment operations  | Not accounting, not bank reconciliation, never claims money arrived                    |
-| Payments            | Switching provider replaces the stored configuration                                   |
-| Shipping            | No carrier integration, tracking, label or delivery estimate                           |
-| CSV import          | All-or-nothing; legacy products without a SKU cannot be updated                        |
-| Customers           | No edit, delete or merge                                                               |
-| Catalog             | Existing images are **not** retroactively converted to WebP                            |
+| Area                | Must say                                                                                                                 |
+| ------------------- | ------------------------------------------------------------------------------------------------------------------------ |
+| Print               | Not a VAT or e-invoice; the shipping note is not a carrier waybill; no tracking number                                   |
+| Orders              | A fulfilled order does not prove pickup, delivery or COD collection                                                      |
+| Overview, Customers | Order value is _không phải doanh thu đã thu_                                                                             |
+| Payment operations  | Not accounting, not bank reconciliation, never claims money arrived                                                      |
+| Payments            | Switching provider replaces the stored configuration                                                                     |
+| Shipping            | No carrier integration, tracking, label or delivery estimate                                                             |
+| CSV import          | All-or-nothing; legacy products without a SKU cannot be updated                                                          |
+| Customers           | No edit, delete or merge                                                                                                 |
+| Catalog             | Existing images are **not** retroactively converted to WebP                                                              |
+| Analytics           | Order value is _KHÔNG phải doanh thu đã thu được_; a succeeded payment _không chứng minh tiền đã về tài khoản ngân hàng_ |
+| Fulfillment         | An internal queue only — no carrier, tracking, pickup or delivery                                                        |
 
 ## What the guide must never contain
 
