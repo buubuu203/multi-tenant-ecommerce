@@ -4,9 +4,10 @@
 
 Two decisive blockers, neither of which a test run can clear:
 
-1. **Two migrations exist only on the local development database.** Preview
-   and Production have never been contacted. One of them rewrites a table
-   under `ACCESS EXCLUSIVE`.
+1. **Production migration status is unverified.** Production has never
+   been contacted. One pending migration rewrites a table under
+   `ACCESS EXCLUSIVE`, and its cost there must be measured, not inferred
+   from Preview. (Preview itself is now fully migrated — see §2.)
 2. **No authenticated browser QA has ever been run.** Nothing in this
    application has been seen rendered. Every UI claim below rests on
    structural tests over source, not on a rendered page.
@@ -15,8 +16,9 @@ All four gates pass — 738 tests, typecheck, lint, build. **That is not
 production readiness**, and this document exists so the distinction is not
 quietly lost.
 
-Last verified: 2026-10-18, at commit `7d824a2` plus the changes in this
-phase. Branch `feat/order-lookup-banners-discounts-admin-routing`.
+Last verified: 2026-10-19, at commit `28bd75b`. Branch
+`feat/order-lookup-banners-discounts-admin-routing`, deployed to Preview
+and READY.
 
 ---
 
@@ -80,16 +82,49 @@ cross-cutting authorization, privacy and UI suites.
 
 ## 2. Migration status
 
-23 migrations exist. 21 are already deployed everywhere. **Two are local
-only**, and both are release blockers.
+23 migrations exist and are applied locally. Preview now has all 23
+migrations applied, including `add_order_audit_history`,
+`add_order_event_sequence`, and `add_payment_rejections`, with no reported
+migration drift. Production migration status is unverified because it has
+not been contacted.
 
-| Migration                                 | Local   | Preview     | Production  | Risk                                             |
-| ----------------------------------------- | ------- | ----------- | ----------- | ------------------------------------------------ |
-| `20261014160000_add_order_event_sequence` | Applied | **Not run** | **Not run** | **Full table rewrite under `ACCESS EXCLUSIVE`**  |
-| `20261016120000_add_payment_rejections`   | Applied | **Not run** | **Not run** | Additive only — one enum, one table, two indexes |
+| Migration                                 | Local   | Preview     | Production     | Risk                                             |
+| ----------------------------------------- | ------- | ----------- | -------------- | ------------------------------------------------ |
+| `20261008120000_add_order_audit_history`  | Applied | **Applied** | **Unverified** | Creates `order_events`                           |
+| `20261014160000_add_order_event_sequence` | Applied | **Applied** | **Unverified** | **Full table rewrite under `ACCESS EXCLUSIVE`**  |
+| `20261016120000_add_payment_rejections`   | Applied | **Applied** | **Unverified** | Additive only — one enum, one table, two indexes |
 
-Local status, verified this phase: `npx prisma migrate status` reports
-`23 migrations found` and `Database schema is up to date!`.
+Applied to Preview on 2026-10-19 via `prisma migrate deploy` (exit 0), in
+timestamp order. Verified afterwards: `release:preflight` reports 23
+applied, 0 pending, 0 failed, 0 rolled back, 0 recorded-but-absent;
+`release:verify:order-events` passes all 15 checks.
+
+**The earlier claim that "21 are already deployed everywhere" was wrong,
+and the framing of "two local-only migrations" was wrong too.** Preflight
+found **three** pending in Preview, not two: `add_order_audit_history`
+had never been applied there either. Neither figure had been verified
+against a remote environment, because none had been contacted. Preview
+has now been measured; Production has not.
+
+### Preview's measurement does NOT transfer to Production
+
+`order_events` did **not exist** in Preview before this deployment, so the
+`SERIAL` column was added to a table with **zero rows** — an instant
+rewrite holding `ACCESS EXCLUSIVE` for microseconds. That is why Option A
+was correct there, and it is evidence about Preview only.
+
+Before Production:
+
+- Production requires its **own** `release:preflight` and
+  `release:preflight:order-events` run.
+- `order_events` size and lock exposure must be **measured** in
+  Production, not inferred. It may already exist with real history.
+- Option A versus Option B must be decided **independently** for
+  Production, from that measurement.
+- A zero-row result in Preview is not evidence of anything in Production.
+
+Local status: `npx prisma migrate status` reports `23 migrations found`
+and `Database schema is up to date!`.
 
 ### The OrderEvent sequence migration is the dangerous one
 
@@ -154,23 +189,23 @@ database-backed tests share one local database.
 
 ### Area matrix
 
-| Area                      | Automated tests  | Typecheck | Lint | Build | Browser QA                                   | Environment QA                         |
-| ------------------------- | ---------------- | --------- | ---- | ----- | -------------------------------------------- | -------------------------------------- |
-| Authorization             | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Tenant isolation          | Yes              | Yes       | Yes  | Yes   | n/a                                          | Local only                             |
-| Platform isolation        | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Payment / webhook privacy | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Providers not reverified**           |
-| Customer operations       | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Fulfillment               | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Order print               | Yes              | Yes       | Yes  | Yes   | **NOT RUN — no print preview ever rendered** | Local only                             |
-| Catalog CSV               | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Media / WebP conversion   | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Payment operations        | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Rejection retention       | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Never run on a remote target**       |
-| Analytics                 | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| User guide                | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                             |
-| Release tooling           | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Never run on Preview or Production** |
-| Migrations                | Yes (invariants) | Yes       | Yes  | Yes   | n/a                                          | **Local only — blocker**               |
+| Area                      | Automated tests  | Typecheck | Lint | Build | Browser QA                                   | Environment QA                             |
+| ------------------------- | ---------------- | --------- | ---- | ----- | -------------------------------------------- | ------------------------------------------ |
+| Authorization             | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Tenant isolation          | Yes              | Yes       | Yes  | Yes   | n/a                                          | Local only                                 |
+| Platform isolation        | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Payment / webhook privacy | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Providers not reverified**               |
+| Customer operations       | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Fulfillment               | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Order print               | Yes              | Yes       | Yes  | Yes   | **NOT RUN — no print preview ever rendered** | Local only                                 |
+| Catalog CSV               | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Media / WebP conversion   | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Payment operations        | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Rejection retention       | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Never run on a remote target**           |
+| Analytics                 | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| User guide                | Yes              | Yes       | Yes  | Yes   | NOT RUN                                      | Local only                                 |
+| Release tooling           | Yes              | Yes       | Yes  | Yes   | n/a                                          | **Never run on Preview or Production**     |
+| Migrations                | Yes (invariants) | Yes       | Yes  | Yes   | n/a                                          | **Preview applied; Production unverified** |
 
 ### Browser QA
 
@@ -326,11 +361,13 @@ Each is covered by a current test.
 
 ## 7. Environment and data integrity
 
-Verified this phase by local inspection only:
-
-- **Preview: never contacted.** No connection attempted in any phase.
-- **Production: never contacted.**
-- **No remote migration run.** `RELEASE_CHECK_DATABASE_URL` was never set.
+- **Preview: migrated on 2026-10-19.** Read-only preflight, then
+  `prisma migrate deploy` for the three pending migrations, then
+  verification. Preview held 1 tenant and no products, customers, orders
+  or payments, so no application data existed to alter — and none was
+  seeded, updated or deleted.
+- **Production: never contacted.** No connection attempted in any phase.
+- **No migration run against Production.**
 - **No external provider call** — no MoMo, no SePay.
 - **No carrier contacted** (none is integrated).
 - **No notification sent** (no transport exists).
