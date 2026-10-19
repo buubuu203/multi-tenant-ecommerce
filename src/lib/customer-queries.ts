@@ -1,6 +1,7 @@
 import { prisma } from './prisma';
 import { getScopedDb } from './db/tenant-db';
 import { normalizedPhoneVariants } from './validation/phone';
+import { ANALYTICS_UTC_OFFSET_HOURS } from './analytics/date-range';
 
 /**
  * Tenant-scoped customer operations.
@@ -32,6 +33,45 @@ import { normalizedPhoneVariants } from './validation/phone';
  */
 
 export const CUSTOMER_PAGE_SIZE = 25;
+export type CustomerSignupStats = {
+  /** Every customer row in this store, as of now. */
+  total: number;
+  /** Customers whose row was first stored in the last 7 local days. */
+  last7Days: number;
+  /** …and the last 30. */
+  last30Days: number;
+  /** Customers with at least one stored order. A count, never a segment. */
+  withOrders: number;
+};
+
+/**
+ * How many customers this store has, and how many are new.
+ *
+ * Four bounded counts rather than a scan: the list below already pages,
+ * and these numbers must not get slower as the store grows. Windows are
+ * whole local days using the shared analytics offset, so "last 7 days"
+ * means the same thing here as it does on Analytics.
+ *
+ * `customer` is not in getScopedDb()'s allowlist, so tenantId is stated
+ * explicitly — the rule this file already follows.
+ */
+export async function getCustomerSignupStats(tenantId: string): Promise<CustomerSignupStats> {
+  const offsetMs = ANALYTICS_UTC_OFFSET_HOURS * 60 * 60 * 1000;
+  const startOfLocalDay = (daysAgo: number) => {
+    const localNow = new Date(Date.now() + offsetMs);
+    localNow.setUTCHours(0, 0, 0, 0);
+    return new Date(localNow.getTime() - offsetMs - daysAgo * 24 * 60 * 60 * 1000);
+  };
+
+  const [total, last7Days, last30Days, withOrders] = await Promise.all([
+    prisma.customer.count({ where: { tenantId } }),
+    prisma.customer.count({ where: { tenantId, createdAt: { gte: startOfLocalDay(6) } } }),
+    prisma.customer.count({ where: { tenantId, createdAt: { gte: startOfLocalDay(29) } } }),
+    prisma.customer.count({ where: { tenantId, orders: { some: {} } } }),
+  ]);
+
+  return { total, last7Days, last30Days, withOrders };
+}
 
 export type CustomerListRow = {
   /** Route key and list key. Already the admin-side identifier. */

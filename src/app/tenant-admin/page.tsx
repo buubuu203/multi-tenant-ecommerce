@@ -1,17 +1,24 @@
-import Link from "next/link";
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { getTenantKpis } from "@/lib/tenant-kpis";
-import { LOW_STOCK_THRESHOLD } from "@/lib/inventory-availability";
-import { formatVnd } from "./format";
+import Link from 'next/link';
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getTenantKpis } from '@/lib/tenant-kpis';
+import { LOW_STOCK_THRESHOLD } from '@/lib/inventory-availability';
+import { formatVnd } from './format';
 import {
   adminPageClassName,
   adminPanelClassName,
   adminPanelTitleClassName,
   adminButtonSecondaryClassName,
-} from "./styles";
-import { AdminPageHeader } from "./AdminPageHeader";
+} from './styles';
+import { AdminPageHeader } from './AdminPageHeader';
+import { TrendChart } from './TrendChart';
+import { getDailyOrderTrend } from '@/lib/analytics/order-trend';
+import {
+  resolveAnalyticsRange,
+  ANALYTICS_TIMEZONE_LABEL,
+  DEFAULT_RANGE_DAYS,
+} from '@/lib/analytics/date-range';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 // Phase 1 of the admin route split left this route as a bare redirect to
 // Branding, because every section had become its own route and there was
@@ -23,7 +30,15 @@ export const dynamic = "force-dynamic";
 // other admin route and Server Action in this codebase follows.
 export default async function TenantAdminOverviewPage() {
   const { tenantId } = await requireTenantAdmin();
-  const kpis = await getTenantKpis(tenantId);
+  // The tiles answer "how much"; the chart answers "which way". Both read
+  // the same stored orders, so they cannot disagree. The window is the
+  // same default Analytics uses, and it is not filterable here — Overview
+  // is a glance, and Analytics is where a merchant picks a range.
+  const trendRange = resolveAnalyticsRange({});
+  const [kpis, trend] = await Promise.all([
+    getTenantKpis(tenantId),
+    getDailyOrderTrend(tenantId, trendRange),
+  ]);
 
   // `needsAttention` drives a text note, never colour alone — a merchant
   // scanning this row should be able to tell which number wants action
@@ -36,17 +51,17 @@ export default async function TenantAdminOverviewPage() {
     needsAttention?: boolean;
   }[] = [
     {
-      label: "Pending orders",
+      label: 'Pending orders',
       value: String(kpis.pendingOrders),
-      hint: "Awaiting fulfilment",
-      href: "/tenant-admin/orders?status=pending",
+      hint: 'Awaiting fulfilment',
+      href: '/tenant-admin/orders?status=pending',
       needsAttention: kpis.pendingOrders > 0,
     },
     {
       label: `Orders (${kpis.windowDays}d)`,
       value: String(kpis.ordersInWindow),
-      hint: "Placed in the last 30 days",
-      href: "/tenant-admin/orders",
+      hint: 'Placed in the last 30 days',
+      href: '/tenant-admin/orders',
     },
     {
       // "Order value", not "Revenue": this figure counts every order that
@@ -55,20 +70,20 @@ export default async function TenantAdminOverviewPage() {
       // earned money they may never collect.
       label: `Order value (${kpis.windowDays}d)`,
       value: formatVnd(kpis.revenueInWindow),
-      hint: "Items + shipping, including unpaid orders",
-      href: "/tenant-admin/orders",
+      hint: 'Items + shipping, including unpaid orders',
+      href: '/tenant-admin/orders',
     },
     {
-      label: "Active products",
+      label: 'Active products',
       value: String(kpis.activeProducts),
-      hint: "Visible on the storefront",
-      href: "/tenant-admin/catalog",
+      hint: 'Visible on the storefront',
+      href: '/tenant-admin/catalog',
     },
     {
-      label: "Low stock",
+      label: 'Low stock',
       value: String(kpis.lowStockVariants),
       hint: `Variants with ${LOW_STOCK_THRESHOLD} or fewer available`,
-      href: "/tenant-admin/catalog",
+      href: '/tenant-admin/catalog',
       needsAttention: kpis.lowStockVariants > 0,
     },
   ];
@@ -94,8 +109,8 @@ export default async function TenantAdminOverviewPage() {
               href={card.href}
               className={`group flex flex-col gap-1 rounded-lg border bg-surface p-4 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
                 card.needsAttention
-                  ? "border-amber-300 dark:border-amber-800"
-                  : "border-border hover:border-foreground/20"
+                  ? 'border-amber-300 dark:border-amber-800'
+                  : 'border-border hover:border-foreground/20'
               }`}
             >
               <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
@@ -116,6 +131,17 @@ export default async function TenantAdminOverviewPage() {
         </div>
       </section>
 
+      <section aria-labelledby="trend-heading" className={adminPanelClassName}>
+        <h3 id="trend-heading" className="sr-only">
+          Order trend
+        </h3>
+        <TrendChart
+          series={trend}
+          title={`Last ${DEFAULT_RANGE_DAYS} days`}
+          caption={`Orders placed and order value per day, ${trendRange.fromDate} to ${trendRange.toDate}, by ${ANALYTICS_TIMEZONE_LABEL}. Order value excludes cancelled orders and includes orders nobody has paid for — it is not revenue.`}
+        />
+      </section>
+
       {/* Quick actions: the four things a merchant most often arrives
           wanting to do. Links to routes that already exist — no new
           destinations invented. */}
@@ -124,9 +150,7 @@ export default async function TenantAdminOverviewPage() {
           <h3 id="quick-actions-heading" className={adminPanelTitleClassName}>
             Quick actions
           </h3>
-          <p className="text-xs text-muted-foreground">
-            The tasks merchants reach for most often.
-          </p>
+          <p className="text-xs text-muted-foreground">The tasks merchants reach for most often.</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <Link href="/tenant-admin/orders" className={adminButtonSecondaryClassName}>
