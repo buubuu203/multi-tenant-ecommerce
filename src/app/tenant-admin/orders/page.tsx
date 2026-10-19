@@ -11,6 +11,11 @@ import { Pagination } from '../Pagination';
 import { listOrders, type ListOrdersOptions } from '@/lib/order-queries';
 import { formatVnd } from '../format';
 import Link from 'next/link';
+import {
+  resolveAnalyticsRange,
+  ANALYTICS_TIMEZONE_LABEL,
+  RANGE_ADJUSTMENT_MESSAGE,
+} from '@/lib/analytics/date-range';
 import { getOrderTimelinesForOrders } from '@/lib/order-events';
 import { DOCUMENT_TITLE, PRINT_DOCUMENTS } from '@/lib/order-print';
 import { OrderTimeline } from '../OrderTimeline';
@@ -52,9 +57,20 @@ export default async function OrdersPage({
   const status = typeof params.status === 'string' ? params.status : '';
   const page = Number(params.page) > 0 ? Math.floor(Number(params.page)) : 1;
 
+  // Only filter by date when the merchant actually asked for one — an
+  // unfiltered Orders page must keep showing every order. resolve…Range()
+  // owns the boundary rules (inclusive days, Asia/Ho_Chi_Minh, half-open,
+  // malformed input narrowing rather than widening), so they are defined
+  // once and shared with Analytics instead of re-decided here.
+  const from = typeof params.from === 'string' ? params.from : '';
+  const to = typeof params.to === 'string' ? params.to : '';
+  const dateFiltered = Boolean(from || to);
+  const range = dateFiltered ? resolveAnalyticsRange({ from, to }) : null;
+
   const listOptions: ListOrdersOptions = {
     page,
     pageSize: PAGE_SIZE,
+    ...(range ? { placedFrom: range.start, placedBefore: range.end } : {}),
     ...(q ? { search: q } : {}),
     ...(status && ORDER_STATUSES.includes(status as (typeof ORDER_STATUSES)[number])
       ? { status: status as (typeof ORDER_STATUSES)[number] }
@@ -108,6 +124,14 @@ export default async function OrdersPage({
           />
         </label>
         <label className="flex flex-col gap-1 text-xs">
+          Placed from
+          <input type="date" name="from" defaultValue={range?.fromDate ?? ''} className={adminInputClassName} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
+          Placed to
+          <input type="date" name="to" defaultValue={range?.toDate ?? ''} className={adminInputClassName} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs">
           Status
           <select name="status" defaultValue={status} className={adminInputClassName}>
             <option value="">All</option>
@@ -121,7 +145,20 @@ export default async function OrdersPage({
         <button type="submit" className={`${adminButtonSecondaryClassName} py-1.5`}>
           Filter
         </button>
+        {dateFiltered && (
+          <Link href="/tenant-admin/orders" className={`${adminButtonSecondaryClassName} py-1.5`}>
+            Clear dates
+          </Link>
+        )}
       </form>
+
+      {range && (
+        <p className="text-xs text-muted-foreground" role="status">
+          Showing orders placed {range.fromDate} to {range.toDate} inclusive, by{' '}
+          {ANALYTICS_TIMEZONE_LABEL}.
+          {range.adjustment ? ` ${RANGE_ADJUSTMENT_MESSAGE[range.adjustment]}` : ''}
+        </p>
+      )}
 
       {/* The export sits beside the data it exports rather than in a large
           box above it, but the personal-data warning stays visible rather
@@ -378,6 +415,16 @@ export default async function OrdersPage({
                 (order.paymentProvider === 'bank_transfer_manual' &&
                   order.paymentStatus === 'pending')) && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
+                  {/* The destination the list never had. Fulfillment and
+                      the expanded row both point here now, instead of
+                      making the operator re-find the order. */}
+                  <Link
+                    href={`/tenant-admin/orders/${order.id}`}
+                    aria-label={`Open order ${order.id}`}
+                    className={adminButtonSecondaryClassName}
+                  >
+                    Open order
+                  </Link>
                   {/* Manual bank transfer never gets a webhook — this is the
                     only way its Payment leaves "pending". Never shown for
                     bank_transfer_sepay_va, whose webhook is the sole

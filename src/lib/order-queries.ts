@@ -127,6 +127,15 @@ export type ListOrdersOptions = {
   search?: string;
   page?: number;
   pageSize?: number;
+  /**
+   * Half-open creation window: [placedFrom, placedBefore). Both are UTC
+   * instants already resolved from the merchant's local dates by
+   * resolveAnalyticsRange(), so the boundary rules — inclusive days,
+   * Asia/Ho_Chi_Minh, invalid input never widening the query — are
+   * defined in exactly one place rather than re-decided here.
+   */
+  placedFrom?: Date;
+  placedBefore?: Date;
 };
 
 export async function listOrders(
@@ -141,6 +150,14 @@ export async function listOrders(
   const where = {
     tenantId,
     ...(options?.status ? { status: options.status } : {}),
+    ...(options?.placedFrom || options?.placedBefore
+      ? {
+          createdAt: {
+            ...(options.placedFrom ? { gte: options.placedFrom } : {}),
+            ...(options.placedBefore ? { lt: options.placedBefore } : {}),
+          },
+        }
+      : {}),
     ...(search
       ? {
           OR: [
