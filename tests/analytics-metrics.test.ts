@@ -13,6 +13,7 @@ import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
 import { prisma } from '../src/lib/prisma';
 import { getOperationalMetrics } from '../src/lib/analytics/operational-metrics';
+import { getDailyOrderTrend } from '../src/lib/analytics/order-trend';
 import { resolveAnalyticsRange } from '../src/lib/analytics/date-range';
 import { LOW_STOCK_THRESHOLD } from '../src/lib/inventory-availability';
 
@@ -736,4 +737,99 @@ test('the help guide documents the new route with its limits', () => {
     /không chứng minh tiền đã về tài khoản ngân hàng/,
     'succeeded is not settlement',
   );
+});
+
+// ---------- daily trend ----------
+// Appended last on purpose: the boundary test below creates an extra
+// order, and the count assertions above must not see it.
+
+test('the trend fills every day in the range, not only days with orders', async () => {
+  const series = await getDailyOrderTrend(tenantA, RANGE);
+
+  assert.equal(series.length, RANGE.days, 'one point per day');
+  assert.equal(series[0].date, '2026-06-01');
+  assert.equal(series[series.length - 1].date, '2026-06-30');
+
+  // A chart that skips quiet days compresses a flat week into a point.
+  const quiet = series.filter((point) => point.orders === 0);
+  assert.ok(quiet.length > 0, 'quiet days must be present rather than omitted');
+  for (const point of quiet) assert.equal(point.orderValue, 0);
+});
+
+test('the trend buckets orders on the right day and matches the range totals', async () => {
+  const series = await getDailyOrderTrend(tenantA, RANGE);
+  const fixtureDay = series.find((point) => point.date === '2026-06-15');
+
+  assert.ok(fixtureDay, 'the fixture day must appear');
+  assert.equal(fixtureDay.orders, 3, 'all three in-range orders land on one local day');
+  // Cancelled excluded from value, counted in orders — the same rule the
+  // totals query uses, which is why the two agree.
+  assert.equal(fixtureDay.orderValue, 340_000);
+
+  const metrics = await getOperationalMetrics(tenantA, RANGE);
+  assert.equal(
+    series.reduce((sum, point) => sum + point.orders, 0),
+    metrics.ordersTotal,
+    'the trend and the tiles must not disagree',
+  );
+  assert.equal(
+    series.reduce((sum, point) => sum + point.orderValue, 0),
+    metrics.orderValue,
+  );
+});
+
+test('TENANT ISOLATION — the trend never includes another tenant', async () => {
+  const a = await getDailyOrderTrend(tenantA, RANGE);
+  const b = await getDailyOrderTrend(tenantB, RANGE);
+
+  const aValue = a.reduce((sum, point) => sum + point.orderValue, 0);
+  const bValue = b.reduce((sum, point) => sum + point.orderValue, 0);
+
+  assert.equal(aValue, 340_000);
+  assert.equal(bValue, 4 * (100 * UNIT + SHIPPING), "tenant B's own, much larger, figure");
+  assert.ok(aValue < bValue);
+});
+
+test('the trend query is a bounded aggregate, not a row scan', () => {
+  const src = source('src/lib/analytics/order-trend.ts')
+    .replace(/\/\/[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '');
+
+  assert.ok(!/\.findMany\s*\(/.test(src), 'no findMany: the grouping happens in SQL');
+  assert.match(src, /"tenantId" = \$1/, 'the tenant predicate must be bound');
+  assert.ok(!/\$\{/.test(src), 'nothing may be interpolated into the SQL');
+  // The day boundary must come from the shared constant, not a literal 7.
+  assert.match(src, /ANALYTICS_UTC_OFFSET_HOURS/);
+  assert.ok(
+    !/date_trunc\('day', o\."createdAt"\)/.test(src),
+    'truncating the raw UTC column would bucket by the wrong day',
+  );
+});
+
+test('BUCKETING IS LOCAL — an order just after local midnight moves to the next day', async () => {
+  // 17:30Z on 15 June is 00:30 on the 16th in Asia/Ho_Chi_Minh. Bucketing
+  // on the raw UTC timestamp would file it under the 15th.
+  const justAfterLocalMidnight = new Date('2026-06-15T17:30:00.000Z');
+  const customer = await seedCustomer(tenantA, 'boundary', justAfterLocalMidnight);
+  const orderId = await seedOrder({
+    tenantId: tenantA,
+    variantId: variantA,
+    customerId: customer,
+    status: 'pending',
+    quantity: 1,
+    createdAt: justAfterLocalMidnight,
+  });
+
+  try {
+    const series = await getDailyOrderTrend(tenantA, RANGE);
+    const fifteenth = series.find((point) => point.date === '2026-06-15');
+    const sixteenth = series.find((point) => point.date === '2026-06-16');
+
+    assert.equal(fifteenth?.orders, 3, 'the fixture orders stay on the 15th');
+    assert.equal(sixteenth?.orders, 1, 'the boundary order belongs to the 16th');
+  } finally {
+    await prisma.orderItem.deleteMany({ where: { orderId } });
+    await prisma.order.delete({ where: { id: orderId } });
+    await prisma.customer.delete({ where: { id: customer } });
+  }
 });

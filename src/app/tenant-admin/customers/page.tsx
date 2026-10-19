@@ -5,6 +5,7 @@ import {
   CUSTOMER_PAGE_SIZE,
   CUSTOMER_SORTS,
   CUSTOMER_SORT_LABEL,
+  getCustomerSignupStats,
   DEFAULT_CUSTOMER_SORT,
   isCustomerSort,
 } from '@/lib/customer-queries';
@@ -22,6 +23,7 @@ import {
   adminLabelClassName,
   adminButtonSecondaryClassName,
   adminEyebrowClassName,
+  adminCardClassName,
 } from '../styles';
 
 // Renders names, phone numbers and email addresses: never cached.
@@ -48,11 +50,10 @@ export default async function CustomersPage({
   // erroring or widening the query — it never reaches SQL.
   const sort = isCustomerSort(params.sort) ? params.sort : DEFAULT_CUSTOMER_SORT;
 
-  const { rows, totalCount } = await listCustomers(tenantId, {
-    search: params.search,
-    page,
-    sort,
-  });
+  const [{ rows, totalCount }, stats] = await Promise.all([
+    listCustomers(tenantId, { search: params.search, page, sort }),
+    getCustomerSignupStats(tenantId),
+  ]);
 
   return (
     <div className={adminPageClassName}>
@@ -106,6 +107,30 @@ export default async function CustomersPage({
         )}
       </form>
 
+      {/* Counts first, list second. A merchant arriving here usually
+          wants to know how many customers they have and whether that is
+          growing, which the paged list cannot answer. */}
+      <dl className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+        {[
+          { label: 'Total customers', value: stats.total, hint: 'as of now' },
+          { label: 'New in 7 days', value: stats.last7Days, hint: 'by Asia/Ho_Chi_Minh days' },
+          { label: 'New in 30 days', value: stats.last30Days, hint: 'by Asia/Ho_Chi_Minh days' },
+          { label: 'Have ordered', value: stats.withOrders, hint: 'at least one order' },
+        ].map((stat) => (
+          <div key={stat.label} className={adminCardClassName}>
+            <dt className="text-xs text-muted-foreground">{stat.label}</dt>
+            <dd className="text-xl font-semibold tabular-nums">{stat.value}</dd>
+            <dd className="text-xs text-muted-foreground">{stat.hint}</dd>
+          </div>
+        ))}
+      </dl>
+
+      <p className="text-xs text-muted-foreground">
+        <strong className="font-semibold text-foreground">A customer is one email address.</strong>{' '}
+        That is what identifies them in this store, so the same person using a second email counts
+        as a second customer, and two customers may share a phone number. Nothing is ever merged.
+      </p>
+
       <p className="text-xs text-muted-foreground">
         Phone search matches both <code>0912…</code> and <code>+84912…</code> forms. Order value
         means items plus shipping for orders that were not cancelled — it is not settled revenue.
@@ -136,6 +161,14 @@ export default async function CustomersPage({
                     </span>
                     <span className="flex min-w-0 flex-col">
                       <span className="truncate font-medium">{customer.name}</span>
+                      {/* The email is the identity, so it belongs in the
+                          summary. It used to be hidden inside the
+                          disclosure while the phone — which is NOT
+                          unique and can be shared by two customers — was
+                          the only contact on show. */}
+                      <span className="truncate text-xs text-muted-foreground">
+                        {customer.email}
+                      </span>
                       <span className="text-xs text-muted-foreground">{customer.phone}</span>
                     </span>
                   </span>
@@ -146,6 +179,12 @@ export default async function CustomersPage({
                     <span className="money text-sm font-medium whitespace-nowrap">
                       {formatVnd(customer.orderValue)}
                     </span>
+                    {/* Flagged in the summary rather than only inside the
+                        disclosure: a merchant scanning for a duplicate
+                        should not have to open every row to find one. */}
+                    {customer.possibleDuplicatePhone && (
+                      <StatusBadge status="Trùng SĐT" tone="warning" />
+                    )}
                     {customer.latestOrderStatus && (
                       <StatusBadge
                         status={customer.latestOrderStatus}
