@@ -193,8 +193,12 @@ export default async function FulfillmentPage({
                   </dl>
 
                   <div className="flex flex-wrap gap-2 border-t border-border pt-3">
+                    {/* Straight to the order. This used to send the
+                        operator to the orders LIST filtered by reference,
+                        so acting on a flagged order meant finding it
+                        again on another page. */}
                     <Link
-                      href={`/tenant-admin/orders?search=${encodeURIComponent(row.reference)}`}
+                      href={`/tenant-admin/orders/${row.reference}`}
                       aria-label={`Open order ${row.reference}`}
                       className={`${adminButtonSecondaryClassName} min-h-11 lg:min-h-9`}
                     >

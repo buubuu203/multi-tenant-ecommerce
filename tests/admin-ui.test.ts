@@ -159,11 +159,14 @@ test("every admin route is reachable from the navigation", () => {
       .replace(/^\/tenant-admin$/, "/tenant-admin");
     // products/new is reached from the Catalog page's primary action, not
     // from the top-level nav, which stays at section level. Print routes
-    // belong to one order and are reached from that order's own row.
+    // belong to one order and are reached from that order's own row, and
+    // a single order's detail page is reached from the list and from
+    // Fulfillment — the nav lists sections, not individual records.
     if (
       route.includes("/products/new") ||
       route.includes("/print") ||
       route.includes("/customers/[") ||
+      route.includes("/orders/[") ||
       route.includes("/help")
     ) {
       continue;
@@ -374,6 +377,7 @@ test("every navigable route appears in the grouped navigation", () => {
       route.includes("/products/new") ||
       route.includes("/print") ||
       route.includes("/customers/[") ||
+      route.includes("/orders/[") ||
       route.includes("/help")
     ) {
       continue;
