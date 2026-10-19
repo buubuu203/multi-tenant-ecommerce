@@ -406,11 +406,20 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           item is reachable. Deliberately the ONLY inventory-adjacent
           number never duplicated here: this reads product.media directly,
           not a separate "primary image" field. */}
-      {primaryMedia && (
-        <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-xl bg-surface-muted">
+      {/* Always reserve the media slot. A product imported by CSV may
+          carry no media at all, and rendering nothing made those cards a
+          different height and shape from their neighbours — the grid
+          looked broken rather than the product looking image-less. The
+          placeholder says which it is. */}
+      <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-xl bg-surface-muted">
+        {primaryMedia ? (
           <MediaThumbnail media={primaryMedia} alt={product.name} />
-        </Link>
-      )}
+        ) : (
+          <div className="flex aspect-square w-full items-center justify-center rounded-md text-xs text-muted-foreground">
+            Chưa có ảnh
+          </div>
+        )}
+      </Link>
 
       <div className="flex flex-col gap-1">
         <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline">
@@ -440,9 +449,19 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <p className="line-clamp-2 text-xs text-muted-foreground">{product.descriptionExcerpt}</p>
       )}
 
-      {optionsBlock}
-
-      <div className="mt-1">{addToCartButton}</div>
+      {/* The card is for BROWSING, not buying. Choosing a variant and
+          adding to the cart happen on the detail page, where the shopper
+          can see every image, the full description and which options are
+          actually available. Letting them buy from here meant committing
+          before any of that was on screen — and on a multi-variant
+          product it meant picking a variant from a cramped select with
+          no picture of what they were picking. */}
+      <Link
+        href={`/products/${product.id}`}
+        className="mt-1 w-full rounded-md bg-foreground px-3 py-2 text-center text-xs font-medium text-background transition-opacity hover:opacity-90"
+      >
+        Xem chi tiết
+      </Link>
     </li>
   );
 }
