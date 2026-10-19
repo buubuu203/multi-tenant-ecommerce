@@ -541,13 +541,24 @@ export function CartWidget({
                           <div className="flex min-w-0 flex-1 items-start gap-3">
                             {/* Step 45: display-only thumbnail, same posture as
                                 price — never re-fetched/re-validated here. */}
-                            {item.imageUrl && (
+                            {item.imageUrl ? (
                               // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
                               <img
                                 src={item.imageUrl}
                                 alt={item.productName}
                                 className="h-14 w-14 rounded-md object-cover"
                               />
+                            ) : (
+                              // A CSV-imported product can have no media. Without
+                              // this the row simply lost its thumbnail and the
+                              // text jumped left, so one line in the cart sat out
+                              // of alignment with the rest.
+                              <span
+                                aria-hidden="true"
+                                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[10px] text-muted-foreground"
+                              >
+                                Chưa có ảnh
+                              </span>
                             )}
                             <div className="min-w-0 flex-1">
                               <span className="block break-words text-sm">{item.productName}</span>

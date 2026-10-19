@@ -402,6 +402,15 @@ export default async function CatalogPage({
                   <span className="money text-sm font-medium whitespace-nowrap">
                     {summaryPrice}
                   </span>
+                  {/* A product with no media is sellable but renders
+                      without a picture everywhere a shopper meets it —
+                      the list, the detail page, the cart. CSV import
+                      allows zero media by design, so this is how a
+                      merchant finds those rows after a bulk import
+                      instead of discovering them on the storefront. */}
+                  {product.media.length === 0 && (
+                    <StatusBadge status="Thiếu ảnh" tone="warning" />
+                  )}
                   {/* Shared badge, so a draft product reads the same here as
                       everywhere else in the admin. */}
                   <StatusBadge status={product.status} />
