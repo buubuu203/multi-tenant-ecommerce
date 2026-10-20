@@ -84,6 +84,62 @@ body {
  * Nothing about tab order or activation changes; this is purely the
  * visible indicator.
  */
+/*
+ * Admin palette.
+ *
+ * The global tokens above are shared with the storefront, where each
+ * shop's own branding belongs. The admin is a different surface with a
+ * different job: it is looked at all day by one person, so it gets a
+ * softer, tinted chrome instead of the flat white the storefront needs
+ * as a neutral backdrop for product photography.
+ *
+ * Scoped to .admin-chrome, the class both admin layout roots carry, so
+ * nothing here can reach a storefront. Written as a stylesheet rule
+ * rather than inline, which means a tenant that has uploaded its own
+ * design tokens still wins — TenantTheme sets those inline, and inline
+ * beats a rule. Pastel is the default, never an override.
+ *
+ * The tints are low-saturation and carry no meaning on their own: every
+ * status in this admin is still spelled out as text, because colour
+ * alone must not be the carrier (WCAG 1.4.1). Foreground stays near-black
+ * so body text keeps its contrast against the lighter ground.
+ */
+.admin-chrome {
+  --background: #f5f6fb;
+  --surface: #ffffff;
+  --surface-muted: #ecf0fa;
+  --border: rgba(58, 66, 104, 0.14);
+  --foreground: #1a1c28;
+  --muted-foreground: rgba(26, 28, 40, 0.62);
+
+  /* Card tints, used by the overview tiles. Named by position rather
+     than by hue so a palette change does not require renaming them. */
+  --pastel-1: #e8f1fb;
+  --pastel-2: #eaf6ee;
+  --pastel-3: #fdf0e6;
+  --pastel-4: #f5f1fd;
+  --pastel-5: #fdecef;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-chrome {
+    --background: #13141b;
+    --surface: #1b1d26;
+    --surface-muted: #232733;
+    --border: rgba(203, 210, 236, 0.14);
+    --foreground: #eceef6;
+    --muted-foreground: rgba(236, 238, 246, 0.62);
+
+    /* Darkened rather than inverted, so each tile keeps the hue it has
+       in light mode and the set still reads as one family. */
+    --pastel-1: #18222f;
+    --pastel-2: #16261c;
+    --pastel-3: #2a2018;
+    --pastel-4: #221c2e;
+    --pastel-5: #2b1a1f;
+  }
+}
+
 :where(.admin-chrome) :where(button, a, summary, [role="button"]):focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
