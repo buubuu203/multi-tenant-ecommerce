@@ -93,10 +93,7 @@ export default async function CustomerDetailPage({
             ['First order', formatDate(customer.firstOrderAt), ''],
             ['Last order', formatDate(customer.lastOrderAt), ''],
           ].map(([label, value, hint]) => (
-            <div
-              key={label}
-              className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4"
-            >
+            <div key={label} className="flex flex-col gap-1 rounded-2xl bg-surface p-5 shadow-sm">
               <span className="text-xs font-medium text-muted-foreground">{label}</span>
               <span className="money text-xl font-semibold tabular-nums">{value}</span>
               {hint && <span className="text-xs text-muted-foreground">{hint}</span>}

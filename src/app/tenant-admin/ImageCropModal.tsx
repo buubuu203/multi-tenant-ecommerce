@@ -1,7 +1,7 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import { baseScaleFor, clampOffset, computeCropRect } from "@/lib/image-crop";
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { baseScaleFor, clampOffset, computeCropRect } from '@/lib/image-crop';
 
 // Client-side crop before upload (V1): drag to reposition, a slider to
 // zoom in, confirm to render the crop to a canvas and hand back a Blob —
@@ -39,10 +39,17 @@ export function ImageCropModal({
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [zoom, setZoom] = useState(1);
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [dragging, setDragging] = useState<{ startX: number; startY: number; originX: number; originY: number } | null>(null);
+  const [dragging, setDragging] = useState<{
+    startX: number;
+    startY: number;
+    originX: number;
+    originY: number;
+  } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
-  const baseScale = naturalSize ? baseScaleFor(VIEWPORT_WIDTH, viewportHeight, naturalSize.width, naturalSize.height) : 1;
+  const baseScale = naturalSize
+    ? baseScaleFor(VIEWPORT_WIDTH, viewportHeight, naturalSize.width, naturalSize.height)
+    : 1;
   const scale = baseScale * zoom;
 
   function handleImageLoad() {
@@ -61,7 +68,14 @@ export function ImageCropModal({
 
   function clamp(next: { x: number; y: number }, nextScale: number = scale) {
     if (!naturalSize) return next;
-    return clampOffset(next, VIEWPORT_WIDTH, viewportHeight, naturalSize.width, naturalSize.height, nextScale);
+    return clampOffset(
+      next,
+      VIEWPORT_WIDTH,
+      viewportHeight,
+      naturalSize.width,
+      naturalSize.height,
+      nextScale,
+    );
   }
 
   function handlePointerDown(e: React.PointerEvent) {
@@ -71,7 +85,10 @@ export function ImageCropModal({
 
   function handlePointerMove(e: React.PointerEvent) {
     if (!dragging) return;
-    const next = { x: dragging.originX + (e.clientX - dragging.startX), y: dragging.originY + (e.clientY - dragging.startY) };
+    const next = {
+      x: dragging.originX + (e.clientX - dragging.startX),
+      y: dragging.originY + (e.clientY - dragging.startY),
+    };
     setOffset(clamp(next));
   }
 
@@ -84,7 +101,10 @@ export function ImageCropModal({
     setOffset((prev) => clamp(prev, baseScale * nextZoom));
   }
 
-  const outputHeight = useMemo(() => Math.round(outputWidth / aspectRatio), [outputWidth, aspectRatio]);
+  const outputHeight = useMemo(
+    () => Math.round(outputWidth / aspectRatio),
+    [outputWidth, aspectRatio],
+  );
 
   async function handleConfirm() {
     const img = imgRef.current;
@@ -100,11 +120,11 @@ export function ImageCropModal({
         offsetX: offset.x,
         offsetY: offset.y,
       });
-      const canvas = document.createElement("canvas");
+      const canvas = document.createElement('canvas');
       canvas.width = outputWidth;
       canvas.height = outputHeight;
-      const ctx = canvas.getContext("2d");
-      if (!ctx) throw new Error("Canvas not supported.");
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('Canvas not supported.');
       ctx.drawImage(
         img,
         rect.sourceX,
@@ -116,8 +136,10 @@ export function ImageCropModal({
         outputWidth,
         outputHeight,
       );
-      const blob: Blob | null = await new Promise((resolve) => canvas.toBlob(resolve, "image/jpeg", 0.9));
-      if (!blob) throw new Error("Failed to render crop.");
+      const blob: Blob | null = await new Promise((resolve) =>
+        canvas.toBlob(resolve, 'image/jpeg', 0.9),
+      );
+      if (!blob) throw new Error('Failed to render crop.');
       onConfirm(blob);
     } finally {
       setConfirming(false);
@@ -131,13 +153,13 @@ export function ImageCropModal({
       aria-modal="true"
       aria-label="Crop image"
       onKeyDown={(e) => {
-        if (e.key === "Escape") onCancel();
+        if (e.key === 'Escape') onCancel();
       }}
     >
       <div className="flex w-full max-w-lg flex-col gap-4 rounded-lg bg-surface p-4">
         <div
           className="relative mx-auto touch-none overflow-hidden rounded-md bg-surface-muted"
-          style={{ width: VIEWPORT_WIDTH, height: viewportHeight, maxWidth: "100%" }}
+          style={{ width: VIEWPORT_WIDTH, height: viewportHeight, maxWidth: '100%' }}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}
@@ -158,7 +180,7 @@ export function ImageCropModal({
                 width: naturalSize ? naturalSize.width * scale : undefined,
                 height: naturalSize ? naturalSize.height * scale : undefined,
                 transform: `translate(${offset.x}px, ${offset.y}px)`,
-                cursor: dragging ? "grabbing" : "grab",
+                cursor: dragging ? 'grabbing' : 'grab',
               }}
             />
           )}
@@ -191,7 +213,7 @@ export function ImageCropModal({
             disabled={!naturalSize || confirming}
             className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
-            {confirming ? "Cropping…" : "Confirm crop"}
+            {confirming ? 'Cropping…' : 'Confirm crop'}
           </button>
         </div>
       </div>

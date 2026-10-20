@@ -1,8 +1,8 @@
-import { requireTenantAdmin, NotTenantAdminError } from "@/lib/auth/require-tenant-admin";
-import { toCsv, csvFilename } from "@/lib/csv";
-import { buildCustomersExport } from "@/lib/exports/customers-export";
-import { buildProductsExport } from "@/lib/exports/products-export";
-import { buildOrdersExport } from "@/lib/exports/orders-export";
+import { requireTenantAdmin, NotTenantAdminError } from '@/lib/auth/require-tenant-admin';
+import { toCsv, csvFilename } from '@/lib/csv';
+import { buildCustomersExport } from '@/lib/exports/customers-export';
+import { buildProductsExport } from '@/lib/exports/products-export';
+import { buildOrdersExport } from '@/lib/exports/orders-export';
 
 /**
  * Tenant-scoped CSV export download.
@@ -26,7 +26,7 @@ import { buildOrdersExport } from "@/lib/exports/orders-export";
  * in the response body. There is no temporary file and no blob storage, so
  * an export cannot outlive the request that asked for it.
  */
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 /**
  * The only exportable datasets. An allowlist, so the [dataset] path segment
@@ -40,9 +40,9 @@ export const dynamic = "force-dynamic";
  * download.
  */
 const DATASETS = {
-  products: { build: buildProductsExport, label: "products" },
-  orders: { build: buildOrdersExport, label: "orders" },
-  customers: { build: buildCustomersExport, label: "customers" },
+  products: { build: buildProductsExport, label: 'products' },
+  orders: { build: buildOrdersExport, label: 'orders' },
+  customers: { build: buildCustomersExport, label: 'customers' },
 } as const;
 
 type DatasetKey = keyof typeof DATASETS;
@@ -66,14 +66,14 @@ export async function GET(
     if (e instanceof NotTenantAdminError) {
       // 404, not 403: a signed-in user who is not this store's admin learns
       // nothing about whether the route or the store exists.
-      return new Response("Not found", { status: 404 });
+      return new Response('Not found', { status: 404 });
     }
     // Anything else is Next.js's own redirect signal from redirectToSignIn().
     throw e;
   }
 
   if (!isDataset(dataset)) {
-    return new Response("Not found", { status: 404 });
+    return new Response('Not found', { status: 404 });
   }
 
   const { build, label } = DATASETS[dataset];
@@ -91,13 +91,13 @@ export async function GET(
   return new Response(body, {
     status: 200,
     headers: {
-      "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": `attachment; filename="${filename}"`,
+      'Content-Type': 'text/csv; charset=utf-8',
+      'Content-Disposition': `attachment; filename="${filename}"`,
       // An export reflects data as of this request and must never be
       // served from a shared or browser cache to a later request, which
       // could be a different admin or a different tenant on this origin.
-      "Cache-Control": "no-store, max-age=0",
-      "X-Content-Type-Options": "nosniff",
+      'Cache-Control': 'no-store, max-age=0',
+      'X-Content-Type-Options': 'nosniff',
     },
   });
 }

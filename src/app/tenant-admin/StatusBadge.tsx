@@ -11,17 +11,17 @@
  *  - a status nobody has styled yet falls back to a readable neutral
  *    rather than to invisible text.
  */
-export type BadgeTone = "success" | "warning" | "danger" | "info" | "neutral";
+export type BadgeTone = 'success' | 'warning' | 'danger' | 'info' | 'neutral';
 
 const TONE: Record<BadgeTone, string> = {
   success:
-    "border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400",
+    'border-green-300 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-950 dark:text-green-400',
   warning:
-    "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400",
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   danger:
-    "border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400",
-  info: "border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300",
-  neutral: "border-border bg-surface-muted text-muted-foreground",
+    'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
+  info: 'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300',
+  neutral: 'border-border bg-surface-muted text-muted-foreground',
 };
 
 /**
@@ -31,28 +31,28 @@ const TONE: Record<BadgeTone, string> = {
  */
 const STATUS_TONE: Record<string, BadgeTone> = {
   // Order lifecycle
-  pending: "warning",
-  fulfilled: "success",
-  cancelled: "neutral",
+  pending: 'warning',
+  fulfilled: 'success',
+  cancelled: 'neutral',
   // Payment lifecycle
-  succeeded: "success",
-  failed: "danger",
-  expired: "neutral",
+  succeeded: 'success',
+  failed: 'danger',
+  expired: 'neutral',
   // Product / variant lifecycle
-  active: "success",
-  draft: "warning",
-  archived: "neutral",
+  active: 'success',
+  draft: 'warning',
+  archived: 'neutral',
 };
 
 export function toneForStatus(status: string | null | undefined): BadgeTone {
-  if (!status) return "neutral";
-  return STATUS_TONE[status.toLowerCase()] ?? "neutral";
+  if (!status) return 'neutral';
+  return STATUS_TONE[status.toLowerCase()] ?? 'neutral';
 }
 
 export function StatusBadge({
   status,
   tone,
-  className = "",
+  className = '',
 }: {
   /** Rendered as the visible label — never conveyed by colour alone. */
   status: string;

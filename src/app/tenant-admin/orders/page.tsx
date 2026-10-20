@@ -15,8 +15,6 @@ import {
 import { ExportCsvButton } from '../ExportCsvButton';
 import {
   adminPageClassName,
-  adminPanelClassName,
-  adminPanelTitleClassName,
   adminInputClassName,
   adminButtonSecondaryClassName,
   adminEyebrowClassName,
@@ -114,7 +112,7 @@ export default async function OrdersPage({
         surface so "narrow the list" reads as a distinct step from "act on
         the list" below it. */}
       <form
-        className="flex flex-wrap items-end gap-2 rounded-lg border border-border bg-surface p-3"
+        className="flex flex-wrap items-end gap-2 rounded-2xl bg-surface p-4 shadow-sm"
         method="get"
         role="search"
         aria-label="Search and filter orders"
@@ -168,30 +166,18 @@ export default async function OrdersPage({
         </p>
       )}
 
-      {/* The export sits beside the data it exports rather than in a large
-          box above it, but the personal-data warning stays visible rather
-          than hidden behind a disclosure: this is the moment the merchant
-          decides to take customer data out of the app, and a warning you
-          have to open is a warning you will not read. */}
-      <div className={adminPanelClassName}>
-        <div className="flex flex-col gap-1">
-          <h3 className={adminPanelTitleClassName}>Export orders</h3>
-          <p className="text-xs text-muted-foreground">
-            Every order in this store, not just the current page or filter. Opens in Excel with
-            Vietnamese text intact.
-          </p>
-        </div>
-        {/* The warning is a bordered notice, not grey body text: this is
-            the moment customer data leaves the app's access controls, and
-            it should not be the quietest thing on the screen. */}
-        <p className="rounded-md border border-amber-300 bg-amber-50 p-3 text-xs text-amber-900 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
+      {/* One slim row, not a card. The warning stays VISIBLE rather than
+          moving behind a disclosure — this is the moment customer data
+          leaves the app's access controls, and a warning you have to
+          open is a warning you will not read — but a full panel above
+          the list made a secondary action louder than the orders
+          themselves. */}
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 rounded-xl bg-amber-50 px-4 py-3 text-xs text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+        <ExportCsvButton dataset="orders" label="orders" />
+        <p className="min-w-0 flex-1">
           <strong className="font-semibold">Contains customer personal data</strong> — name, email,
-          phone and shipping address. A downloaded file is no longer protected by your store login,
-          so store and share it carefully, and delete copies you no longer need.
+          phone and shipping address. A downloaded file is no longer protected by your store login.
         </p>
-        <div>
-          <ExportCsvButton dataset="orders" label="orders" />
-        </div>
       </div>
 
       {/* Status tabs, each carrying its own count. A dropdown hides

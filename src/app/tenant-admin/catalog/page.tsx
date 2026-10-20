@@ -261,12 +261,12 @@ export default async function CatalogPage({
             in one block rather than as two competing full-width cards —
             and below the catalogue actions, because neither is the thing a
             merchant came here to do. */}
-        <details className="rounded-md border border-border bg-surface-muted">
+        <details className="rounded-xl bg-surface-muted">
           <summary className="cursor-pointer list-none px-3 py-2.5 text-sm font-medium marker:content-none">
             CSV import and export
           </summary>
           <div className="grid gap-3 px-3 pb-3 sm:grid-cols-2">
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+            <div className="flex flex-col gap-2 rounded-2xl bg-surface p-4 shadow-sm">
               <h3 className="text-sm font-medium">Import products (CSV)</h3>
               <p className="text-xs text-muted-foreground">
                 Columns: name, price, status (optional, defaults to draft). Max 500 rows, 1 MB.
@@ -278,7 +278,7 @@ export default async function CatalogPage({
               />
             </div>
 
-            <div className="flex flex-col gap-2 rounded-lg border border-border bg-surface p-3">
+            <div className="flex flex-col gap-2 rounded-2xl bg-surface p-4 shadow-sm">
               <h3 className="text-sm font-medium">Export products (CSV)</h3>
               <p className="text-xs text-muted-foreground">
                 One row per variant, including drafts and archived variants, with SKU, price, any
@@ -366,10 +366,7 @@ export default async function CatalogPage({
               : `${activeVariants.length} variant${activeVariants.length === 1 ? '' : 's'}`;
 
             return (
-              <details
-                key={product.id}
-                className="group rounded-lg border border-border bg-surface text-sm"
-              >
+              <details key={product.id} className="group rounded-2xl bg-surface text-sm shadow-sm">
                 <summary className="flex cursor-pointer list-none items-center gap-3 p-3 [&::-webkit-details-marker]:hidden">
                   <span className="flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-md bg-surface-muted">
                     {primaryMedia ? (
@@ -408,9 +405,7 @@ export default async function CatalogPage({
                       allows zero media by design, so this is how a
                       merchant finds those rows after a bulk import
                       instead of discovering them on the storefront. */}
-                  {product.media.length === 0 && (
-                    <StatusBadge status="Thiếu ảnh" tone="warning" />
-                  )}
+                  {product.media.length === 0 && <StatusBadge status="Thiếu ảnh" tone="warning" />}
                   {/* Shared badge, so a draft product reads the same here as
                       everywhere else in the admin. */}
                   <StatusBadge status={product.status} />

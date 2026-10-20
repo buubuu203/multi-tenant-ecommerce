@@ -51,7 +51,11 @@ import {
 } from '@/lib/shipping-mutations';
 import { createBanner, updateBanner, deleteBanner, type BannerInput } from '@/lib/banner-mutations';
 import { uploadBannerImageFile, deleteBannerImageFile } from '@/lib/blob-storage';
-import { upsertProductDiscount, deleteProductDiscount, type DiscountInput } from '@/lib/discount-mutations';
+import {
+  upsertProductDiscount,
+  deleteProductDiscount,
+  type DiscountInput,
+} from '@/lib/discount-mutations';
 import type { PaymentMethod, PaymentProviderType } from '@/generated/prisma/client';
 import type { ActionResult } from '@/lib/action-result';
 
@@ -371,8 +375,7 @@ export async function importProductsAction(
     if (csvFingerprint(csvText) !== expected) {
       return {
         success: false,
-        error:
-          'This file has changed since it was previewed. Preview it again before importing.',
+        error: 'This file has changed since it was previewed. Preview it again before importing.',
       };
     }
   }
@@ -792,7 +795,12 @@ export async function createBannerAction(
   const imageUrl = String(formData.get('imageUrl') ?? '');
   const mobileImageUrl = String(formData.get('mobileImageUrl') ?? '') || null;
 
-  const result = await createBanner(tenantId, imageUrl, mobileImageUrl, bannerInputFromFormData(formData));
+  const result = await createBanner(
+    tenantId,
+    imageUrl,
+    mobileImageUrl,
+    bannerInputFromFormData(formData),
+  );
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
     revalidatePath('/');

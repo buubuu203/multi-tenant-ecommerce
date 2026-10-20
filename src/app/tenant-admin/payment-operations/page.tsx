@@ -112,7 +112,7 @@ export default async function PaymentOperationsPage({
             <Link
               key={key}
               href={`/tenant-admin/payment-operations?category=${key}`}
-              className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4 transition-colors hover:border-foreground/20 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+              className="flex flex-col gap-1 rounded-2xl bg-surface p-5 shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
             >
               <span className="text-xs font-medium text-muted-foreground">
                 {CATEGORY_LABEL[key]}
@@ -133,7 +133,7 @@ export default async function PaymentOperationsPage({
               Counted across every payment in this store, not just the page below.
             </span>
           </div>
-          <div className="flex flex-col gap-1 rounded-lg border border-border bg-surface p-4">
+          <div className="flex flex-col gap-1 rounded-2xl bg-surface p-5 shadow-sm">
             <span className="text-xs font-medium text-muted-foreground">
               Rejected deliveries (all)
             </span>

@@ -1,17 +1,17 @@
-"use client";
+'use client';
 
-import { useActionState, useEffect } from "react";
-import type { ActionResult } from "@/lib/action-result";
-import { showToast } from "@/components/Toast";
+import { useActionState, useEffect } from 'react';
+import type { ActionResult } from '@/lib/action-result';
+import { showToast } from '@/components/Toast';
 
 const CONFIRM_MESSAGES: Record<string, string> = {
-  fulfilled: "Mark this order as fulfilled? This action cannot be undone.",
-  cancelled: "Cancel this order? This will release its reserved inventory and cannot be undone.",
+  fulfilled: 'Mark this order as fulfilled? This action cannot be undone.',
+  cancelled: 'Cancel this order? This will release its reserved inventory and cannot be undone.',
 };
 
 const SUCCESS_MESSAGES: Record<string, string> = {
-  fulfilled: "Order marked as fulfilled.",
-  cancelled: "Order cancelled.",
+  fulfilled: 'Order marked as fulfilled.',
+  cancelled: 'Order cancelled.',
 };
 
 // Not reusing the shared ActionForm here: this is the only form in the app
@@ -32,14 +32,14 @@ export function OrderStatusForm({
 }: {
   action: (prevState: ActionResult | null, formData: FormData) => Promise<ActionResult>;
   orderId: string;
-  nextStatus: "fulfilled" | "cancelled";
+  nextStatus: 'fulfilled' | 'cancelled';
   label: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
   useEffect(() => {
     if (state?.success) {
-      showToast(SUCCESS_MESSAGES[nextStatus], "success");
+      showToast(SUCCESS_MESSAGES[nextStatus], 'success');
     }
   }, [state, nextStatus]);
 
