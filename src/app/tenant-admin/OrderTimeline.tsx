@@ -1,4 +1,4 @@
-import { actorLabel, eventTypeLabel, type OrderTimelineEntry } from '@/lib/order-events';
+import { actorLabel, eventTypeLabel, type OrderTimelineEntry } from "@/lib/order-events";
 
 /**
  * Read-only audit timeline for one order, inside the Tenant Admin order
@@ -16,7 +16,9 @@ export function OrderTimeline({ entries }: { entries: OrderTimelineEntry[] }) {
     // activity. Saying so is accurate; inventing a backfilled entry would
     // not be.
     return (
-      <p className="mt-1 text-xs text-muted-foreground">No recorded activity for this order yet.</p>
+      <p className="mt-1 text-xs text-muted-foreground">
+        No recorded activity for this order yet.
+      </p>
     );
   }
 
@@ -46,7 +48,7 @@ export function OrderTimeline({ entries }: { entries: OrderTimelineEntry[] }) {
                 so the exact instant is available to assistive tech and to
                 anything parsing the page. */}
             <time dateTime={entry.createdAt.toISOString()}>
-              {entry.createdAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+              {entry.createdAt.toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" })}
             </time>
             <span aria-hidden="true">·</span>
             <span>{actorLabel(entry.actorType)}</span>
