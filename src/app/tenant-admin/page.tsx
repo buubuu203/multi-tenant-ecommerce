@@ -46,12 +46,26 @@ export default async function TenantAdminOverviewPage({
   // `needsAttention` drives a text note, never colour alone — a merchant
   // scanning this row should be able to tell which number wants action
   // from a greyscale screenshot.
+  /**
+   * A percent change against the previous window of equal length, as a
+   * string. Null means there is nothing honest to show: either the
+   * figure is point-in-time, so a "change" would be meaningless, or the
+   * previous window was zero and a rise from nothing has no percentage.
+   */
+  function delta(change: number | null): string | null {
+    if (change === null) return null;
+    const rounded = Math.round(change * 10) / 10;
+    if (rounded === 0) return 'no change';
+    return `${rounded > 0 ? '+' : ''}${rounded}%`;
+  }
+
   const cards: {
     label: string;
     value: string;
     hint: string;
     href: string;
     needsAttention?: boolean;
+    change?: string | null;
   }[] = [
     {
       label: 'Pending orders',
@@ -63,8 +77,9 @@ export default async function TenantAdminOverviewPage({
     {
       label: `Orders (${kpis.windowDays}d)`,
       value: String(kpis.ordersInWindow),
-      hint: 'Placed in the last 30 days',
+      hint: 'Placed in this period',
       href: '/tenant-admin/orders',
+      change: delta(kpis.change.orders),
     },
     {
       // "Order value", not "Revenue": this figure counts every order that
@@ -75,6 +90,7 @@ export default async function TenantAdminOverviewPage({
       value: formatVnd(kpis.revenueInWindow),
       hint: 'Items + shipping, including unpaid orders',
       href: '/tenant-admin/orders',
+      change: delta(kpis.change.orderValue),
     },
     {
       label: 'Active products',
@@ -183,7 +199,20 @@ export default async function TenantAdminOverviewPage({
               {/* One number treatment across the row: same size, same
                   weight, tabular figures, so five cards read as one set
                   rather than five unrelated readouts. */}
-              <span className="money text-2xl font-semibold tabular-nums">{card.value}</span>
+              <div className="flex flex-wrap items-baseline gap-x-2">
+                <span className="money text-2xl font-semibold tabular-nums">{card.value}</span>
+                {/* The direction is spelled out as a word, not left to an
+                    arrow or a colour: "+12%" and "−12%" differ by one
+                    glyph that is easy to miss, and this has to survive
+                    greyscale like every other state on this page. */}
+                {card.change && (
+                  <span className="text-xs font-medium text-muted-foreground">
+                    {card.change === 'no change'
+                      ? 'no change vs previous period'
+                      : `${card.change} vs previous period`}
+                  </span>
+                )}
+              </div>
               <span className="text-xs text-muted-foreground">{card.hint}</span>
               {card.needsAttention && (
                 // Text, not just a border colour — the attention state has
