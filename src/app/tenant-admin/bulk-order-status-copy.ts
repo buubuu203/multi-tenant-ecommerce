@@ -9,14 +9,14 @@
 // while doing the same thing to a SINGLE order required confirming. The
 // bulk path was the more dangerous of the two and the only unguarded one.
 
-export type BulkOrderStatus = 'fulfilled' | 'cancelled';
+export type BulkOrderStatus = "fulfilled" | "cancelled";
 
 export function isBulkOrderStatus(value: unknown): value is BulkOrderStatus {
-  return value === 'fulfilled' || value === 'cancelled';
+  return value === "fulfilled" || value === "cancelled";
 }
 
 /** Shown when the operator submits with nothing ticked. */
-export const NO_SELECTION_ERROR = 'Select at least one order first.';
+export const NO_SELECTION_ERROR = "Select at least one order first.";
 
 /**
  * The confirm() text for a bulk transition.
@@ -33,9 +33,9 @@ export const NO_SELECTION_ERROR = 'Select at least one order first.';
  * ORDER_STATUS_TRANSITIONS offers no route back to pending.
  */
 export function bulkOrderStatusConfirmMessage(status: BulkOrderStatus, count: number): string {
-  const noun = count === 1 ? 'order' : 'orders';
-  const possessive = count === 1 ? 'its' : 'their';
-  if (status === 'fulfilled') {
+  const noun = count === 1 ? "order" : "orders";
+  const possessive = count === 1 ? "its" : "their";
+  if (status === "fulfilled") {
     return `Mark ${count} ${noun} as fulfilled? This consumes ${possessive} reserved inventory and cannot be undone.`;
   }
   return `Cancel ${count} ${noun}? This releases ${possessive} reserved inventory and cannot be undone.`;

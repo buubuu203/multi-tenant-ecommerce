@@ -1,13 +1,13 @@
-'use client';
+"use client";
 
-import { useActionState, useEffect, useState } from 'react';
-import type { ActionResult } from '@/lib/action-result';
+import { useActionState, useEffect, useState } from "react";
+import type { ActionResult } from "@/lib/action-result";
 import {
   bulkOrderStatusConfirmMessage,
   isBulkOrderStatus,
   NO_SELECTION_ERROR,
-} from './bulk-order-status-copy';
-import { adminButtonSecondaryClassName, adminButtonDangerClassName } from './styles';
+} from "./bulk-order-status-copy";
+import { adminButtonSecondaryClassName, adminButtonDangerClassName } from "./styles";
 
 // Phase 2 (Orders at scale): a single form, rendered once, that every
 // order row's checkbox targets via `form="bulk-orders-form"` — HTML lets
@@ -50,19 +50,19 @@ export function BulkOrderStatusForm({
   const [selectedCount, setSelectedCount] = useState(0);
 
   useEffect(() => {
-    const form = document.getElementById('bulk-orders-form');
+    const form = document.getElementById("bulk-orders-form");
     if (!(form instanceof HTMLFormElement)) return;
     const recount = () => {
       const ids = new FormData(form)
-        .getAll('orderIds')
+        .getAll("orderIds")
         .filter((id) => String(id).trim().length > 0);
       setSelectedCount(ids.length);
       // Ticking something clears a stale "nothing selected" complaint.
       if (ids.length > 0) setSelectionError(null);
     };
     recount();
-    document.addEventListener('change', recount);
-    return () => document.removeEventListener('change', recount);
+    document.addEventListener("change", recount);
+    return () => document.removeEventListener("change", recount);
   }, []);
 
   return (
@@ -76,7 +76,7 @@ export function BulkOrderStatusForm({
         // what is about to be submitted — so the number in the prompt can
         // never disagree with the number the server acts on.
         const formData = new FormData(event.currentTarget);
-        const selected = formData.getAll('orderIds').filter((id) => String(id).trim().length > 0);
+        const selected = formData.getAll("orderIds").filter((id) => String(id).trim().length > 0);
 
         if (selected.length === 0) {
           event.preventDefault();
@@ -88,7 +88,7 @@ export function BulkOrderStatusForm({
         // unrecognised value is not confirmed here and would be rejected
         // server-side anyway by updateOrderStatus()'s own allowlist.
         const submitter = (event.nativeEvent as SubmitEvent).submitter;
-        const nextStatus = submitter instanceof HTMLButtonElement ? submitter.value : '';
+        const nextStatus = submitter instanceof HTMLButtonElement ? submitter.value : "";
         if (!isBulkOrderStatus(nextStatus)) {
           event.preventDefault();
           return;
@@ -113,13 +113,13 @@ export function BulkOrderStatusForm({
         role="status"
         className={
           selectedCount === 0
-            ? 'text-muted-foreground'
-            : 'rounded-full bg-foreground px-2 py-0.5 text-xs font-semibold text-background'
+            ? "text-muted-foreground"
+            : "rounded-full bg-foreground px-2 py-0.5 text-xs font-semibold text-background"
         }
       >
         {selectedCount === 0
-          ? 'No orders selected'
-          : `${selectedCount} ${selectedCount === 1 ? 'order' : 'orders'} selected`}
+          ? "No orders selected"
+          : `${selectedCount} ${selectedCount === 1 ? "order" : "orders"} selected`}
       </span>
       <span className="text-muted-foreground" aria-hidden="true">
         ·
@@ -153,7 +153,7 @@ export function BulkOrderStatusForm({
       {state &&
         (state.success ? (
           <span role="status" className="text-muted-foreground">
-            {state.data.updated} updated{state.data.failed ? `, ${state.data.failed} failed` : ''}.
+            {state.data.updated} updated{state.data.failed ? `, ${state.data.failed} failed` : ""}.
           </span>
         ) : (
           <span role="alert" className="text-red-600">

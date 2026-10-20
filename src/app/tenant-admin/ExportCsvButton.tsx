@@ -1,7 +1,7 @@
-'use client';
+"use client";
 
-import { useState } from 'react';
-import { showToast } from '@/components/Toast';
+import { useState } from "react";
+import { showToast } from "@/components/Toast";
 
 /**
  * Downloads a tenant-scoped CSV export.
@@ -33,7 +33,7 @@ export function ExportCsvButton({
   dataset,
   label,
 }: {
-  dataset: 'products' | 'orders' | 'customers';
+  dataset: "products" | "orders" | "customers";
   label: string;
 }) {
   const [pending, setPending] = useState(false);
@@ -45,8 +45,8 @@ export function ExportCsvButton({
     try {
       const response = await fetch(`/tenant-admin/exports/${dataset}`, {
         // Same-origin so the session cookie is sent; the route authorizes.
-        credentials: 'same-origin',
-        headers: { Accept: 'text/csv' },
+        credentials: "same-origin",
+        headers: { Accept: "text/csv" },
       });
 
       if (!response.ok) {
@@ -55,9 +55,9 @@ export function ExportCsvButton({
         // signed-in user means they are not this store's admin.
         showToast(
           response.status === 404
-            ? 'Export not available for this account.'
+            ? "Export not available for this account."
             : `Export failed (${response.status}). Please try again.`,
-          'error',
+          "error",
         );
         return;
       }
@@ -65,12 +65,12 @@ export function ExportCsvButton({
       const blob = await response.blob();
       // Prefer the server's filename; fall back to a locally composed safe
       // one rather than trusting anything arbitrary.
-      const disposition = response.headers.get('Content-Disposition') ?? '';
+      const disposition = response.headers.get("Content-Disposition") ?? "";
       const match = /filename="([^"]+)"/.exec(disposition);
       const filename = match?.[1] ?? `${dataset}.csv`;
 
       const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
+      const anchor = document.createElement("a");
       anchor.href = url;
       anchor.download = filename;
       document.body.appendChild(anchor);
@@ -88,9 +88,9 @@ export function ExportCsvButton({
       // blob is released whether or not this component is still mounted.
       setTimeout(() => URL.revokeObjectURL(url), REVOKE_DELAY_MS);
 
-      showToast(`${label} exported.`, 'success');
+      showToast(`${label} exported.`, "success");
     } catch {
-      showToast('Export failed. Please check your connection and try again.', 'error');
+      showToast("Export failed. Please check your connection and try again.", "error");
     } finally {
       setPending(false);
     }
@@ -104,7 +104,7 @@ export function ExportCsvButton({
       aria-busy={pending}
       className="w-fit rounded-md border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
     >
-      {pending ? 'Preparing…' : `Export ${label} (CSV)`}
+      {pending ? "Preparing…" : `Export ${label} (CSV)`}
     </button>
   );
 }

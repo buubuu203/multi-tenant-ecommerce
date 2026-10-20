@@ -1,5 +1,5 @@
-import type { ReactNode } from 'react';
-import { adminHelpTextClassName } from './styles';
+import type { ReactNode } from "react";
+import { adminHelpTextClassName } from "./styles";
 
 /**
  * The top of every admin page: what this screen is, what it is for, and
