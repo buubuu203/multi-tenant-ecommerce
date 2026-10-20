@@ -1,14 +1,10 @@
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
-import { ActionForm } from '@/components/ActionForm';
-import {
-  updateOrderStatusAction,
-  markManualPaymentReceivedAction,
-  bulkUpdateOrderStatusAction,
-} from '../actions';
-import { OrderStatusForm } from '../OrderStatusForm';
+import { bulkUpdateOrderStatusAction } from '../actions';
 import { BulkOrderStatusForm } from '../BulkOrderStatusForm';
 import { Pagination } from '../Pagination';
 import { listOrders, countOrdersByStatus, type ListOrdersOptions } from '@/lib/order-queries';
+import { getOrderDetail } from '@/lib/order-detail';
+import { OrderDetailView, formatOrderDateTime } from './OrderDetailView';
 import { formatVnd } from '../format';
 import Link from 'next/link';
 import {
@@ -16,9 +12,6 @@ import {
   ANALYTICS_TIMEZONE_LABEL,
   RANGE_ADJUSTMENT_MESSAGE,
 } from '@/lib/analytics/date-range';
-import { getOrderTimelinesForOrders } from '@/lib/order-events';
-import { DOCUMENT_TITLE, PRINT_DOCUMENTS } from '@/lib/order-print';
-import { OrderTimeline } from '../OrderTimeline';
 import { ExportCsvButton } from '../ExportCsvButton';
 import {
   adminPageClassName,
@@ -35,12 +28,6 @@ export const dynamic = 'force-dynamic';
 
 const PAGE_SIZE = 20;
 const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled'] as const;
-
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: 'Cash on delivery',
-  momo: 'MoMo',
-  bank_transfer: 'Bank transfer',
-};
 
 // Order and payment status now render through the shared StatusBadge, which
 // owns the colour mapping for every admin surface — the two local Record
@@ -78,7 +65,11 @@ export default async function OrdersPage({
   };
   // Read-only — see order-queries.ts. Nothing here writes to the database;
   // order creation/inventory reservation logic is untouched by this page.
-  const [{ orders, totalCount }, statusCounts] = await Promise.all([
+  // Master-detail: the selected order is part of the URL, so the panel
+  // survives a reload, can be linked to, and needs no client state.
+  const selectedId = typeof params.selected === 'string' ? params.selected : '';
+
+  const [{ orders, totalCount }, statusCounts, selected] = await Promise.all([
     listOrders(tenantId, listOptions),
     // Deliberately WITHOUT the status filter: a tab must show its own
     // count even while a different tab is selected.
@@ -86,17 +77,24 @@ export default async function OrdersPage({
       ...(q ? { search: q } : {}),
       ...(range ? { placedFrom: range.start, placedBefore: range.end } : {}),
     }),
+    // Scoped by tenant inside getOrderDetail, so a guessed id from
+    // another store resolves to null exactly as an unknown one does.
+    selectedId ? getOrderDetail(tenantId, selectedId) : Promise.resolve(null),
   ]);
 
-  // Order Audit History: one batched read for every order on this page
-  // rather than one per card. Authorization already happened above via
-  // requireTenantAdmin(), and this is scoped by that trusted tenantId plus
-  // this page's own order ids, so it can only ever return this tenant's
-  // events.
-  const timelines = await getOrderTimelinesForOrders(
-    tenantId,
-    orders.map((order) => order.id),
-  );
+  /** Keeps the current filters when a row changes the selection. */
+  function hrefForOrder(id: string): string {
+    const next = new URLSearchParams();
+    if (q) next.set('q', q);
+    if (status) next.set('status', status);
+    if (range) {
+      next.set('from', range.fromDate);
+      next.set('to', range.toDate);
+    }
+    if (page > 1) next.set('page', String(page));
+    next.set('selected', id);
+    return `/tenant-admin/orders?${next.toString()}`;
+  }
 
   return (
     <div className={adminPageClassName}>
@@ -260,265 +258,115 @@ export default async function OrdersPage({
            and everything else is one keyboard-reachable toggle away.
            Progressive disclosure rather than hiding: the native element
            handles keyboard and announces expanded state for free. */
-        <ul className="flex flex-col gap-2">
-          {orders.map((order) => (
-            <li
-              key={order.id}
-              className="rounded-lg border border-border bg-surface transition-colors hover:border-foreground/20"
-            >
-              <div className="flex items-start gap-3 p-3">
-                {/* Outside the <summary>, so ticking an order never
-                    expands it and expanding never ticks it. */}
-                <input
-                  type="checkbox"
-                  name="orderIds"
-                  value={order.id}
-                  form="bulk-orders-form"
-                  aria-label={`Select order ${order.id}`}
-                  className="mt-1 h-4 w-4 shrink-0"
-                />
+        /* Master-detail. The list is a column of compact rows and the
+           selected order's detail sits beside it, which is how an
+           operator actually works: scan, open, act, scan again. The
+           <details> disclosure this replaces could only ever show one
+           order's detail by pushing every other row down the page.
 
-                <details className="min-w-0 flex-1">
-                  <summary className="-m-1 cursor-pointer list-none rounded-md p-1 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between sm:gap-4">
-                      <div className="flex min-w-0 flex-col gap-1">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="font-medium">{order.customer.name}</span>
-                          {/* The id is a reference, not the headline:
-                              secondary, monospace, and shortened. The full
-                              value stays available in the expanded detail
-                              and in the checkbox's accessible name. */}
-                          <span className="font-mono text-xs text-muted-foreground">
-                            {order.id.slice(0, 8)}
-                          </span>
-                        </div>
-                        <div className="flex flex-wrap items-center gap-1.5">
-                          <StatusBadge status={order.status} />
-                          {order.paymentStatus && (
-                            <StatusBadge
-                              status={`Payment: ${order.paymentStatus}`}
-                              tone={toneForStatus(order.paymentStatus)}
-                            />
-                          )}
-                          <span className="text-xs text-muted-foreground">
-                            {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
-                          </span>
-                          <span className="text-xs text-muted-foreground">
-                            {order.itemCount} item{order.itemCount === 1 ? '' : 's'}
-                          </span>
-                        </div>
-                      </div>
+           Stacks to one column below lg, where a side panel would leave
+           neither half usable. */
+        <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1.1fr)]">
+          <ul className="flex min-w-0 flex-col gap-2">
+            {orders.map((order) => {
+              const isSelected = order.id === selectedId;
+              return (
+                <li key={order.id}>
+                  <div
+                    className={`flex items-start gap-3 rounded-lg border p-3 transition-colors ${
+                      isSelected
+                        ? 'border-foreground/40 bg-surface-muted'
+                        : 'border-border bg-surface hover:border-foreground/20'
+                    }`}
+                  >
+                    {/* Outside the link, so ticking an order never opens
+                        it and opening never ticks it. */}
+                    <input
+                      type="checkbox"
+                      name="orderIds"
+                      value={order.id}
+                      form="bulk-orders-form"
+                      aria-label={`Select order ${order.id}`}
+                      className="mt-1 h-4 w-4 shrink-0"
+                    />
 
-                      {/* Money and date right-aligned on desktop so totals
-                          form a scannable column; stacked left on mobile
-                          where a right edge means nothing. */}
-                      <div className="flex items-center justify-between gap-3 sm:flex-col sm:items-end sm:justify-start sm:gap-0.5">
-                        <span className="money text-base font-semibold">
+                    <Link
+                      href={hrefForOrder(order.id)}
+                      aria-current={isSelected ? 'true' : undefined}
+                      className="flex min-w-0 flex-1 flex-col gap-1.5 rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+                    >
+                      <span className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+                        <span className="min-w-0 truncate font-medium">{order.customer.name}</span>
+                        <span className="money text-sm font-semibold whitespace-nowrap">
                           {formatVnd(order.total)}
                         </span>
-                        <time
-                          dateTime={order.createdAt.toISOString()}
-                          className="text-xs text-muted-foreground"
-                        >
-                          {order.createdAt.toLocaleDateString('en-GB', {
-                            day: '2-digit',
-                            month: 'short',
-                            year: 'numeric',
-                          })}
+                      </span>
+
+                      <span className="flex flex-wrap items-center gap-1.5">
+                        <StatusBadge status={order.status} />
+                        {order.paymentStatus && (
+                          <StatusBadge
+                            status={`Payment: ${order.paymentStatus}`}
+                            tone={toneForStatus(order.paymentStatus)}
+                          />
+                        )}
+                      </span>
+
+                      <span className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                        <span className="font-mono">{order.id.slice(0, 8)}</span>
+                        <span aria-hidden="true">·</span>
+                        {/* Machine-readable alongside the human form: a
+                            date rendered only as text cannot be parsed by
+                            assistive tech or copied reliably. */}
+                        <time dateTime={order.createdAt.toISOString()}>
+                          {formatOrderDateTime(order.createdAt)}
                         </time>
-                      </div>
-                    </div>
-                  </summary>
-
-                  <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
-                    <p className="font-mono text-xs break-all text-muted-foreground">
-                      Order {order.id}
-                    </p>
-
-                    <div className="grid gap-3 sm:grid-cols-2">
-                      <div>
-                        <h4 className={adminEyebrowClassName}>Customer</h4>
-                        <p className="mt-1 text-xs">{order.customer.name}</p>
-                        <p className="text-xs break-all text-muted-foreground">
-                          {order.customer.email}
-                        </p>
-                        <p className="text-xs text-muted-foreground">{order.customer.phone}</p>
-                      </div>
-                      <div>
-                        <h4 className={adminEyebrowClassName}>Shipping address</h4>
-                        <p className="mt-1 text-xs">{order.shippingAddress}</p>
-                        <p className="text-xs text-muted-foreground">{order.shippingWard}</p>
-                        {/* District is no longer collected (Vietnam's 2025
-                          2-tier reform dropped it) — shown only for orders
-                          placed before that change. */}
-                        {order.shippingDistrict && (
-                          <p className="text-xs text-muted-foreground">{order.shippingDistrict}</p>
-                        )}
-                        <p className="text-xs text-muted-foreground">{order.shippingCity}</p>
-                        {order.shippingNote && (
-                          <p className="text-xs text-muted-foreground">
-                            Note: {order.shippingNote}
-                          </p>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="overflow-x-auto border-t border-border pt-3">
-                      <table className="w-full text-left text-xs">
-                        <thead>
-                          <tr className="border-b border-border">
-                            <th className="py-1.5 pr-2 font-medium">Item</th>
-                            <th className="py-1.5 pr-2 font-medium">Qty</th>
-                            <th className="py-1.5 pr-2 text-right font-medium">Unit price</th>
-                            <th className="py-1.5 text-right font-medium">Line total</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {order.items.map((item) => (
-                            <tr key={item.id} className="border-b border-border last:border-0">
-                              <td className="py-1.5 pr-2">
-                                {item.productName}
-                                {item.combinationLabel && (
-                                  <span className="text-muted-foreground">
-                                    {' '}
-                                    — {item.combinationLabel}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="py-1.5 pr-2">{item.quantity}</td>
-                              <td className="money py-1.5 pr-2 text-right">
-                                {item.originalUnitPrice != null && (
-                                  <span className="mr-1 text-muted-foreground line-through">
-                                    {formatVnd(item.originalUnitPrice)}
-                                  </span>
-                                )}
-                                {formatVnd(item.unitPrice)}
-                                {item.discountPercent != null && (
-                                  <span className="ml-1 rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
-                                    −{item.discountPercent}%
-                                  </span>
-                                )}
-                              </td>
-                              <td className="money py-1.5 text-right">
-                                {formatVnd(item.lineTotal)}
-                              </td>
-                            </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                      {/* V1 Configurable Shipping: a breakdown, never a
-                        second computation of `total` — subtotal +
-                        shippingAmount is the same sum order-queries.ts
-                        already returned, and must not double-count. */}
-                      <div className="mt-2 flex flex-col gap-1 border-t border-border pt-2 text-xs">
-                        <div className="flex items-center justify-between text-muted-foreground">
-                          <span>Subtotal</span>
-                          <span className="money">{formatVnd(order.subtotal)}</span>
-                        </div>
-                        <div className="flex items-center justify-between text-muted-foreground">
-                          <span>
-                            Shipping
-                            {order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}
-                          </span>
-                          <span className="money">
-                            {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
-                          </span>
-                        </div>
-                        <div className="flex items-center justify-between font-medium">
-                          <span>Total</span>
-                          <span className="money">{formatVnd(order.total)}</span>
-                        </div>
-                      </div>
-                    </div>
-
-                    <div className="border-t border-border pt-3">
-                      <h4 className={adminEyebrowClassName}>Activity</h4>
-                      <OrderTimeline entries={timelines.get(order.id) ?? []} />
-                    </div>
-
-                    {/* Printing is read-only, so these are plain links and
-                        need no confirmation. They stack on narrow screens
-                        rather than squeezing three buttons into one row,
-                        and each carries its own scoped accessible name —
-                        a column of "Print" would be useless to a screen
-                        reader listing them. */}
-                    <div className="border-t border-border pt-3">
-                      <h4 className={adminEyebrowClassName}>Print</h4>
-                      <div className="mt-2 flex flex-col gap-2 sm:flex-row sm:flex-wrap">
-                        {PRINT_DOCUMENTS.map((documentType) => (
-                          <Link
-                            key={documentType}
-                            href={`/tenant-admin/orders/${order.id}/print?document=${documentType}`}
-                            aria-label={`Print ${DOCUMENT_TITLE[documentType].toLowerCase()} for order ${order.id}`}
-                            className={`${adminButtonSecondaryClassName} min-h-11 justify-center sm:w-auto lg:min-h-9`}
-                          >
-                            {DOCUMENT_TITLE[documentType]}
-                          </Link>
-                        ))}
-                      </div>
-                    </div>
+                        <span aria-hidden="true">·</span>
+                        <span>
+                          {order.itemCount} {order.itemCount === 1 ? 'item' : 'items'}
+                        </span>
+                      </span>
+                    </Link>
                   </div>
-                </details>
+                </li>
+              );
+            })}
+          </ul>
 
-                {/* A sibling of <details>, not a child, for the same
-                    reason the checkbox above is one: the detail page has
-                    to be reachable from a COLLAPSED row. Putting it
-                    inside meant an operator had to expand a row before
-                    they could leave it, which is the opposite of what a
-                    list is for. */}
-                <Link
-                  href={`/tenant-admin/orders/${order.id}`}
-                  aria-label={`View order ${order.id}`}
-                  className={`${adminButtonSecondaryClassName} shrink-0 self-start`}
-                >
-                  View<span className="sr-only"> order {order.id}</span>
-                  <span aria-hidden="true"> →</span>
-                </Link>
-              </div>
-
-              {/* Actions stay OUT of the disclosure: fulfilling an order is
-                  the job this page exists for, and burying it behind a
-                  toggle would cost a click on every order. */}
-              {(order.status === 'pending' ||
-                (order.paymentProvider === 'bank_transfer_manual' &&
-                  order.paymentStatus === 'pending')) && (
-                <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-                  {/* Manual bank transfer never gets a webhook — this is the
-                    only way its Payment leaves "pending". Never shown for
-                    bank_transfer_sepay_va, whose webhook is the sole
-                    source of truth. */}
-                  {order.paymentProvider === 'bank_transfer_manual' &&
-                    order.paymentStatus === 'pending' && (
-                      <ActionForm
-                        action={markManualPaymentReceivedAction}
-                        submitLabel="Mark as paid"
-                        successMessage="Payment marked as received."
-                        className="inline-flex"
-                      >
-                        <input type="hidden" name="orderId" value={order.id} />
-                      </ActionForm>
+          {/* The panel. Sticky on desktop so it stays in view while the
+              list scrolls; plain flow below lg, where it sits under the
+              list instead of beside it. */}
+          <div className="min-w-0 lg:sticky lg:top-20">
+            {selected ? (
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <span className="flex flex-wrap items-center gap-1.5">
+                    <StatusBadge status={selected.status} />
+                    {selected.payment && (
+                      <StatusBadge status={`payment: ${selected.payment.status}`} />
                     )}
-                  {order.status === 'pending' && (
-                    <div className="ml-auto flex flex-wrap items-center gap-2">
-                      <OrderStatusForm
-                        action={updateOrderStatusAction}
-                        orderId={order.id}
-                        nextStatus="fulfilled"
-                        label="Mark fulfilled"
-                      />
-                      <OrderStatusForm
-                        action={updateOrderStatusAction}
-                        orderId={order.id}
-                        nextStatus="cancelled"
-                        label="Cancel"
-                      />
-                    </div>
-                  )}
+                  </span>
+                  {/* A panel cannot be bookmarked or opened in a second
+                      tab, so the full page stays one click away. */}
+                  <Link
+                    href={`/tenant-admin/orders/${selected.id}`}
+                    className={adminButtonSecondaryClassName}
+                  >
+                    Open full page
+                    <span aria-hidden="true"> →</span>
+                  </Link>
                 </div>
-              )}
-            </li>
-          ))}
-        </ul>
+                <OrderDetailView order={selected} />
+              </div>
+            ) : (
+              <p className="rounded-lg border border-dashed border-border px-4 py-10 text-center text-sm text-muted-foreground">
+                {selectedId
+                  ? 'That order is not in this store, or no longer exists.'
+                  : 'Select an order to see its details here.'}
+              </p>
+            )}
+          </div>
+        </div>
       )}
 
       <Pagination
