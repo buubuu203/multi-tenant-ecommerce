@@ -140,42 +140,67 @@ export default async function OrderDetailPage({
         </section>
       )}
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
-        <section aria-labelledby="customer" className={adminPanelClassName}>
-          <h3 id="customer" className={adminPanelTitleClassName}>
-            Customer
+      {/* Who and where, in ONE card. They were two, which left the
+          customer column half empty while the address column wrapped a
+          street onto three lines. They are also one question in
+          practice: who is this going to, and to what address. */}
+      <section aria-labelledby="recipient" className={adminPanelClassName}>
+        <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+          <h3 id="recipient" className={adminPanelTitleClassName}>
+            Recipient
           </h3>
-          <dl className="flex flex-col gap-2 text-sm">
-            <Row label="Name">{order.customer.name}</Row>
-            <Row label="Email">{order.customer.email}</Row>
-            <Row label="Phone">{order.customer.phone}</Row>
-          </dl>
           <Link
             href={`/tenant-admin/customers/${order.customer.id}`}
             className={`${adminHelpTextClassName} underline`}
           >
             View this customer&apos;s history
           </Link>
-        </section>
+        </div>
 
-        <section aria-labelledby="delivery" className={adminPanelClassName}>
-          <h3 id="delivery" className={adminPanelTitleClassName}>
-            Delivery address
-          </h3>
-          <dl className="flex flex-col gap-2 text-sm">
-            <Row label="Address">{order.shipping.address}</Row>
-            <Row label="Ward">{order.shipping.ward}</Row>
-            <Row label="District">{order.shipping.district}</Row>
-            <Row label="City">{order.shipping.city}</Row>
-            <Row label="Method">{order.shipping.methodName ?? 'not recorded'}</Row>
-            {order.shipping.note && <Row label="Customer note">{order.shipping.note}</Row>}
-          </dl>
-          <p className="text-xs text-muted-foreground">
-            A snapshot taken at checkout. It is what the customer typed, never validated against an
-            address service, and it never changes after the order is placed.
+        <div className="grid grid-cols-1 gap-x-8 gap-y-4 sm:grid-cols-2">
+          <div className="flex min-w-0 flex-col gap-0.5 text-sm">
+            <p className="font-medium break-words">{order.customer.name}</p>
+            <p className="break-all text-muted-foreground">{order.customer.email}</p>
+            <p className="text-muted-foreground">{order.customer.phone}</p>
+          </div>
+
+          {/* An address is one block of text, not five labelled rows.
+              Labelling each line made a street address read as a form
+              and pushed it into three wrapped lines inside a narrow
+              column. */}
+          <address className="flex min-w-0 flex-col gap-0.5 text-sm not-italic">
+            <span className="break-words">{order.shipping.address}</span>
+            <span className="break-words text-muted-foreground">
+              {[order.shipping.ward, order.shipping.district].filter(Boolean).join(', ')}
+            </span>
+            <span className="break-words text-muted-foreground">{order.shipping.city}</span>
+          </address>
+        </div>
+
+        {/* Shipping method and its cost together. The method used to sit
+            here and the fee in the totals table, so neither place
+            answered "how is it going and what did that cost". */}
+        <dl className="flex flex-wrap gap-x-6 gap-y-1 border-t border-border pt-3 text-sm">
+          <div className="flex gap-2">
+            <dt className="text-muted-foreground">Shipping</dt>
+            <dd className="font-medium">
+              {order.shipping.methodName ?? 'not recorded'} · {formatVnd(order.shipping.amount)}
+            </dd>
+          </div>
+        </dl>
+
+        {order.shipping.note && (
+          <p className="rounded-md bg-surface-muted p-3 text-sm break-words">
+            <span className="text-muted-foreground">Customer note: </span>
+            {order.shipping.note}
           </p>
-        </section>
-      </div>
+        )}
+
+        <p className="text-xs text-muted-foreground">
+          A snapshot taken at checkout. It is what the customer typed, never validated against an
+          address service, and it never changes after the order is placed.
+        </p>
+      </section>
 
       <section aria-labelledby="items" className={adminPanelClassName}>
         <h3 id="items" className={adminPanelTitleClassName}>
@@ -269,8 +294,21 @@ export default async function OrderDetailPage({
         {order.payment ? (
           <dl className="flex flex-col gap-2 text-sm">
             <Row label="Method">{order.paymentMethod}</Row>
-            <Row label="Status">{order.payment.status}</Row>
-            <Row label="Amount">{formatVnd(order.payment.amount)}</Row>
+            {/* Status and the order total are already in the header and
+                the totals table. Repeating them here filled the card
+                with things the reader had just passed. What is left is
+                what only this card can say. */}
+            {order.payment.amount !== order.totals.total && (
+              // Shown ONLY when it disagrees with the order total, which
+              // is a real discrepancy worth surfacing rather than a
+              // second copy of a number already on the page.
+              <Row label="Amount charged">
+                {formatVnd(order.payment.amount)}{' '}
+                <span className="font-normal text-amber-700 dark:text-amber-500">
+                  — differs from the order total of {formatVnd(order.totals.total)}
+                </span>
+              </Row>
+            )}
             {order.payment.expiresAt && (
               <Row label="Expires">{formatDateTime(order.payment.expiresAt)}</Row>
             )}
