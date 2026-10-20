@@ -1,6 +1,10 @@
 import { prisma } from './prisma';
 import { LOW_STOCK_THRESHOLD } from './inventory-availability';
-import { resolveAnalyticsRange, type AnalyticsRange } from './analytics/date-range';
+import {
+  resolveAnalyticsRange,
+  toAnalyticsDate,
+  type AnalyticsRange,
+} from './analytics/date-range';
 
 export type TenantKpis = {
   /** Days the window covers, for the card labels. */
@@ -23,7 +27,28 @@ export type TenantKpis = {
   /** Point-in-time, never window-scoped. */
   activeProducts: number;
   lowStockVariants: number;
+  /**
+   * The same two figures for the window of equal length immediately
+   * before this one, so a tile can say which way things moved.
+   */
+  previous: {
+    fromDate: string;
+    toDate: string;
+    ordersInWindow: number;
+    revenueInWindow: number;
+  };
+  /**
+   * Percent change against that window. Null when the previous window
+   * was zero: a rise from nothing has no percentage, and printing
+   * "+100%" or an infinity there would be inventing one.
+   */
+  change: { orders: number | null; orderValue: number | null };
 };
+
+function percentChange(current: number, previous: number): number | null {
+  if (previous === 0) return null;
+  return ((current - previous) / previous) * 100;
+}
 
 const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled'] as const;
 
@@ -53,22 +78,37 @@ export async function getTenantKpis(
 ): Promise<TenantKpis> {
   const createdInRange = { gte: range.start, lt: range.end };
 
-  const [pendingOrders, statusGroups, valueRows, activeProducts, inventoryRows] = await Promise.all(
-    [
-      // Deliberately NOT window-scoped: an order placed two months ago and
-      // still pending is exactly what this card exists to surface.
-      prisma.order.count({ where: { tenantId, status: 'pending' } }),
+  // The equal-length window immediately before this one. Derived from
+  // the resolved range's own instants rather than re-resolving dates, so
+  // it is exactly as long and cannot drift by a day at a month boundary.
+  const span = range.end.getTime() - range.start.getTime();
+  const prevStart = new Date(range.start.getTime() - span);
+  const prevEnd = range.start;
+  const createdInPrevious = { gte: prevStart, lt: prevEnd };
 
-      prisma.order.groupBy({
-        by: ['status'],
-        where: { tenantId, createdAt: createdInRange },
-        _count: { _all: true },
-      }),
+  const [
+    pendingOrders,
+    statusGroups,
+    valueRows,
+    activeProducts,
+    inventoryRows,
+    prevOrders,
+    prevValueRows,
+  ] = await Promise.all([
+    // Deliberately NOT window-scoped: an order placed two months ago and
+    // still pending is exactly what this card exists to surface.
+    prisma.order.count({ where: { tenantId, status: 'pending' } }),
 
-      // A line total is price × quantity, which Prisma's aggregate API
-      // cannot express. Returns ONE row however many orders are in range.
-      prisma.$queryRawUnsafe<{ total: bigint | null }[]>(
-        `SELECT COALESCE(SUM(o."shippingAmount" + o.items_total), 0) AS total
+    prisma.order.groupBy({
+      by: ['status'],
+      where: { tenantId, createdAt: createdInRange },
+      _count: { _all: true },
+    }),
+
+    // A line total is price × quantity, which Prisma's aggregate API
+    // cannot express. Returns ONE row however many orders are in range.
+    prisma.$queryRawUnsafe<{ total: bigint | null }[]>(
+      `SELECT COALESCE(SUM(o."shippingAmount" + o.items_total), 0) AS total
        FROM (
          SELECT o.id,
                 o."shippingAmount",
@@ -81,24 +121,44 @@ export async function getTenantKpis(
            AND o.status <> 'cancelled'
          GROUP BY o.id
        ) o`,
-        tenantId,
-        range.start,
-        range.end,
-      ),
+      tenantId,
+      range.start,
+      range.end,
+    ),
 
-      prisma.product.count({ where: { tenantId, status: 'active' } }),
+    prisma.product.count({ where: { tenantId, status: 'active' } }),
 
-      // Four numbers out of Postgres instead of every inventory row out of
-      // the database and into memory.
-      prisma.$queryRawUnsafe<{ low_stock: bigint }[]>(
-        `SELECT COUNT(*) FILTER (WHERE "onHand" - reserved <= $2) AS low_stock
+    // Four numbers out of Postgres instead of every inventory row out of
+    // the database and into memory.
+    prisma.$queryRawUnsafe<{ low_stock: bigint }[]>(
+      `SELECT COUNT(*) FILTER (WHERE "onHand" - reserved <= $2) AS low_stock
        FROM inventory
        WHERE "tenantId" = $1`,
-        tenantId,
-        LOW_STOCK_THRESHOLD,
-      ),
-    ],
-  );
+      tenantId,
+      LOW_STOCK_THRESHOLD,
+    ),
+
+    prisma.order.count({ where: { tenantId, createdAt: createdInPrevious } }),
+
+    prisma.$queryRawUnsafe<{ total: bigint | null }[]>(
+      `SELECT COALESCE(SUM(o."shippingAmount" + o.items_total), 0) AS total
+       FROM (
+         SELECT o.id,
+                o."shippingAmount",
+                COALESCE(SUM(i.price * i.quantity), 0) AS items_total
+         FROM orders o
+         LEFT JOIN order_items i ON i."orderId" = o.id AND i."tenantId" = o."tenantId"
+         WHERE o."tenantId" = $1
+           AND o."createdAt" >= $2
+           AND o."createdAt" <  $3
+           AND o.status <> 'cancelled'
+         GROUP BY o.id
+       ) o`,
+      tenantId,
+      prevStart,
+      prevEnd,
+    ),
+  ]);
 
   const counts = new Map(statusGroups.map((g) => [String(g.status), g._count._all]));
   // Every status, so a status with no orders reads as zero rather than
@@ -108,15 +168,29 @@ export async function getTenantKpis(
     count: counts.get(status) ?? 0,
   }));
 
+  const ordersInWindow = ordersByStatus.reduce((sum, row) => sum + row.count, 0);
+  const revenueInWindow = Number(valueRows[0]?.total ?? 0);
+  const previousValue = Number(prevValueRows[0]?.total ?? 0);
+
   return {
     windowDays: range.days,
     fromDate: range.fromDate,
     toDate: range.toDate,
     pendingOrders,
-    ordersInWindow: ordersByStatus.reduce((sum, row) => sum + row.count, 0),
-    revenueInWindow: Number(valueRows[0]?.total ?? 0),
+    ordersInWindow,
+    revenueInWindow,
     ordersByStatus,
     activeProducts,
     lowStockVariants: Number(inventoryRows[0]?.low_stock ?? 0),
+    previous: {
+      fromDate: toAnalyticsDate(prevStart),
+      toDate: toAnalyticsDate(new Date(prevEnd.getTime() - 1)),
+      ordersInWindow: prevOrders,
+      revenueInWindow: previousValue,
+    },
+    change: {
+      orders: percentChange(ordersInWindow, prevOrders),
+      orderValue: percentChange(revenueInWindow, previousValue),
+    },
   };
 }
