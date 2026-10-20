@@ -379,7 +379,9 @@ test('print CSS handles pagination, wrapping and monochrome', () => {
 // ---------- the admin actions ----------
 
 test('print actions have specific accessible names, never a bare Print', () => {
-  const src = source('../src/app/tenant-admin/orders/page.tsx');
+  // Moved from the orders list into the shared detail view, so the same
+  // guarantee now covers the panel AND the full order page.
+  const src = source('../src/app/tenant-admin/orders/OrderDetailView.tsx');
   assert.match(
     src,
     /aria-label=\{`Print \$\{DOCUMENT_TITLE\[documentType\]\.toLowerCase\(\)\} for order/,
@@ -390,7 +392,7 @@ test('print actions have specific accessible names, never a bare Print', () => {
 });
 
 test('print actions stack before they wrap, and keep usable touch targets', () => {
-  const src = source('../src/app/tenant-admin/orders/page.tsx');
+  const src = source('../src/app/tenant-admin/orders/OrderDetailView.tsx');
   const block = src.slice(
     src.indexOf('PRINT_DOCUMENTS.map') - 700,
     src.indexOf('PRINT_DOCUMENTS.map') + 600,
