@@ -94,7 +94,7 @@ export function BrandingUploadControls({
             className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           />
         </label>
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3">
+        <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
             Upload a JPG, PNG, WebP, or SVG logo (max 5MB). Raster images are optimized and stored
             as WebP, which reduces object-storage size and image transfer size. SVG logos are
@@ -134,7 +134,7 @@ export function BrandingUploadControls({
             className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           />
         </label>
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3">
+        <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
             Upload an ICO, PNG, or SVG favicon (max 1MB). Favicons are stored in the format you
             upload — browser tab icons are not converted to WebP.
@@ -165,7 +165,7 @@ export function BrandingUploadControls({
         <p className="text-xs text-muted-foreground">
           Colours, type, spacing and shadows for the whole storefront — not an image.
         </p>
-        <div className="flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3">
+        <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
             Upload a Markdown file with supported Color, Typography, Spacing &amp; Radius, and
             Shadow Tokens sections. Tokens are parsed server-side and applied to this store and its

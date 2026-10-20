@@ -1,17 +1,17 @@
-"use client";
+'use client';
 
-import { useState } from "react";
-import { ActionForm } from "@/components/ActionForm";
-import { ProductMediaGallery } from "./ProductMediaGallery";
-import { DescriptionEditor } from "./DescriptionEditor";
-import { createProductAction } from "./actions";
-import { PRODUCT_STATUSES } from "./product-status";
+import { useState } from 'react';
+import { ActionForm } from '@/components/ActionForm';
+import { ProductMediaGallery } from './ProductMediaGallery';
+import { DescriptionEditor } from './DescriptionEditor';
+import { createProductAction } from './actions';
+import { PRODUCT_STATUSES } from './product-status';
 import {
   productInputClassName,
   productLabelClassName,
   productFieldGroupClassName,
   productSectionHeadingClassName,
-} from "./styles";
+} from './styles';
 
 // Step 50 (revised): now rendered on its own page
 // (/tenant-admin/products/new) rather than inline on the dashboard, so it
@@ -35,7 +35,9 @@ export function CreateProductForm() {
     >
       <div className={productFieldGroupClassName}>
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Catalog</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Catalog
+          </p>
           <h2 className={productSectionHeadingClassName}>Basic info</h2>
         </div>
         <label className={productLabelClassName}>
@@ -59,7 +61,9 @@ export function CreateProductForm() {
       <div className={productFieldGroupClassName}>
         <h2 className={productSectionHeadingClassName}>Media</h2>
         <ProductMediaGallery onUploadingChange={setUploading} />
-        {uploading && <p className="text-sm text-muted-foreground">Waiting for media to finish uploading…</p>}
+        {uploading && (
+          <p className="text-sm text-muted-foreground">Waiting for media to finish uploading…</p>
+        )}
       </div>
 
       <div className={productFieldGroupClassName}>

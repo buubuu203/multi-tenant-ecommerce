@@ -1,10 +1,10 @@
-import Link from "next/link";
-import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
-import { CreateProductForm } from "../../CreateProductForm";
-import { AdminPageHeader } from "../../AdminPageHeader";
-import { adminSectionClassName } from "../../styles";
+import Link from 'next/link';
+import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { CreateProductForm } from '../../CreateProductForm';
+import { AdminPageHeader } from '../../AdminPageHeader';
+import { adminSectionClassName } from '../../styles';
 
-export const dynamic = "force-dynamic";
+export const dynamic = 'force-dynamic';
 
 // Add Product, on its own page rather than as one cramped card among many
 // on the dashboard — a form this central to daily merchant use deserves

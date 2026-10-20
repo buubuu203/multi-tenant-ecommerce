@@ -1,16 +1,16 @@
-"use client";
+'use client';
 
-import { useRef, useState } from "react";
-import type { ActionResult } from "@/lib/action-result";
-import { showToast } from "@/components/Toast";
-import { ImageCropModal } from "./ImageCropModal";
+import { useRef, useState } from 'react';
+import type { ActionResult } from '@/lib/action-result';
+import { showToast } from '@/components/Toast';
+import { ImageCropModal } from './ImageCropModal';
 
 // Client-side-only pre-check, mirroring blob-storage.ts's BANNER_MIME_TYPES
 // / MAX_BANNER_IMAGE_BYTES — an early, friendly rejection before spending
 // effort opening the crop UI. This is NOT the security boundary: the
 // cropped output still goes through uploadBannerImageFile()'s own
 // server-side validation regardless of what happens here.
-const ACCEPTED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
+const ACCEPTED_MIME_TYPES = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 
 // Same imperative "upload immediately, hidden field carries the URL"
@@ -50,7 +50,7 @@ export function BannerImageUpload({
   removable?: boolean;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [url, setUrl] = useState(initialUrl ?? "");
+  const [url, setUrl] = useState(initialUrl ?? '');
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
@@ -58,9 +58,9 @@ export function BannerImageUpload({
   async function uploadCroppedBlob(blob: Blob) {
     setError(null);
     setUploading(true);
-    const croppedFile = new File([blob], "crop.jpg", { type: "image/jpeg" });
+    const croppedFile = new File([blob], 'crop.jpg', { type: 'image/jpeg' });
     const formData = new FormData();
-    formData.append("file", croppedFile);
+    formData.append('file', croppedFile);
     const result = await action(formData);
     setUploading(false);
     if (!result.success) {
@@ -68,7 +68,7 @@ export function BannerImageUpload({
       return;
     }
     setUrl(result.data.url);
-    showToast(`${label} uploaded — click Save to apply.`, "success");
+    showToast(`${label} uploaded — click Save to apply.`, 'success');
   }
 
   return (
@@ -77,7 +77,11 @@ export function BannerImageUpload({
       <input type="hidden" name={fieldName} value={url} />
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-        <img src={url} alt="" className="h-24 w-full rounded-md border border-border object-cover" />
+        <img
+          src={url}
+          alt=""
+          className="h-24 w-full rounded-md border border-border object-cover"
+        />
       ) : (
         <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
           No image
@@ -90,14 +94,14 @@ export function BannerImageUpload({
           disabled={uploading}
           className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-muted disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         >
-          {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          {uploading ? 'Uploading…' : url ? 'Replace' : 'Upload'}
         </button>
         {removable && url && (
           <button
             type="button"
             onClick={() => {
-              setUrl("");
-              showToast(`${label} removed — click Save to apply.`, "success");
+              setUrl('');
+              showToast(`${label} removed — click Save to apply.`, 'success');
             }}
             className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs text-muted-foreground transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
@@ -112,15 +116,15 @@ export function BannerImageUpload({
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          event.target.value = "";
+          event.target.value = '';
           if (!file) return;
           setError(null);
           if (!ACCEPTED_MIME_TYPES.has(file.type)) {
-            setError("Unsupported image type. Use JPG, PNG, or WebP.");
+            setError('Unsupported image type. Use JPG, PNG, or WebP.');
             return;
           }
           if (file.size > MAX_INPUT_BYTES) {
-            setError("Image exceeds the 8MB limit.");
+            setError('Image exceeds the 8MB limit.');
             return;
           }
           setPendingCropFile(file);

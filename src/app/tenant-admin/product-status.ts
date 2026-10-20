@@ -1,1 +1,1 @@
-export const PRODUCT_STATUSES = ["draft", "active"] as const;
+export const PRODUCT_STATUSES = ['draft', 'active'] as const;
