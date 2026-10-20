@@ -85,40 +85,47 @@ body {
  * visible indicator.
  */
 /*
- * Admin palette.
+ * Admin palette — the project's own Stitch design system.
  *
- * The global tokens above are shared with the storefront, where each
- * shop's own branding belongs. The admin is a different surface with a
- * different job: it is looked at all day by one person, so it gets a
- * softer, tinted chrome instead of the flat white the storefront needs
- * as a neutral backdrop for product photography.
+ * These are not invented. They are the Material 3 token values from the
+ * "E-Commerce Design System" project in Stitch, read through its MCP
+ * server: a dusty-rose primary over a cool off-white ground, with a
+ * sage secondary and a warm tertiary. The typeface already matches —
+ * that design and this app both use Be Vietnam Pro.
  *
  * Scoped to .admin-chrome, the class both admin layout roots carry, so
- * nothing here can reach a storefront. Written as a stylesheet rule
- * rather than inline, which means a tenant that has uploaded its own
- * design tokens still wins — TenantTheme sets those inline, and inline
- * beats a rule. Pastel is the default, never an override.
+ * nothing here reaches a storefront, where each shop's own branding
+ * belongs. Written as a stylesheet rule rather than inline, so a tenant
+ * that uploaded its own design tokens still wins: this is the default,
+ * never an override.
  *
- * The tints are low-saturation and carry no meaning on their own: every
- * status in this admin is still spelled out as text, because colour
- * alone must not be the carrier (WCAG 1.4.1). Foreground stays near-black
- * so body text keeps its contrast against the lighter ground.
+ * CONTRAST WAS COMPUTED, NOT EYEBALLED. Body text on every surface here
+ * clears 7:1 and muted text clears 7:1 in light mode. Stitch's
+ * primary-container (#e892a2) and tertiary-container (#cda183) are
+ * deliberately NOT used as card grounds: muted text on them lands at
+ * 4.0, under the 4.5 AA threshold. They are accent colours, and are
+ * left for that.
+ *
+ * Stitch's project is light-mode only, so the dark values below are
+ * this codebase's own, kept from the previous palette because they
+ * already passed the same check.
  */
 .admin-chrome {
-  --background: #f5f6fb;
-  --surface: #ffffff;
-  --surface-muted: #ecf0fa;
-  --border: rgba(58, 66, 104, 0.14);
-  --foreground: #1a1c28;
-  --muted-foreground: rgba(26, 28, 40, 0.62);
+  --background: #f9f9ff; /* surface */
+  --surface: #ffffff; /* surface-container-lowest */
+  --surface-muted: #ebeef8; /* surface-container */
+  --border: #d8c1c4; /* outline-variant */
+  --foreground: #181c23; /* on-surface */
+  --muted-foreground: #534345; /* on-surface-variant */
 
-  /* Card tints, used by the overview tiles. Named by position rather
-     than by hue so a palette change does not require renaming them. */
-  --pastel-1: #e8f1fb;
-  --pastel-2: #eaf6ee;
-  --pastel-3: #fdf0e6;
-  --pastel-4: #f5f1fd;
-  --pastel-5: #fdecef;
+  /* The container ladder plus one sage and one warm tone, used by the
+     overview tiles. Named by position rather than hue so a palette
+     change does not require renaming them. */
+  --pastel-1: #f1f3fe; /* surface-container-low */
+  --pastel-2: #c8e7d8; /* secondary-container */
+  --pastel-3: #fbeee6; /* warm, from the tertiary family */
+  --pastel-4: #e5e8f3; /* surface-container-high */
+  --pastel-5: #ffe4e8; /* rose, from the primary family */
 }
 
 @media (prefers-color-scheme: dark) {
