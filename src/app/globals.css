@@ -1,4 +1,4 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 /*
  * Design tokens (single global set for the MVP). Kept as plain CSS custom
@@ -117,15 +117,10 @@ body {
   --border: #d8c1c4; /* outline-variant */
   --foreground: #181c23; /* on-surface */
   --muted-foreground: #534345; /* on-surface-variant */
-
-  /* The container ladder plus one sage and one warm tone, used by the
-     overview tiles. Named by position rather than hue so a palette
-     change does not require renaming them. */
-  --pastel-1: #f1f3fe; /* surface-container-low */
-  --pastel-2: #c8e7d8; /* secondary-container */
-  --pastel-3: #fbeee6; /* warm, from the tertiary family */
-  --pastel-4: #e5e8f3; /* surface-container-high */
-  --pastel-5: #ffe4e8; /* rose, from the primary family */
+  /* The one saturated colour in the admin, used for the trend line and
+     its fill. Stitch's primary; not used for text or status, so colour
+     never carries meaning on its own here. */
+  --chart-accent: #8f4857;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -136,18 +131,11 @@ body {
     --border: rgba(203, 210, 236, 0.14);
     --foreground: #eceef6;
     --muted-foreground: rgba(236, 238, 246, 0.62);
-
-    /* Darkened rather than inverted, so each tile keeps the hue it has
-       in light mode and the set still reads as one family. */
-    --pastel-1: #18222f;
-    --pastel-2: #16261c;
-    --pastel-3: #2a2018;
-    --pastel-4: #221c2e;
-    --pastel-5: #2b1a1f;
+    --chart-accent: #e892a2;
   }
 }
 
-:where(.admin-chrome) :where(button, a, summary, [role="button"]):focus-visible {
+:where(.admin-chrome) :where(button, a, summary, [role='button']):focus-visible {
   outline: 2px solid var(--foreground);
   outline-offset: 2px;
 }
@@ -217,12 +205,12 @@ body {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) .admin-chrome {
+  :root:not([data-theme='light']) .admin-chrome {
     background-color: var(--background);
   }
 }
 
-:root[data-theme="dark"] .admin-chrome {
+:root[data-theme='dark'] .admin-chrome {
   background-color: var(--background);
 }
 

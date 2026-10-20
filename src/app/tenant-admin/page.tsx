@@ -180,27 +180,29 @@ export default async function TenantAdminOverviewPage({
         <h3 id="kpi-heading" className={adminPanelTitleClassName}>
           This store at a glance
         </h3>
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-          {cards.map((card, index) => (
+        <div className="grid items-stretch gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+          {cards.map((card) => (
             <Link
               key={card.label}
               href={card.href}
-              // The tint is decoration, not information: it is assigned by
-              // position in the row, carries no status meaning, and every
-              // card still states its own label and value as text.
-              style={{ backgroundColor: `var(--pastel-${(index % 5) + 1})` }}
-              className={`group flex flex-col gap-1 rounded-lg border p-4 transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
-                card.needsAttention
-                  ? 'border-amber-400 dark:border-amber-700'
-                  : 'border-border hover:border-foreground/20'
+              // White, like every tile in the Stitch design. The five
+              // different tints that were here before were my own
+              // invention, carried no meaning, and turned a row of
+              // figures into a row of unrelated objects.
+              className={`group flex h-full flex-col gap-1.5 rounded-2xl bg-surface p-5 shadow-sm transition-shadow hover:shadow-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
+                card.needsAttention ? 'ring-1 ring-amber-400 dark:ring-amber-700' : ''
               }`}
             >
-              <span className="text-xs font-medium text-muted-foreground">{card.label}</span>
+              <span className="text-[11px] font-semibold tracking-wider text-muted-foreground uppercase">
+                {card.label}
+              </span>
               {/* One number treatment across the row: same size, same
                   weight, tabular figures, so five cards read as one set
                   rather than five unrelated readouts. */}
               <div className="flex flex-wrap items-baseline gap-x-2">
-                <span className="money text-2xl font-semibold tabular-nums">{card.value}</span>
+                <span className="money text-2xl font-semibold whitespace-nowrap tabular-nums">
+                  {card.value}
+                </span>
                 {/* The direction is spelled out as a word, not left to an
                     arrow or a colour: "+12%" and "−12%" differ by one
                     glyph that is easy to miss, and this has to survive
@@ -255,7 +257,7 @@ export default async function TenantAdminOverviewPage({
         <TrendChart
           series={trend}
           title={PERIOD_LABEL[period]}
-          caption={`Orders placed and order value per day, ${range.fromDate} to ${range.toDate}, by ${ANALYTICS_TIMEZONE_LABEL}. Order value excludes cancelled orders and includes orders nobody has paid for — it is not revenue.`}
+          caption={`${range.fromDate} to ${range.toDate}, by ${ANALYTICS_TIMEZONE_LABEL}`}
         />
       </section>
 

@@ -3,13 +3,15 @@
 // styled sub-components the way CartWidget's inputClassName does on the
 // storefront side — same token-based approach, just exported as strings).
 export const adminInputClassName =
-  "rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+  'rounded-md border border-border bg-background px-2.5 py-1.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
 
-export const adminLabelClassName = "flex flex-col gap-1 text-sm";
+export const adminLabelClassName = 'flex flex-col gap-1 text-sm';
 
-export const adminSectionClassName = "flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 sm:p-6";
+export const adminSectionClassName =
+  'flex flex-col gap-4 rounded-2xl bg-surface p-5 shadow-sm sm:p-6';
 
-export const adminCardClassName = "flex flex-col gap-3 rounded-lg border border-border bg-surface-muted p-3 text-sm";
+export const adminCardClassName =
+  'flex flex-col gap-3 rounded-2xl bg-surface p-5 text-sm shadow-sm';
 
 // Larger, more spacious variants used by the Catalog page's inline
 // product edit form (a form central enough to daily merchant use that
@@ -17,18 +19,18 @@ export const adminCardClassName = "flex flex-col gap-3 rounded-lg border border-
 // separate constants rather than resizing the shared ones, so every other
 // Tenant Admin form keeps its existing compact styling.
 export const productInputClassName =
-  "rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
+  'rounded-lg border border-border bg-background px-3.5 py-2.5 text-base focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
 
-export const productLabelClassName = "flex flex-col gap-1.5 text-sm font-medium";
+export const productLabelClassName = 'flex flex-col gap-1.5 text-sm font-medium';
 
-export const productFieldGroupClassName = "flex flex-col gap-5";
+export const productFieldGroupClassName = 'flex flex-col gap-5';
 
 // One visually distinct heading per logical group (Basic info / Description /
 // Media / Status) inside the Catalog page's product edit form — a plain
 // heading with generous spacing beneath, no border/background of its own
 // (the surrounding card already provides that).
 export const productSectionHeadingClassName =
-  "text-sm font-semibold tracking-wide text-muted-foreground uppercase";
+  'text-sm font-semibold tracking-wide text-muted-foreground uppercase';
 
 // ---------------------------------------------------------------------------
 // Shared admin primitives.
@@ -45,7 +47,16 @@ export const productSectionHeadingClassName =
  * The single content column width for every admin page. One value, so the
  * header, the nav and the page body line up instead of each choosing.
  */
-export const adminContainerClassName = "mx-auto w-full max-w-5xl px-4 sm:px-6";
+/**
+ * The admin's own width.
+ *
+ * Was max-w-5xl (1024px), which left roughly 780px of content beside the
+ * 14rem sidebar — too narrow for a row of five figures, so a price broke
+ * its own currency symbol onto a second line. The Stitch design gives
+ * the content far more room, and an admin is a working surface rather
+ * than an article, so it does not want a reading measure.
+ */
+export const adminContainerClassName = 'mx-auto w-full max-w-[88rem] px-4 sm:px-6 lg:px-8';
 
 /**
  * Button hierarchy. Three weights, deliberately not more: a page that
@@ -57,7 +68,7 @@ export const adminContainerClassName = "mx-auto w-full max-w-5xl px-4 sm:px-6";
  * unrelated controls.
  */
 const buttonBase =
-  "inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2";
+  'inline-flex items-center justify-center gap-1.5 rounded-md px-3 py-2 text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2';
 
 /** The one action a page most wants you to take. At most one per header. */
 export const adminButtonPrimaryClassName = `${buttonBase} bg-foreground text-background hover:opacity-90 focus-visible:outline-foreground`;
@@ -74,14 +85,14 @@ export const adminButtonDangerClassName = `${buttonBase} border border-red-300 b
 
 /** A quieter control for inline/table use where a full button would shout. */
 export const adminButtonQuietClassName =
-  "inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground";
+  'inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground';
 
 /** Helper/description text under a heading or beside a field. */
-export const adminHelpTextClassName = "text-sm text-muted-foreground";
+export const adminHelpTextClassName = 'text-sm text-muted-foreground';
 
 /** The small uppercase label above a group of related fields or facts. */
 export const adminEyebrowClassName =
-  "text-xs font-medium tracking-wide text-muted-foreground uppercase";
+  'text-xs font-medium tracking-wide text-muted-foreground uppercase';
 
 // ---------------------------------------------------------------------------
 // Surface hierarchy.
@@ -98,32 +109,38 @@ export const adminEyebrowClassName =
 // ---------------------------------------------------------------------------
 
 /** The page's own column. No border, no background — the canvas shows through. */
-export const adminPageClassName = "flex flex-col gap-6";
+export const adminPageClassName = 'flex flex-col gap-6';
 
-/** One logical group of content. The default container for a section. */
+/**
+ * One logical group of content. The default container for a section.
+ *
+ * SHADOW, NOT BORDER. The project's Stitch design system separates an
+ * object from its ground with a soft shadow on a white card over a
+ * tinted page — it contains no bordered cards at all. Mixing the two
+ * conventions, a hard border AND a tinted ground, is what made this
+ * admin look muddier than either system on its own.
+ */
 export const adminPanelClassName =
-  "flex flex-col gap-4 rounded-lg border border-border bg-surface p-4 sm:p-5";
+  'flex flex-col gap-4 rounded-2xl bg-surface p-5 shadow-sm sm:p-6';
 
 /** A panel that holds a divided list, so rows can own their own padding. */
-export const adminPanelFlushClassName =
-  "overflow-hidden rounded-lg border border-border bg-surface";
+export const adminPanelFlushClassName = 'overflow-hidden rounded-2xl bg-surface shadow-sm';
 
 /**
  * Rows inside a flush panel, separated by hairlines rather than each being
  * its own card — the shape settings pages want, and what stops a list of
  * methods reading as a stack of unrelated forms.
  */
-export const adminDividedListClassName = "divide-y divide-border";
+export const adminDividedListClassName = 'divide-y divide-border';
 
 /** Secondary material nested inside a panel. */
-export const adminSubtleClassName =
-  "flex flex-col gap-2 rounded-md border border-border bg-surface-muted p-3";
+export const adminSubtleClassName = 'flex flex-col gap-2 rounded-xl bg-surface-muted p-4';
 
 /** A panel's own title row. */
-export const adminPanelTitleClassName = "text-sm font-semibold tracking-tight";
+export const adminPanelTitleClassName = 'text-sm font-semibold tracking-tight';
 
 /** One consistent control height, so inputs and buttons share a baseline. */
-export const adminControlHeightClassName = "min-h-9";
+export const adminControlHeightClassName = 'min-h-9';
 
 /** Marks a required field, as text rather than an unexplained asterisk. */
-export const adminRequiredClassName = "text-xs font-normal text-muted-foreground";
+export const adminRequiredClassName = 'text-xs font-normal text-muted-foreground';
