@@ -8,7 +8,7 @@ import {
 import { OrderStatusForm } from '../OrderStatusForm';
 import { BulkOrderStatusForm } from '../BulkOrderStatusForm';
 import { Pagination } from '../Pagination';
-import { listOrders, type ListOrdersOptions } from '@/lib/order-queries';
+import { listOrders, countOrdersByStatus, type ListOrdersOptions } from '@/lib/order-queries';
 import { formatVnd } from '../format';
 import Link from 'next/link';
 import {
@@ -78,7 +78,15 @@ export default async function OrdersPage({
   };
   // Read-only — see order-queries.ts. Nothing here writes to the database;
   // order creation/inventory reservation logic is untouched by this page.
-  const { orders, totalCount } = await listOrders(tenantId, listOptions);
+  const [{ orders, totalCount }, statusCounts] = await Promise.all([
+    listOrders(tenantId, listOptions),
+    // Deliberately WITHOUT the status filter: a tab must show its own
+    // count even while a different tab is selected.
+    countOrdersByStatus(tenantId, {
+      ...(q ? { search: q } : {}),
+      ...(range ? { placedFrom: range.start, placedBefore: range.end } : {}),
+    }),
+  ]);
 
   // Order Audit History: one batched read for every order on this page
   // rather than one per card. Authorization already happened above via
@@ -125,23 +133,25 @@ export default async function OrdersPage({
         </label>
         <label className="flex flex-col gap-1 text-xs">
           Placed from
-          <input type="date" name="from" defaultValue={range?.fromDate ?? ''} className={adminInputClassName} />
+          <input
+            type="date"
+            name="from"
+            defaultValue={range?.fromDate ?? ''}
+            className={adminInputClassName}
+          />
         </label>
         <label className="flex flex-col gap-1 text-xs">
           Placed to
-          <input type="date" name="to" defaultValue={range?.toDate ?? ''} className={adminInputClassName} />
+          <input
+            type="date"
+            name="to"
+            defaultValue={range?.toDate ?? ''}
+            className={adminInputClassName}
+          />
         </label>
-        <label className="flex flex-col gap-1 text-xs">
-          Status
-          <select name="status" defaultValue={status} className={adminInputClassName}>
-            <option value="">All</option>
-            {ORDER_STATUSES.map((s) => (
-              <option key={s} value={s}>
-                {s}
-              </option>
-            ))}
-          </select>
-        </label>
+        {/* The tabs own the status; this keeps the selected one when
+            the merchant changes a date or the search text. */}
+        {status && <input type="hidden" name="status" value={status} />}
         <button type="submit" className={`${adminButtonSecondaryClassName} py-1.5`}>
           Filter
         </button>
@@ -185,6 +195,49 @@ export default async function OrdersPage({
           <ExportCsvButton dataset="orders" label="orders" />
         </div>
       </div>
+
+      {/* Status tabs, each carrying its own count. A dropdown hides
+          both the options and the shape of the data behind one closed
+          control; tabs put "how many are waiting" on screen without a
+          click, which is the question this page is opened to answer.
+          Plain links, so each tab is its own URL and the back button
+          works. Current tab marked with aria-current, not colour alone. */}
+      <nav aria-label="Filter orders by status" className="flex flex-wrap gap-1">
+        {[{ value: '', label: 'All', count: statusCounts.reduce((t, r) => t + r.count, 0) }]
+          .concat(
+            statusCounts.map((row) => ({
+              value: row.status,
+              label: row.status,
+              count: row.count,
+            })),
+          )
+          .map((tab) => {
+            const params = new URLSearchParams();
+            if (q) params.set('q', q);
+            if (range) {
+              params.set('from', range.fromDate);
+              params.set('to', range.toDate);
+            }
+            if (tab.value) params.set('status', tab.value);
+            const query = params.toString();
+            const selected = status === tab.value;
+            return (
+              <Link
+                key={tab.value || 'all'}
+                href={`/tenant-admin/orders${query ? `?${query}` : ''}`}
+                aria-current={selected ? 'page' : undefined}
+                className={`inline-flex min-h-9 items-center gap-1.5 rounded-full border px-3 text-xs font-medium capitalize transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground ${
+                  selected
+                    ? 'border-transparent bg-foreground text-background'
+                    : 'border-border bg-surface hover:border-foreground/30'
+                }`}
+              >
+                {tab.label}
+                <span className="tabular-nums opacity-70">{tab.count}</span>
+              </Link>
+            );
+          })}
+      </nav>
 
       <BulkOrderStatusForm action={bulkUpdateOrderStatusAction} />
       {orders.length === 0 ? (
@@ -406,6 +459,21 @@ export default async function OrdersPage({
                     </div>
                   </div>
                 </details>
+
+                {/* A sibling of <details>, not a child, for the same
+                    reason the checkbox above is one: the detail page has
+                    to be reachable from a COLLAPSED row. Putting it
+                    inside meant an operator had to expand a row before
+                    they could leave it, which is the opposite of what a
+                    list is for. */}
+                <Link
+                  href={`/tenant-admin/orders/${order.id}`}
+                  aria-label={`View order ${order.id}`}
+                  className={`${adminButtonSecondaryClassName} shrink-0 self-start`}
+                >
+                  View<span className="sr-only"> order {order.id}</span>
+                  <span aria-hidden="true"> →</span>
+                </Link>
               </div>
 
               {/* Actions stay OUT of the disclosure: fulfilling an order is
@@ -415,16 +483,6 @@ export default async function OrdersPage({
                 (order.paymentProvider === 'bank_transfer_manual' &&
                   order.paymentStatus === 'pending')) && (
                 <div className="flex flex-wrap items-center gap-2 border-t border-border px-3 py-2">
-                  {/* The destination the list never had. Fulfillment and
-                      the expanded row both point here now, instead of
-                      making the operator re-find the order. */}
-                  <Link
-                    href={`/tenant-admin/orders/${order.id}`}
-                    aria-label={`Open order ${order.id}`}
-                    className={adminButtonSecondaryClassName}
-                  >
-                    Open order
-                  </Link>
                   {/* Manual bank transfer never gets a webhook — this is the
                     only way its Payment leaves "pending". Never shown for
                     bank_transfer_sepay_va, whose webhook is the sole

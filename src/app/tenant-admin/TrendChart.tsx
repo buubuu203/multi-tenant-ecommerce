@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import type { TrendPoint } from '@/lib/analytics/order-trend';
 import { formatVnd } from './format';
 import { adminPanelTitleClassName } from './styles';
@@ -10,10 +13,15 @@ import { adminPanelTitleClassName } from './styles';
  * to draw forty rectangles.
  *
  * ACCESSIBILITY. The SVG is decorative (`aria-hidden`) and the real
- * content is a table in the same component, visually hidden. A line on a
- * chart is not readable by a screen reader, and summarising it in an
- * aria-label would be a claim about shape rather than the numbers. The
- * table carries the actual values.
+ * content is a table in the same component, behind a disclosure. A line
+ * on a chart is not readable by a screen reader, and summarising it in
+ * an aria-label would be a claim about shape rather than the numbers.
+ * The table carries the actual values, and the hover readout below is a
+ * convenience for pointer users rather than the only way to a figure.
+ *
+ * The hover target is a full-height invisible band per day, not the mark
+ * itself: a 2px line and a short bar are almost impossible to hit, and a
+ * day with zero orders has no mark to hover at all.
  *
  * Every label names a value the chart reaches, and the viewBox leaves
  * room for the outermost labels so nothing is clipped.
@@ -41,6 +49,10 @@ export function TrendChart({
   title: string;
   caption: string;
 }) {
+  // Declared before the empty-series early return: a hook must run in
+  // the same order on every render.
+  const [active, setActive] = useState<number | null>(null);
+
   if (series.length === 0) {
     return (
       <section aria-labelledby="trend" className="flex flex-col gap-2">
@@ -98,6 +110,7 @@ export function TrendChart({
           className="h-44 w-full min-w-[480px]"
           role="presentation"
           aria-hidden="true"
+          onMouseLeave={() => setActive(null)}
         >
           {/* Baseline, so the bars sit on something. */}
           <line
@@ -132,6 +145,43 @@ export function TrendChart({
             strokeLinejoin="round"
             strokeLinecap="round"
           />
+          {/* The hovered day, marked on both series so the readout
+              below is unambiguous about which column it describes. */}
+          {active !== null && (
+            <g>
+              <line
+                x1={(PAD_LEFT + step * active + step / 2).toFixed(1)}
+                y1={PAD_TOP}
+                x2={(PAD_LEFT + step * active + step / 2).toFixed(1)}
+                y2={PAD_TOP + plotHeight}
+                stroke="currentColor"
+                strokeOpacity="0.35"
+                strokeDasharray="3 3"
+              />
+              <circle
+                cx={(PAD_LEFT + step * active + step / 2).toFixed(1)}
+                cy={(
+                  PAD_TOP +
+                  plotHeight -
+                  (series[active].orderValue / maxValue) * plotHeight
+                ).toFixed(1)}
+                r="3.5"
+                fill="currentColor"
+              />
+            </g>
+          )}
+          {/* Invisible full-height hit bands, one per day. */}
+          {series.map((point, index) => (
+            <rect
+              key={`hit-${point.date}`}
+              x={(PAD_LEFT + step * index).toFixed(1)}
+              y={PAD_TOP}
+              width={step.toFixed(1)}
+              height={plotHeight}
+              fill="transparent"
+              onMouseEnter={() => setActive(index)}
+            />
+          ))}
           {series.map((point, index) =>
             index % labelEvery === 0 || index === series.length - 1 ? (
               <text
@@ -149,6 +199,20 @@ export function TrendChart({
           )}
         </svg>
       </div>
+
+      {/* A fixed-height slot, so the block below does not jump as the
+          pointer moves across the chart. */}
+      <p className="min-h-5 text-xs" aria-live="off">
+        {active !== null ? (
+          <span className="font-medium">
+            {series[active].date} · {series[active].orders}{' '}
+            {series[active].orders === 1 ? 'order' : 'orders'} ·{' '}
+            {formatVnd(series[active].orderValue)}
+          </span>
+        ) : (
+          <span className="text-muted-foreground">Hover a day to read its figures.</span>
+        )}
+      </p>
 
       <p className="text-xs text-muted-foreground">
         Bars are orders placed. The line is order value, scaled to its own peak of{' '}
