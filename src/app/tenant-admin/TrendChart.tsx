@@ -71,13 +71,20 @@ export function TrendChart({
   const step = plotWidth / series.length;
   const barWidth = Math.max(1, Math.min(18, step * 0.62));
 
-  const valuePoints = series
-    .map((point, index) => {
-      const x = PAD_LEFT + step * index + step / 2;
-      const y = PAD_TOP + plotHeight - (point.orderValue / maxValue) * plotHeight;
-      return `${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(' ');
+  const coords = series.map((point, index) => ({
+    x: PAD_LEFT + step * index + step / 2,
+    y: PAD_TOP + plotHeight - (point.orderValue / maxValue) * plotHeight,
+  }));
+  const valuePoints = coords.map((c) => `${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ');
+  // The same path closed along the baseline, so the line can carry a
+  // soft fill underneath it the way the design does. A bare stroke on a
+  // white card reads as a wireframe.
+  const areaPath =
+    coords.length > 0
+      ? `M ${coords[0].x.toFixed(1)},${(PAD_TOP + plotHeight).toFixed(1)} ` +
+        coords.map((c) => `L ${c.x.toFixed(1)},${c.y.toFixed(1)}`).join(' ') +
+        ` L ${coords[coords.length - 1].x.toFixed(1)},${(PAD_TOP + plotHeight).toFixed(1)} Z`
+      : '';
 
   // Enough labels to orient, never so many they collide.
   const labelEvery = Math.max(1, Math.ceil(series.length / 7));
@@ -107,11 +114,17 @@ export function TrendChart({
       <div className="overflow-x-auto">
         <svg
           viewBox={`0 0 ${WIDTH} ${HEIGHT}`}
-          className="h-44 w-full min-w-[480px]"
+          className="h-48 w-full min-w-[480px] text-[color:var(--chart-accent)]"
           role="presentation"
           aria-hidden="true"
           onMouseLeave={() => setActive(null)}
         >
+          <defs>
+            <linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="currentColor" stopOpacity="0.20" />
+              <stop offset="100%" stopColor="currentColor" stopOpacity="0" />
+            </linearGradient>
+          </defs>
           {/* Baseline, so the bars sit on something. */}
           <line
             x1={PAD_LEFT}
@@ -133,15 +146,16 @@ export function TrendChart({
                 height={Math.max(0, height).toFixed(1)}
                 rx="1.5"
                 fill="currentColor"
-                fillOpacity="0.22"
+                fillOpacity="0.10"
               />
             );
           })}
+          {areaPath && <path d={areaPath} fill="url(#trend-fill)" stroke="none" />}
           <polyline
             points={valuePoints}
             fill="none"
             stroke="currentColor"
-            strokeWidth="1.75"
+            strokeWidth="2"
             strokeLinejoin="round"
             strokeLinecap="round"
           />
@@ -214,16 +228,20 @@ export function TrendChart({
         )}
       </p>
 
-      <p className="text-xs text-muted-foreground">
-        Bars are orders placed. The line is order value, scaled to its own peak of{' '}
-        {formatVnd(maxValue)} — the two axes are not comparable to each other.
-      </p>
-
       {/* The numbers, for anyone who cannot read the drawing. */}
       <details className="text-sm">
         <summary className="cursor-pointer text-xs text-muted-foreground">
-          Show these figures as a table
+          Figures and what they mean
         </summary>
+        {/* The caveats live here rather than under the chart. They are
+            not optional — order value is not revenue, and the two axes
+            are not comparable — but three paragraphs of them around
+            every card is what made this page read as a wall of text. */}
+        <p className="mt-2 text-xs text-muted-foreground">
+          Bars are orders placed. The line is order value, scaled to its own peak of{' '}
+          {formatVnd(maxValue)}, so the two axes are not comparable to each other. Order value
+          excludes cancelled orders and includes orders nobody has paid for — it is not revenue.
+        </p>
         <div className="mt-2 overflow-x-auto">
           <table className="w-full text-sm">
             <caption className="sr-only">{title}</caption>
