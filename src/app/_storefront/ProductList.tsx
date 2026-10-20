@@ -1,15 +1,15 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import type { TenantProduct, TenantProductVariant } from "./get-tenant-products";
-import { useCart } from "./cart-context";
-import { ProductMediaCarousel } from "./ProductMediaCarousel";
-import { compareByStartingPrice } from "@/lib/product-sort";
-import { isLowStock } from "@/lib/inventory-availability";
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import type { TenantProduct, TenantProductVariant } from './get-tenant-products';
+import { useCart } from './cart-context';
+import { ProductMediaCarousel } from './ProductMediaCarousel';
+import { compareByStartingPrice } from '@/lib/product-sort';
+import { isLowStock } from '@/lib/inventory-availability';
 
 function formatVnd(price: number): string {
-  return `${price.toLocaleString("vi-VN")} ₫`;
+  return `${price.toLocaleString('vi-VN')} ₫`;
 }
 
 // Step 40: a fixed, non-configurable threshold for the lightweight
@@ -53,7 +53,9 @@ export function isValueSelectable(
   targetOptionId: string,
   targetValueId: string,
 ): boolean {
-  const otherSelections = Object.entries(selection).filter(([optionId]) => optionId !== targetOptionId);
+  const otherSelections = Object.entries(selection).filter(
+    ([optionId]) => optionId !== targetOptionId,
+  );
   return variants.some((variant) => {
     const hasTarget = variant.options.some(
       (ov) => ov.variantOptionId === targetOptionId && ov.variantOptionValueId === targetValueId,
@@ -62,7 +64,9 @@ export function isValueSelectable(
       return false;
     }
     return otherSelections.every(([optionId, valueId]) =>
-      variant.options.some((ov) => ov.variantOptionId === optionId && ov.variantOptionValueId === valueId),
+      variant.options.some(
+        (ov) => ov.variantOptionId === optionId && ov.variantOptionValueId === valueId,
+      ),
     );
   });
 }
@@ -122,26 +126,44 @@ export function applySelection(
 // video's thumbnail is the video element itself (muted, no controls,
 // paused) with a play-indicator overlay, matching the same convention
 // used in Tenant Admin's ProductMediaGallery previews.
-export function MediaThumbnail({ media, alt }: { media: { type: "image" | "video"; url: string }; alt: string }) {
-  if (media.type === "image") {
+export function MediaThumbnail({
+  media,
+  alt,
+}: {
+  media: { type: 'image' | 'video'; url: string };
+  alt: string;
+}) {
+  if (media.type === 'image') {
     // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP
-    return <img src={media.url} alt={alt} className="aspect-square w-full rounded-md object-cover" />;
+    return (
+      <img src={media.url} alt={alt} className="aspect-square w-full rounded-md object-cover" />
+    );
   }
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded-md">
       <video src={media.url} muted className="h-full w-full object-cover" />
-      <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-2xl text-white">▶</span>
+      <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-2xl text-white">
+        ▶
+      </span>
     </div>
   );
 }
 
-export function ProductRow({ product, linkToDetail = true }: { product: TenantProduct; linkToDetail?: boolean }) {
+export function ProductRow({
+  product,
+  linkToDetail = true,
+}: {
+  product: TenantProduct;
+  linkToDetail?: boolean;
+}) {
   // Simple-product path: unchanged from before this step — a product with
   // exactly one variant carrying the combinationKey === "" sentinel (the
   // same convention product-mutations.ts and Tenant Admin already use)
   // renders exactly as it did before variant selection existed.
   const simpleVariant =
-    product.variants.length === 1 && product.variants[0].combinationKey === "" ? product.variants[0] : null;
+    product.variants.length === 1 && product.variants[0].combinationKey === ''
+      ? product.variants[0]
+      : null;
 
   // Derived purely from this product's own already-loaded variant data —
   // no extra fetch, one pass over variants/options.
@@ -152,7 +174,10 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     const byOption = new Map<string, { optionName: string; values: Map<string, string> }>();
     for (const variant of product.variants) {
       for (const ov of variant.options) {
-        const entry = byOption.get(ov.variantOptionId) ?? { optionName: ov.optionName, values: new Map<string, string>() };
+        const entry = byOption.get(ov.variantOptionId) ?? {
+          optionName: ov.optionName,
+          values: new Map<string, string>(),
+        };
         entry.values.set(ov.variantOptionValueId, ov.valueLabel);
         byOption.set(ov.variantOptionId, entry);
       }
@@ -211,7 +236,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // purely a display addition (strikethrough original + a "-X%" badge),
   // never a second price calculation. originalPrice/discountPercent are
   // only ever non-null together, when a discount is currently active.
-  const showDiscount = Boolean(resolvedVariant && !outOfStock && resolvedVariant.discountPercent !== null);
+  const showDiscount = Boolean(
+    resolvedVariant && !outOfStock && resolvedVariant.discountPercent !== null,
+  );
   const originalPriceDisplay =
     resolvedVariant?.originalPrice != null ? formatVnd(resolvedVariant.originalPrice) : null;
 
@@ -224,19 +251,19 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     // information a shopper still wants from an unavailable item — what
     // it costs, for deciding whether to come back for it.
     priceDisplay = formatVnd(resolvedVariant.price);
-    addToCartLabel = "Out of stock";
+    addToCartLabel = 'Out of stock';
   } else if (resolvedVariant) {
     // Covers both the simple-product case (resolvedVariant === simpleVariant,
     // unchanged price behavior from before Step 24) and a fully-resolved
     // variant-bearing selection.
     priceDisplay = formatVnd(resolvedVariant.price);
-    addToCartLabel = atAvailableLimit ? "Max in cart" : "Add to cart";
+    addToCartLabel = atAvailableLimit ? 'Max in cart' : 'Add to cart';
   } else if (hasCompleteSelection) {
-    priceDisplay = "Combination unavailable";
-    addToCartLabel = "Combination unavailable";
+    priceDisplay = 'Combination unavailable';
+    addToCartLabel = 'Combination unavailable';
   } else {
-    priceDisplay = "Select options";
-    addToCartLabel = "Select options";
+    priceDisplay = 'Select options';
+    addToCartLabel = 'Select options';
   }
 
   function handleAddToCart() {
@@ -256,8 +283,8 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       ? [...resolvedVariant.options]
           .sort((a, b) => a.optionName.localeCompare(b.optionName))
           .map((o) => `${o.optionName}: ${o.valueLabel}`)
-          .join(" / ")
-      : "";
+          .join(' / ')
+      : '';
     addItem({
       productVariantId: resolvedVariant.id,
       productId: product.id,
@@ -265,7 +292,10 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       variantLabel,
       price: resolvedVariant.price,
       ...(resolvedVariant.originalPrice != null && resolvedVariant.discountPercent != null
-        ? { originalPrice: resolvedVariant.originalPrice, discountPercent: resolvedVariant.discountPercent }
+        ? {
+            originalPrice: resolvedVariant.originalPrice,
+            discountPercent: resolvedVariant.discountPercent,
+          }
         : {}),
       imageUrl: primaryMedia?.url,
     });
@@ -277,30 +307,47 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // stays legible as more get added — the card view keeps the original
   // compact wrapped-row layout, since a list card has no room to spare.
   const optionsBlock = !simpleVariant && options.length > 0 && (
-    <div className={linkToDetail ? "flex flex-wrap gap-3 text-xs" : "flex flex-col gap-3 text-sm"}>
+    <div className={linkToDetail ? 'flex flex-wrap gap-3 text-xs' : 'flex flex-col gap-3 text-sm'}>
       {options.map((option) => {
-        const annotatedValues = getAvailableValues(product.variants, option.variantOptionId, option.values, selection);
+        const annotatedValues = getAvailableValues(
+          product.variants,
+          option.variantOptionId,
+          option.values,
+          selection,
+        );
         return (
           <label key={option.variantOptionId} className="flex flex-col gap-1">
-            <span className={linkToDetail ? "text-muted-foreground" : "text-xs font-medium tracking-wide text-muted-foreground uppercase"}>
+            <span
+              className={
+                linkToDetail
+                  ? 'text-muted-foreground'
+                  : 'text-xs font-medium tracking-wide text-muted-foreground uppercase'
+              }
+            >
               {option.optionName}
             </span>
             <select
               className={
                 linkToDetail
-                  ? "rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-                  : "w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+                  ? 'rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
+                  : 'w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
               }
-              value={selection[option.variantOptionId] ?? ""}
+              value={selection[option.variantOptionId] ?? ''}
               onChange={(e) =>
-                setSelection((prev) => applySelection(product.variants, prev, option.variantOptionId, e.target.value))
+                setSelection((prev) =>
+                  applySelection(product.variants, prev, option.variantOptionId, e.target.value),
+                )
               }
             >
               <option value="">Select {option.optionName}</option>
               {annotatedValues.map((value) => (
-                <option key={value.variantOptionValueId} value={value.variantOptionValueId} disabled={!value.selectable}>
+                <option
+                  key={value.variantOptionValueId}
+                  value={value.variantOptionValueId}
+                  disabled={!value.selectable}
+                >
                   {value.valueLabel}
-                  {value.selectable ? "" : " (unavailable)"}
+                  {value.selectable ? '' : ' (unavailable)'}
                 </option>
               ))}
             </select>
@@ -317,11 +364,11 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       disabled={!resolvedVariant || outOfStock || atAvailableLimit}
       className={
         linkToDetail
-          ? "w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-          : "w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          ? 'w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
+          : 'w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
       }
     >
-      {showAddedFeedback ? "Added to cart" : addToCartLabel}
+      {showAddedFeedback ? 'Added to cart' : addToCartLabel}
     </button>
   );
 
@@ -344,8 +391,8 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           // ~1px line beside a squeezed text column — a product without
           // images looked broken rather than simply image-less.
           hasMedia
-            ? "grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12"
-            : "grid gap-8"
+            ? 'grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12'
+            : 'grid gap-8'
         }
       >
         {hasMedia && (
@@ -355,11 +402,15 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         )}
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Product details</p>
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Product details
+            </p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-2">
               {showDiscount && originalPriceDisplay && (
-                <span className="money text-sm text-muted-foreground line-through">{originalPriceDisplay}</span>
+                <span className="money text-sm text-muted-foreground line-through">
+                  {originalPriceDisplay}
+                </span>
               )}
               <span className="money text-xl font-semibold">{priceDisplay}</span>
               {showDiscount && resolvedVariant?.discountPercent != null && (
@@ -367,7 +418,9 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
                   −{resolvedVariant.discountPercent}%
                 </span>
               )}
-              {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
+              {lowStockHint && (
+                <span className="text-xs text-muted-foreground">{lowStockHint}</span>
+              )}
             </div>
           </div>
 
@@ -411,7 +464,10 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
           different height and shape from their neighbours — the grid
           looked broken rather than the product looking image-less. The
           placeholder says which it is. */}
-      <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-xl bg-surface-muted">
+      <Link
+        href={`/products/${product.id}`}
+        className="block overflow-hidden rounded-xl bg-surface-muted"
+      >
         {primaryMedia ? (
           <MediaThumbnail media={primaryMedia} alt={product.name} />
         ) : (
@@ -422,13 +478,23 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       </Link>
 
       <div className="flex flex-col gap-1">
-        <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline">
+        <Link
+          href={`/products/${product.id}`}
+          className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline"
+        >
           {product.name}
         </Link>
         <div className="flex flex-wrap items-baseline justify-between gap-2">
-          <div className="flex items-baseline gap-1.5">
+          {/* flex-wrap + min-w-0: at 375px a discounted product has three
+              things on this row (old price, new price, the −N% pill) and
+              without wrapping the pill was clipped by the card edge.
+              whitespace-nowrap keeps "250.000 ₫" from breaking before its
+              currency symbol. */}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
             {showDiscount && originalPriceDisplay && (
-              <span className="money text-xs text-muted-foreground line-through">{originalPriceDisplay}</span>
+              <span className="money text-xs whitespace-nowrap text-muted-foreground line-through">
+                {originalPriceDisplay}
+              </span>
             )}
             <span className="money text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
             {showDiscount && resolvedVariant?.discountPercent != null && (
@@ -466,19 +532,19 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   );
 }
 
-type SortOption = "featured" | "price_asc" | "price_desc";
+type SortOption = 'featured' | 'price_asc' | 'price_desc';
 const SORT_LABELS: Record<SortOption, string> = {
-  featured: "Featured",
-  price_asc: "Price: Low to High",
-  price_desc: "Price: High to Low",
+  featured: 'Featured',
+  price_asc: 'Price: Low to High',
+  price_desc: 'Price: High to Low',
 };
 
 export function ProductList({ products }: { products: TenantProduct[] }) {
-  const [sort, setSort] = useState<SortOption>("featured");
+  const [sort, setSort] = useState<SortOption>('featured');
 
   const sortedProducts = useMemo(() => {
-    if (sort === "featured") return products;
-    const withDirection: 1 | -1 = sort === "price_asc" ? 1 : -1;
+    if (sort === 'featured') return products;
+    const withDirection: 1 | -1 = sort === 'price_asc' ? 1 : -1;
     // A fresh array — never mutates the `products` prop, since the same
     // array reference is also used to build availabilityByVariant in the
     // parent page.
@@ -493,7 +559,9 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
     <section className="flex flex-col gap-5 px-4 py-10 sm:px-6 sm:py-16">
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Shop the collection</p>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Shop the collection
+          </p>
           <h2 className="mt-1 text-xl font-semibold tracking-tight">Products</h2>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
