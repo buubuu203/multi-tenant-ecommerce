@@ -1,6 +1,12 @@
-import { getScopedDb } from "./db/tenant-db";
-import { getStoredPaymentInstructions } from "./payments/payment-service";
-import type { PaymentInstructions } from "./payments/provider";
+import { getScopedDb } from './db/tenant-db';
+// groupBy is NOT covered by getScopedDb()'s extension (it has no case in
+// scopeArgsForOperation), so the plain client is used with an explicit
+// tenantId rather than a scoped one that would not actually scope.
+import { prisma } from './prisma';
+import { getStoredPaymentInstructions } from './payments/payment-service';
+import type { PaymentInstructions } from './payments/provider';
+import type { Payment } from '@/generated/prisma/client';
+import { normalizedPhoneVariants } from './validation/phone';
 
 // Purpose-built, read-only shapes — never leak the raw Prisma Order/
 // OrderItem/ProductVariant models into the UI. combinationLabel is built
@@ -14,6 +20,12 @@ export type OrderListItem = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  // Product Discount (V1): snapshots taken at order-creation time (see
+  // order-mutations.ts) — both null means no discount applied to this
+  // line. Never re-derived from the live Discount row, which may since
+  // have changed or been deleted.
+  originalUnitPrice: number | null;
+  discountPercent: number | null;
 };
 
 export type OrderListEntry = {
@@ -89,7 +101,7 @@ export type OrderListEntry = {
 // combinationKey, which is never read here at all. Module-scoped (not
 // redefined per-call) so both listOrders() and getOrderForCustomer() share
 // exactly one implementation.
-function formatCombination(
+export function formatCombination(
   optionValues: { variantOptionId: string; variantOptionValueId: string }[],
   optionNameById: Map<string, string>,
   valueLabelById: Map<string, string>,
@@ -99,35 +111,147 @@ function formatCombination(
   }
   return optionValues
     .map((ov) => ({
-      optionName: optionNameById.get(ov.variantOptionId) ?? "?",
-      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? "?",
+      optionName: optionNameById.get(ov.variantOptionId) ?? '?',
+      valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? '?',
     }))
     .sort((a, b) => a.optionName.localeCompare(b.optionName))
     .map((pair) => `${pair.optionName}: ${pair.valueLabel}`)
-    .join(" / ");
+    .join(' / ');
 }
 
-export async function listOrders(tenantId: string): Promise<OrderListEntry[]> {
-  const db = getScopedDb(tenantId);
+// Phase 2 (Tenant Admin route split, Orders at scale): status filter,
+// free-text search (order id / customer name / customer email), and
+// server-side pagination — all applied at the Prisma query level (never
+// "fetch everything, filter in application code"), so a growing order
+// history doesn't mean a growing page-load cost. Every param is optional;
+// calling with no options preserves the exact previous behavior (every
+// order, newest first) for any other caller.
+export type ListOrdersOptions = {
+  status?: 'pending' | 'fulfilled' | 'cancelled';
+  search?: string;
+  page?: number;
+  pageSize?: number;
+  /**
+   * Half-open creation window: [placedFrom, placedBefore). Both are UTC
+   * instants already resolved from the merchant's local dates by
+   * resolveAnalyticsRange(), so the boundary rules — inclusive days,
+   * Asia/Ho_Chi_Minh, invalid input never widening the query — are
+   * defined in exactly one place rather than re-decided here.
+   */
+  placedFrom?: Date;
+  placedBefore?: Date;
+};
 
-  const orders = await db.order.findMany({
-    where: { tenantId },
-    orderBy: { createdAt: "desc" },
-    include: {
-      customer: true,
-      payment: true,
-      items: {
-        include: {
-          productVariant: {
-            include: {
-              product: true,
-              optionValues: true,
+/**
+ * How many orders sit in each status, for the Orders status tabs.
+ *
+ * Counts the WHOLE filtered set, not the current page, and deliberately
+ * ignores the status filter itself — a tab has to show its own count
+ * even while another tab is selected, or the tabs become useless the
+ * moment you use one. The date and search filters DO apply, so the tabs
+ * describe the same set the list is drawn from.
+ *
+ * One grouped query, bounded by the status enum rather than by how many
+ * orders exist.
+ */
+export async function countOrdersByStatus(
+  tenantId: string,
+  options?: Pick<ListOrdersOptions, 'search' | 'placedFrom' | 'placedBefore'>,
+): Promise<{ status: string; count: number }[]> {
+  const search = options?.search?.trim();
+
+  const groups = await prisma.order.groupBy({
+    by: ['status'],
+    where: {
+      tenantId,
+      ...(options?.placedFrom || options?.placedBefore
+        ? {
+            createdAt: {
+              ...(options.placedFrom ? { gte: options.placedFrom } : {}),
+              ...(options.placedBefore ? { lt: options.placedBefore } : {}),
+            },
+          }
+        : {}),
+      ...(search
+        ? {
+            OR: [
+              { id: { contains: search, mode: 'insensitive' as const } },
+              { customer: { name: { contains: search, mode: 'insensitive' as const } } },
+              { customer: { email: { contains: search, mode: 'insensitive' as const } } },
+            ],
+          }
+        : {}),
+    },
+    _count: { _all: true },
+  });
+
+  const counts = new Map<string, number>(groups.map((g) => [String(g.status), g._count._all]));
+  // Every status, so a tab with no orders reads as 0 rather than vanishing.
+  return (['pending', 'fulfilled', 'cancelled'] as const).map((status) => ({
+    status,
+    count: counts.get(status) ?? 0,
+  }));
+}
+
+export async function listOrders(
+  tenantId: string,
+  options?: ListOrdersOptions,
+): Promise<{ orders: OrderListEntry[]; totalCount: number }> {
+  const db = getScopedDb(tenantId);
+  const page = options?.page && options.page > 0 ? Math.floor(options.page) : 1;
+  const pageSize = options?.pageSize && options.pageSize > 0 ? Math.floor(options.pageSize) : 20;
+  const search = options?.search?.trim();
+
+  const where = {
+    tenantId,
+    ...(options?.status ? { status: options.status } : {}),
+    ...(options?.placedFrom || options?.placedBefore
+      ? {
+          createdAt: {
+            ...(options.placedFrom ? { gte: options.placedFrom } : {}),
+            ...(options.placedBefore ? { lt: options.placedBefore } : {}),
+          },
+        }
+      : {}),
+    ...(search
+      ? {
+          OR: [
+            { id: { contains: search, mode: 'insensitive' as const } },
+            { customer: { name: { contains: search, mode: 'insensitive' as const } } },
+            { customer: { email: { contains: search, mode: 'insensitive' as const } } },
+          ],
+        }
+      : {}),
+  };
+
+  const [orders, totalCount] = await Promise.all([
+    db.order.findMany({
+      where,
+      // id is a tiebreaker, not decoration: createdAt alone is not unique
+      // (orders placed in the same millisecond tie), and a non-deterministic
+      // sort under LIMIT/OFFSET can show the same order on two pages or
+      // skip one entirely. That matters for the paginated UI and even more
+      // for the CSV export, which walks every page.
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      skip: (page - 1) * pageSize,
+      take: pageSize,
+      include: {
+        customer: true,
+        payment: true,
+        items: {
+          include: {
+            productVariant: {
+              include: {
+                product: true,
+                optionValues: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+    db.order.count({ where }),
+  ]);
 
   const variantOptionIds = new Set<string>();
   const variantOptionValueIds = new Set<string>();
@@ -145,20 +269,28 @@ export async function listOrders(tenantId: string): Promise<OrderListEntry[]> {
       ? db.variantOption.findMany({ where: { tenantId, id: { in: [...variantOptionIds] } } })
       : Promise.resolve([]),
     variantOptionValueIds.size > 0
-      ? db.variantOptionValue.findMany({ where: { tenantId, id: { in: [...variantOptionValueIds] } } })
+      ? db.variantOptionValue.findMany({
+          where: { tenantId, id: { in: [...variantOptionValueIds] } },
+        })
       : Promise.resolve([]),
   ]);
   const optionNameById = new Map(variantOptions.map((o) => [o.id, o.name]));
   const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
 
-  return orders.map((order) => {
+  const mapped = orders.map((order) => {
     const items: OrderListItem[] = order.items.map((item) => ({
       id: item.id,
       productName: item.productVariant.product.name,
-      combinationLabel: formatCombination(item.productVariant.optionValues, optionNameById, valueLabelById),
+      combinationLabel: formatCombination(
+        item.productVariant.optionValues,
+        optionNameById,
+        valueLabelById,
+      ),
       quantity: item.quantity,
       unitPrice: item.price,
       lineTotal: item.price * item.quantity, // integer VND * integer quantity — no floating point involved
+      originalUnitPrice: item.originalUnitPrice,
+      discountPercent: item.discountPercent,
     }));
 
     return {
@@ -186,6 +318,8 @@ export async function listOrders(tenantId: string): Promise<OrderListEntry[]> {
       shippingNote: order.shippingNote,
     };
   });
+
+  return { orders: mapped, totalCount };
 }
 
 // Guest order lookup (no customer accounts) — deliberately a SMALLER shape
@@ -210,6 +344,9 @@ export type CustomerOrderItem = {
   quantity: number;
   unitPrice: number;
   lineTotal: number;
+  // Product Discount (V1): see OrderListItem's identical fields.
+  originalUnitPrice: number | null;
+  discountPercent: number | null;
 };
 
 export type CustomerOrderView = {
@@ -265,75 +402,114 @@ export type CustomerOrderView = {
  * email only (Postgres `mode: "insensitive"`), matching how a guest would
  * naturally retype an email — the order id itself must match exactly.
  */
-export async function getOrderForCustomer(
-  tenantId: string,
-  orderId: string,
-  email: string,
-): Promise<CustomerOrderView | null> {
-  const trimmedOrderId = orderId.trim();
-  const trimmedEmail = email.trim();
-  if (!trimmedOrderId || !trimmedEmail) {
-    return null;
-  }
-
-  const db = getScopedDb(tenantId);
-
-  const order = await db.order.findFirst({
-    where: {
-      id: trimmedOrderId,
-      tenantId,
-      customer: { email: { equals: trimmedEmail, mode: "insensitive" } },
-    },
+// Shared by every guest-lookup query below (single-order and
+// multi-order alike) — the `include` shape and the raw-row ->
+// CustomerOrderView mapping were previously duplicated verbatim across
+// getOrderForCustomer/getOrdersForCustomerEmail; the two NEW lookup
+// functions (by phone, by name+phone) would otherwise have been a THIRD
+// and FOURTH copy of the exact same ~40 lines. The different `where`
+// clauses (email vs phone vs name+phone) stay separate, deliberately —
+// that's the "two things that look similar but change for different
+// reasons" duplication this file's own existing doc comments already
+// call out as fine; the mapping logic below is not that kind.
+const CUSTOMER_ORDER_INCLUDE = {
+  payment: true,
+  items: {
     include: {
-      payment: true,
-      items: {
+      productVariant: {
         include: {
-          productVariant: {
-            include: {
-              // Step 50: only the primary (sortOrder 0) media item — this
-              // is a thumbnail on an order line, not a full gallery.
-              product: { include: { media: { where: { sortOrder: 0 }, take: 1 } } },
-              optionValues: true,
-            },
-          },
+          // Step 50: only the primary (sortOrder 0) media item — this is
+          // a thumbnail on an order line, not a full gallery.
+          product: { include: { media: { where: { sortOrder: 0 as const }, take: 1 } } },
+          optionValues: true,
         },
       },
     },
-  });
-  if (!order) {
-    return null;
-  }
+  },
+} as const;
 
+type RawCustomerOrder = {
+  id: string;
+  status: string;
+  paymentMethod: string;
+  createdAt: Date;
+  shippingAmount: number;
+  shippingMethodName: string | null;
+  shippingAddress: string;
+  shippingWard: string;
+  shippingDistrict: string;
+  shippingCity: string;
+  shippingNote: string | null;
+  payment: Payment | null;
+  items: {
+    quantity: number;
+    price: number;
+    originalUnitPrice: number | null;
+    discountPercent: number | null;
+    productVariant: {
+      product: { name: string; media: { url: string }[] };
+      optionValues: { variantOptionId: string; variantOptionValueId: string }[];
+    };
+  }[];
+};
+
+// Batch-resolves every VariantOption/VariantOptionValue name referenced
+// across a set of orders in one pair of queries — same N+1-avoidance
+// reasoning as listOrders() above, just parameterized over "however many
+// orders this particular lookup returned" (one, for a single-order
+// lookup; N, for a history-style lookup).
+async function resolveVariantLabelMaps(tenantId: string, orders: RawCustomerOrder[]) {
+  const db = getScopedDb(tenantId);
   const variantOptionIds = new Set<string>();
   const variantOptionValueIds = new Set<string>();
-  for (const item of order.items) {
-    for (const ov of item.productVariant.optionValues) {
-      variantOptionIds.add(ov.variantOptionId);
-      variantOptionValueIds.add(ov.variantOptionValueId);
+  for (const order of orders) {
+    for (const item of order.items) {
+      for (const ov of item.productVariant.optionValues) {
+        variantOptionIds.add(ov.variantOptionId);
+        variantOptionValueIds.add(ov.variantOptionValueId);
+      }
     }
   }
-
   const [variantOptions, variantOptionValues] = await Promise.all([
     variantOptionIds.size > 0
       ? db.variantOption.findMany({ where: { tenantId, id: { in: [...variantOptionIds] } } })
       : Promise.resolve([]),
     variantOptionValueIds.size > 0
-      ? db.variantOptionValue.findMany({ where: { tenantId, id: { in: [...variantOptionValueIds] } } })
+      ? db.variantOptionValue.findMany({
+          where: { tenantId, id: { in: [...variantOptionValueIds] } },
+        })
       : Promise.resolve([]),
   ]);
-  const optionNameById = new Map(variantOptions.map((o) => [o.id, o.name]));
-  const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
+  return {
+    optionNameById: new Map(variantOptions.map((o) => [o.id, o.name])),
+    valueLabelById: new Map(variantOptionValues.map((v) => [v.id, v.value])),
+  };
+}
 
+async function toCustomerOrderView(
+  tenantId: string,
+  order: RawCustomerOrder,
+  optionNameById: Map<string, string>,
+  valueLabelById: Map<string, string>,
+): Promise<CustomerOrderView> {
   const items: CustomerOrderItem[] = order.items.map((item) => ({
     productName: item.productVariant.product.name,
     imageUrl: item.productVariant.product.media[0]?.url ?? null,
-    combinationLabel: formatCombination(item.productVariant.optionValues, optionNameById, valueLabelById),
+    combinationLabel: formatCombination(
+      item.productVariant.optionValues,
+      optionNameById,
+      valueLabelById,
+    ),
     quantity: item.quantity,
     unitPrice: item.price,
     lineTotal: item.price * item.quantity,
+    originalUnitPrice: item.originalUnitPrice,
+    discountPercent: item.discountPercent,
   }));
 
-  const paymentInstructions = order.payment ? await getStoredPaymentInstructions(tenantId, order.payment) : null;
+  const paymentInstructions = order.payment
+    ? await getStoredPaymentInstructions(tenantId, order.payment)
+    : null;
 
   return {
     id: order.id,
@@ -355,6 +531,134 @@ export async function getOrderForCustomer(
   };
 }
 
+export async function getOrderForCustomer(
+  tenantId: string,
+  orderId: string,
+  email: string,
+): Promise<CustomerOrderView | null> {
+  const trimmedOrderId = orderId.trim();
+  const trimmedEmail = email.trim();
+  if (!trimmedOrderId || !trimmedEmail) {
+    return null;
+  }
+
+  const db = getScopedDb(tenantId);
+
+  const order = await db.order.findFirst({
+    where: {
+      id: trimmedOrderId,
+      tenantId,
+      customer: { email: { equals: trimmedEmail, mode: 'insensitive' } },
+    },
+    include: CUSTOMER_ORDER_INCLUDE,
+  });
+  if (!order) {
+    return null;
+  }
+
+  const { optionNameById, valueLabelById } = await resolveVariantLabelMaps(tenantId, [order]);
+  return toCustomerOrderView(tenantId, order, optionNameById, valueLabelById);
+}
+
+/**
+ * Order Lookup by phone (V1): the exact same security posture as
+ * getOrderForCustomer() above — Order ID + a second proof-of-ownership
+ * field, here the checkout phone number instead of the checkout email.
+ * Order ID is a high-entropy UUID; requiring it AND a matching phone is
+ * the same bar as requiring it AND a matching email, not a weaker one.
+ *
+ * Matches EITHER stored phone form (`0xxx` / `+84xxx` — see
+ * normalizedPhoneVariants()'s doc comment for why both must be tried)
+ * rather than rewriting historical Customer.phone data, which this V1
+ * deliberately does not touch.
+ *
+ * Returns null uniformly for every failure case, same as
+ * getOrderForCustomer() — never distinguishes "no such order" from
+ * "wrong phone" from "wrong tenant."
+ */
+export async function getOrderForCustomerByPhone(
+  tenantId: string,
+  orderId: string,
+  phone: string,
+): Promise<CustomerOrderView | null> {
+  const trimmedOrderId = orderId.trim();
+  const phoneVariants = normalizedPhoneVariants(phone);
+  if (!trimmedOrderId || phoneVariants.length === 0) {
+    return null;
+  }
+
+  const db = getScopedDb(tenantId);
+
+  const order = await db.order.findFirst({
+    where: {
+      id: trimmedOrderId,
+      tenantId,
+      customer: { phone: { in: phoneVariants } },
+    },
+    include: CUSTOMER_ORDER_INCLUDE,
+  });
+  if (!order) {
+    return null;
+  }
+
+  const { optionNameById, valueLabelById } = await resolveVariantLabelMaps(tenantId, [order]);
+  return toCustomerOrderView(tenantId, order, optionNameById, valueLabelById);
+}
+
+/**
+ * Order Lookup by name + phone (V1): a "history" style lookup — every
+ * order under this tenant matching BOTH the given name AND phone —
+ * deliberately requiring BOTH, never either alone.
+ *
+ * Name and phone are each individually low-entropy (many people share a
+ * name; a phone number can be known to more than just its owner, e.g. a
+ * family plan) — see this repo's roadmap doc for the explicit decision
+ * that neither may ever be used ALONE as a full-history search vector,
+ * unlike email (see getOrdersForCustomerEmail()), which this V1 treats as
+ * an already-accepted, higher-entropy exception. Combining two
+ * independently-weak factors raises the bar close to email-alone without
+ * requiring a schema change to store a stronger identifier.
+ *
+ * Exact (not fuzzy/`contains`) match on both fields, case-insensitive on
+ * name only (trimmed) — a `contains` match here would make the two-factor
+ * requirement meaningfully weaker (e.g. a one-character name substring
+ * matching many customers), defeating the reason both fields are
+ * required together.
+ */
+export async function getOrdersForCustomerNameAndPhone(
+  tenantId: string,
+  name: string,
+  phone: string,
+): Promise<CustomerOrderView[]> {
+  const trimmedName = name.trim();
+  const phoneVariants = normalizedPhoneVariants(phone);
+  if (!trimmedName || phoneVariants.length === 0) {
+    return [];
+  }
+
+  const db = getScopedDb(tenantId);
+
+  const orders = await db.order.findMany({
+    where: {
+      tenantId,
+      customer: {
+        name: { equals: trimmedName, mode: 'insensitive' },
+        phone: { in: phoneVariants },
+      },
+    },
+    orderBy: { createdAt: 'desc' },
+    include: CUSTOMER_ORDER_INCLUDE,
+  });
+  if (orders.length === 0) {
+    return [];
+  }
+
+  const { optionNameById, valueLabelById } = await resolveVariantLabelMaps(tenantId, orders);
+  return Promise.all(
+    orders.map((order) => toCustomerOrderView(tenantId, order, optionNameById, valueLabelById)),
+  );
+}
+
 /**
  * Order history for a guest customer — every order under this tenant
  * placed with this email, newest first. Same access-control posture as
@@ -368,7 +672,10 @@ export async function getOrderForCustomer(
  * marginal reuse — the duplication here is the "two things that look
  * similar but change for different reasons" kind, not the harmful kind.
  */
-export async function getOrdersForCustomerEmail(tenantId: string, email: string): Promise<CustomerOrderView[]> {
+export async function getOrdersForCustomerEmail(
+  tenantId: string,
+  email: string,
+): Promise<CustomerOrderView[]> {
   const trimmedEmail = email.trim();
   if (!trimmedEmail) {
     return [];
@@ -379,80 +686,17 @@ export async function getOrdersForCustomerEmail(tenantId: string, email: string)
   const orders = await db.order.findMany({
     where: {
       tenantId,
-      customer: { email: { equals: trimmedEmail, mode: "insensitive" } },
+      customer: { email: { equals: trimmedEmail, mode: 'insensitive' } },
     },
-    orderBy: { createdAt: "desc" },
-    include: {
-      payment: true,
-      items: {
-        include: {
-          productVariant: {
-            include: {
-              product: { include: { media: { where: { sortOrder: 0 }, take: 1 } } },
-              optionValues: true,
-            },
-          },
-        },
-      },
-    },
+    orderBy: { createdAt: 'desc' },
+    include: CUSTOMER_ORDER_INCLUDE,
   });
   if (orders.length === 0) {
     return [];
   }
 
-  const variantOptionIds = new Set<string>();
-  const variantOptionValueIds = new Set<string>();
-  for (const order of orders) {
-    for (const item of order.items) {
-      for (const ov of item.productVariant.optionValues) {
-        variantOptionIds.add(ov.variantOptionId);
-        variantOptionValueIds.add(ov.variantOptionValueId);
-      }
-    }
-  }
-
-  const [variantOptions, variantOptionValues] = await Promise.all([
-    variantOptionIds.size > 0
-      ? db.variantOption.findMany({ where: { tenantId, id: { in: [...variantOptionIds] } } })
-      : Promise.resolve([]),
-    variantOptionValueIds.size > 0
-      ? db.variantOptionValue.findMany({ where: { tenantId, id: { in: [...variantOptionValueIds] } } })
-      : Promise.resolve([]),
-  ]);
-  const optionNameById = new Map(variantOptions.map((o) => [o.id, o.name]));
-  const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
-
+  const { optionNameById, valueLabelById } = await resolveVariantLabelMaps(tenantId, orders);
   return Promise.all(
-    orders.map(async (order) => {
-      const items: CustomerOrderItem[] = order.items.map((item) => ({
-        productName: item.productVariant.product.name,
-        imageUrl: item.productVariant.product.media[0]?.url ?? null,
-        combinationLabel: formatCombination(item.productVariant.optionValues, optionNameById, valueLabelById),
-        quantity: item.quantity,
-        unitPrice: item.price,
-        lineTotal: item.price * item.quantity,
-      }));
-
-      const paymentInstructions = order.payment ? await getStoredPaymentInstructions(tenantId, order.payment) : null;
-
-      return {
-        id: order.id,
-        status: order.status,
-        paymentMethod: order.paymentMethod,
-        paymentStatus: order.payment?.status ?? null,
-        createdAt: order.createdAt,
-        items,
-        subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
-        shippingAmount: order.shippingAmount,
-        shippingMethodName: order.shippingMethodName,
-        total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
-        shippingAddress: order.shippingAddress,
-        shippingWard: order.shippingWard,
-        shippingDistrict: order.shippingDistrict,
-        shippingCity: order.shippingCity,
-        shippingNote: order.shippingNote,
-        paymentInstructions,
-      };
-    }),
+    orders.map((order) => toCustomerOrderView(tenantId, order, optionNameById, valueLabelById)),
   );
 }

@@ -2,6 +2,9 @@
 
 import { headers } from "next/headers";
 import { createOrder } from "@/lib/order-mutations";
+import { prisma } from "@/lib/prisma";
+import { applyDiscount } from "@/lib/discounts";
+import type { CurrentPrice } from "@/lib/cart-reconcile";
 import { createPaymentForOrder } from "@/lib/payments/payment-service";
 import type { PaymentInstructions } from "@/lib/payments/provider";
 import type { PaymentMethod } from "@/generated/prisma/client";
@@ -136,4 +139,62 @@ export async function checkoutAction(
   }
 
   return { success: true, data: { orderId: result.data.orderId, instructions: paymentResult.instructions } };
+}
+
+/**
+ * Cart Price Reconciliation: returns the CURRENT authoritative price of
+ * each requested variant, so the checkout UI can confirm the customer is
+ * looking at today's prices before they submit (see cart-reconcile.ts).
+ *
+ * Reads the same two things order-mutations.ts reads to charge — the
+ * ProductVariant row and its Product's Discount — through the same
+ * applyDiscount() helper, so what this returns is by construction what
+ * createOrder() would snapshot a moment later. It is a read-only
+ * preview, not a price quote the client can hold or replay: createOrder()
+ * still re-reads and snapshots price itself, and accepts no price from
+ * the client at all.
+ *
+ * tenantId comes from the trusted `x-tenant-id` header, never a client
+ * argument, and filters the variant query — so this can only ever price
+ * variants belonging to the store the request was actually made to, and
+ * a variant id guessed from another tenant simply comes back absent.
+ * Archived variants and non-active products are likewise omitted rather
+ * than priced, matching createOrder()'s own refusal to sell them.
+ */
+export async function getCurrentCartPrices(
+  items: CheckoutItemInput[],
+): Promise<ActionResult<CurrentPrice[]>> {
+  const headerList = await headers();
+  const tenantId = headerList.get("x-tenant-id");
+  if (!tenantId) {
+    return { success: false, error: "Store not found." };
+  }
+
+  const variantIds = [...new Set(items.map((item) => item.productVariantId))];
+  if (variantIds.length === 0) {
+    return { success: true, data: [] };
+  }
+
+  const variants = await prisma.productVariant.findMany({
+    where: {
+      id: { in: variantIds },
+      tenantId,
+      status: { not: "archived" },
+      product: { tenantId, status: "active" },
+    },
+    include: { product: { include: { discount: true } } },
+  });
+
+  return {
+    success: true,
+    data: variants.map((variant) => {
+      const { finalPrice, discountPercent } = applyDiscount(variant.price, variant.product.discount);
+      return {
+        productVariantId: variant.id,
+        price: finalPrice,
+        originalPrice: discountPercent !== null ? variant.price : null,
+        discountPercent,
+      };
+    }),
+  };
 }

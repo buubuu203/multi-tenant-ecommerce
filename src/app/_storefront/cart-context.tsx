@@ -22,6 +22,13 @@ export type CartItem = {
   // or "" for a simple product's single variant. Never combinationKey.
   variantLabel: string;
   price: number;
+  // Product Discount (V1): display-only, same non-authoritative posture
+  // as `price` itself — set only when the item was added while a
+  // discount was active. Never used for calculation; `price` above is
+  // already the final (possibly discounted) amount used everywhere a
+  // total is computed.
+  originalPrice?: number;
+  discountPercent?: number;
   quantity: number;
   // Step 45: the product's externally-hosted image URL at the moment this
   // item was added (see get-tenant-products.ts/ProductList.tsx) — display
@@ -67,6 +74,15 @@ type CartContextValue = {
   updateQuantity: (productVariantId: string, quantity: number) => void;
   removeItem: (productVariantId: string) => void;
   clearCart: () => void;
+  /**
+   * Cart Price Reconciliation: overwrites the cart's display prices with
+   * the server's current ones (see cart-reconcile.ts). Deliberately the
+   * ONLY way prices change after an item is added, and it is fed
+   * exclusively from a server read — there is no path here for a client
+   * to set a price of its own choosing, and none of this is authoritative
+   * for the charge regardless (createOrder() re-reads price itself).
+   */
+  replacePrices: (items: CartItem[]) => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -89,6 +105,8 @@ function isCartItem(value: unknown): value is CartItem {
     typeof v.productName === "string" &&
     typeof v.variantLabel === "string" &&
     typeof v.price === "number" &&
+    Number.isFinite(v.price) &&
+    v.price >= 0 &&
     typeof v.quantity === "number" &&
     Number.isInteger(v.quantity) &&
     v.quantity > 0 &&
@@ -156,10 +174,29 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const clearCart = () => setItems([]);
 
+  const replacePrices: CartContextValue["replacePrices"] = (next) => {
+    // Matched by productVariantId rather than taking `next` wholesale, so
+    // a reconciliation that raced with the customer editing their cart
+    // can only ever update the prices of lines that are still present —
+    // never resurrect a removed line or clobber a changed quantity.
+    setItems((prev) =>
+      prev.map((item) => {
+        const updated = next.find((n) => n.productVariantId === item.productVariantId);
+        if (!updated) return item;
+        return {
+          ...item,
+          price: updated.price,
+          originalPrice: updated.originalPrice,
+          discountPercent: updated.discountPercent,
+        };
+      }),
+    );
+  };
+
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
   return (
-    <CartContext.Provider value={{ items, itemCount, addItem, updateQuantity, removeItem, clearCart }}>
+    <CartContext.Provider value={{ items, itemCount, addItem, updateQuantity, removeItem, clearCart, replacePrices }}>
       {children}
     </CartContext.Provider>
   );

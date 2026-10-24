@@ -29,8 +29,12 @@
   --radius-sm: var(--radius-sm);
   --radius-md: var(--radius-md);
   --radius-lg: var(--radius-lg);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  /* One central mapping: every surface -- storefront, cart, checkout,
+     orders, both admins, dialogs, toasts, forms, tables, buttons, labels
+     and rendered Markdown -- inherits its face from body's font-sans
+     below, so the typeface is swapped here and nowhere else. */
+  --font-sans: var(--font-sans-family);
+  --font-mono: var(--font-mono-family);
 }
 
 @media (prefers-color-scheme: dark) {
@@ -47,5 +51,231 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+  /* Fallbacks ahead of generic sans-serif are ones that actually carry
+     Vietnamese diacritics, so a swap or a failed font load degrades to a
+     correct glyph rather than a tofu box. */
+  font-family: var(--font-sans), 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+}
+
+/*
+ * Admin focus baseline.
+ *
+ * Every admin form control already gets a visible focus ring from
+ * adminInputClassName / productInputClassName (see tenant-admin/styles.ts),
+ * but the admin's BUTTONS and links were inconsistent: the ones rendered
+ * through ActionForm/ConfirmActionForm carry an explicit
+ * focus-visible:outline, while thirteen hand-written ones across Branding,
+ * Catalog, Orders, Media and the CSV import had none and fell back to
+ * whatever the browser happened to draw.
+ *
+ * This is one rule rather than thirteen per-page edits, applied via the
+ * .admin-chrome class on the two admin layout roots. It only ever ADDS an
+ * outline in the :focus-visible state, so every button keeps its own
+ * background, border, size and variant.
+ *
+ * Both halves of the selector are wrapped in :where() deliberately, so
+ * the whole thing carries only the specificity of :focus-visible itself.
+ * That keeps it strictly below any Tailwind focus-visible: utility, so a
+ * button that already declares its own ring still wins — which is what
+ * preserves ConfirmActionForm's destructive variant drawing a RED outline
+ * rather than being flattened to the default foreground one. Written with
+ * :is() this rule would have outranked and overridden it.
+ *
+ * Nothing about tab order or activation changes; this is purely the
+ * visible indicator.
+ */
+/*
+ * Admin palette.
+ *
+ * The global tokens above are shared with the storefront, where each
+ * shop's own branding belongs. The admin is a different surface with a
+ * different job: it is looked at all day by one person, so it gets a
+ * softer, tinted chrome instead of the flat white the storefront needs
+ * as a neutral backdrop for product photography.
+ *
+ * Scoped to .admin-chrome, the class both admin layout roots carry, so
+ * nothing here can reach a storefront. Written as a stylesheet rule
+ * rather than inline, which means a tenant that has uploaded its own
+ * design tokens still wins — TenantTheme sets those inline, and inline
+ * beats a rule. Pastel is the default, never an override.
+ *
+ * The tints are low-saturation and carry no meaning on their own: every
+ * status in this admin is still spelled out as text, because colour
+ * alone must not be the carrier (WCAG 1.4.1). Foreground stays near-black
+ * so body text keeps its contrast against the lighter ground.
+ */
+.admin-chrome {
+  --background: #f5f6fb;
+  --surface: #ffffff;
+  --surface-muted: #ecf0fa;
+  --border: rgba(58, 66, 104, 0.14);
+  --foreground: #1a1c28;
+  --muted-foreground: rgba(26, 28, 40, 0.62);
+
+  /* Card tints, used by the overview tiles. Named by position rather
+     than by hue so a palette change does not require renaming them. */
+  --pastel-1: #e8f1fb;
+  --pastel-2: #eaf6ee;
+  --pastel-3: #fdf0e6;
+  --pastel-4: #f5f1fd;
+  --pastel-5: #fdecef;
+}
+
+@media (prefers-color-scheme: dark) {
+  .admin-chrome {
+    --background: #13141b;
+    --surface: #1b1d26;
+    --surface-muted: #232733;
+    --border: rgba(203, 210, 236, 0.14);
+    --foreground: #eceef6;
+    --muted-foreground: rgba(236, 238, 246, 0.62);
+
+    /* Darkened rather than inverted, so each tile keeps the hue it has
+       in light mode and the set still reads as one family. */
+    --pastel-1: #18222f;
+    --pastel-2: #16261c;
+    --pastel-3: #2a2018;
+    --pastel-4: #221c2e;
+    --pastel-5: #2b1a1f;
+  }
+}
+
+:where(.admin-chrome) :where(button, a, summary, [role="button"]):focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: 2px;
+}
+
+/*
+ * The Markdown description editor (@uiw/react-md-editor, mounted by
+ * DescriptionEditor.tsx) ships its own `outline: none` on the ~78 buttons
+ * of its formatting toolbar. Those buttons ARE in the tab order and do
+ * match :focus-visible, so suppressing the outline left a keyboard user
+ * with no indication of where they were inside the toolbar at all.
+ *
+ * This needs real specificity rather than the :where() treatment above,
+ * because it is overriding a vendor declaration rather than yielding to
+ * one. Scoped to the editor's own container so it cannot affect anything
+ * else, and it sets only the focused indicator.
+ */
+.admin-chrome .w-md-editor .w-md-editor-toolbar button:focus-visible {
+  outline: 2px solid var(--foreground);
+  outline-offset: -2px;
+}
+
+/*
+ * Monetary values.
+ *
+ * Prices were originally set in the monospace face for one real reason:
+ * column alignment, so stacked amounts in a table line up on their
+ * digits. But monospace also reads as "this is a technical token", which
+ * is wrong for money a customer is being asked to pay — and it meant
+ * every price on the site rendered in a different typeface from the rest
+ * of the page.
+ *
+ * This keeps the alignment and drops the connotation: the amount inherits
+ * Be Vietnam Pro like all other prose, and font-variant-numeric gives it
+ * fixed-width digits, which is what actually made the columns line up.
+ *
+ * Monospace is retained for identifiers — order ids, tenant slugs,
+ * hostnames and bank account numbers — where a fixed-width, unambiguous
+ * glyph per character is the point and the value is read or copied
+ * character by character rather than understood as a quantity.
+ */
+.money {
+  font-family: var(--font-sans);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * Admin page canvas.
+ *
+ * In light mode --background and --surface are BOTH #ffffff, so a card sat
+ * on the page had no surface contrast at all — only its 10%-alpha border
+ * separated it, which is why the admin read as one flat slab regardless of
+ * how its markup was grouped. No amount of restructuring fixes that while
+ * the two surfaces are the same colour.
+ *
+ * The canvas now sits one step back from content surfaces, expressed only
+ * in existing tokens so a tenant override still flows through. Light mode
+ * steps the page back to --surface-muted and leaves cards at --surface
+ * (white, elevated). Dark mode cannot use the same expression, because
+ * there --surface-muted is LIGHTER than --surface; it steps the page back
+ * to --background instead, so cards still read as the nearer surface. The
+ * guards match the theming pattern used above: a media query for the
+ * unstamped default, plus an explicit [data-theme] rule so a manual
+ * toggle wins in either direction.
+ */
+.admin-chrome {
+  background-color: var(--surface-muted);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .admin-chrome {
+    background-color: var(--background);
+  }
+}
+
+:root[data-theme="dark"] .admin-chrome {
+  background-color: var(--background);
+}
+
+/* ---------------------------------------------------------------------
+   Order Print Center.
+
+   Screen-only chrome is hidden with Tailwind's print: variant at the
+   element (the admin header and sidebar, and each document's own
+   controls). What needs a real stylesheet is page geometry and the
+   pagination rules Tailwind has no variants for.
+   --------------------------------------------------------------------- */
+@media print {
+  @page {
+    /* A4 by default; a smaller sheet simply scales the same margins. */
+    size: A4;
+    margin: 12mm;
+  }
+
+  html,
+  body {
+    background: #fff;
+    /* Printers render grey text badly, and these documents are read in a
+       warehouse under poor light. */
+    color: #000;
+  }
+
+  /* The admin shell's grid collapses to a single full-width column so the
+     document is not printed inside a content well. */
+  .admin-chrome,
+  .admin-chrome main {
+    display: block !important;
+    max-width: none !important;
+    padding: 0 !important;
+    margin: 0 !important;
+    gap: 0 !important;
+  }
+
+  .order-print-sheet {
+    box-shadow: none !important;
+  }
+
+  /* A long order spans pages: repeat the column headings on each one. */
+  .order-print-sheet thead {
+    display: table-header-group;
+  }
+
+  /* Never split a line item, and never strand totals on their own page. */
+  .order-print-row,
+  .order-print-totals {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* Vietnamese names, addresses and long SKUs must wrap rather than clip. */
+  .order-print-sheet {
+    overflow-wrap: anywhere;
+  }
+
+  /* Printing a URL after every link is noise on an operational document. */
+  .order-print-sheet a::after {
+    content: '' !important;
+  }
 }
