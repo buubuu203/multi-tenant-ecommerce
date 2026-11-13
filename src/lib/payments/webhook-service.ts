@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import type { PaymentProviderType } from "@/generated/prisma/client";
 import { getProvider } from "./payment-service";
+import { recordPaymentRejection } from "./payment-rejection";
 
 export type WebhookProcessResult =
   | { accepted: true }
@@ -60,11 +61,32 @@ export async function processProviderWebhook(
   const result = await provider.handleWebhook(rawBody, headers);
 
   if (!result.success) {
-    return { accepted: false, reason: result.error === "Invalid signature." ? "invalid_signature" : "invalid_payload" };
+    const invalidSignature = result.error === "Invalid signature.";
+    // An unauthenticated request writes NOTHING. Only a body that already
+    // proved its signature, and merely failed to parse, leaves evidence —
+    // and even that carries no tenant, because none can be known yet.
+    if (!invalidSignature) {
+      await recordPaymentRejection({
+        provider: providerType,
+        reason: "invalid_payload",
+        rawBody,
+      });
+    }
+    return { accepted: false, reason: invalidSignature ? "invalid_signature" : "invalid_payload" };
   }
 
   const payment = await prisma.payment.findUnique({ where: { providerOrderId: result.providerOrderId } });
   if (!payment) {
+    // Nothing resolved, so there is no trustworthy tenant. The row is
+    // recorded WITHOUT a tenantId and stays platform-level: it must never
+    // appear in a merchant's queue on the strength of a guess.
+    await recordPaymentRejection({
+      provider: providerType,
+      reason: "unknown_payment",
+      rawBody,
+      providerEventId: result.providerEventId,
+      providerOrderId: result.providerOrderId,
+    });
     return { accepted: false, reason: "unknown_payment" };
   }
 
@@ -75,6 +97,22 @@ export async function processProviderWebhook(
   // earlier) proceeds straight through; only a would-be "succeeded" is
   // amount-gated here.
   if (result.newStatus === "succeeded" && result.verifiedAmount !== payment.amount) {
+    // The Payment resolved, so tenantId is VERIFIED rather than guessed —
+    // this is the only rejection a merchant can safely be shown. The
+    // decision itself is unchanged: still rejected, still no PaymentEvent,
+    // Payment still untouched.
+    await recordPaymentRejection({
+      provider: providerType,
+      reason: "amount_mismatch",
+      rawBody,
+      providerEventId: result.providerEventId,
+      providerOrderId: result.providerOrderId,
+      tenantId: payment.tenantId,
+      paymentId: payment.id,
+      orderId: payment.orderId,
+      expectedAmount: payment.amount,
+      reportedAmount: result.verifiedAmount,
+    });
     return { accepted: false, reason: "amount_mismatch" };
   }
 

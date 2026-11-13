@@ -1,7 +1,9 @@
 import { getScopedDb } from "./db/tenant-db";
 import { reserveInventoryInTx, releaseInventoryInTx, consumeReservedInventoryInTx, InventoryError } from "./inventory-mutations";
+import { recordOrderEventInTx, SYSTEM_ACTOR, type OrderEventActor } from "./order-events";
 import { isValidVietnamesePhone } from "./validation/phone";
 import { resolveShippingMethod } from "./shipping-service";
+import { applyDiscount } from "./discounts";
 import type { ActionResult } from "./action-result";
 
 // The client cart (see cart-context.tsx) is NOT authoritative — this is
@@ -298,7 +300,7 @@ export async function createOrder(
         // below.
         const variant = await tx.productVariant.findUnique({
           where: { id: item.productVariantId, tenantId },
-          include: { product: true },
+          include: { product: { include: { discount: true } } },
         });
         if (!variant) {
           throw new InventoryError("One or more items in your order could not be found.");
@@ -322,17 +324,46 @@ export async function createOrder(
 
         await reserveInventoryInTx(tx, tenantId, item.productVariantId, item.quantity);
 
+        // Product Discount (V1): computed HERE, server-side, from the
+        // Discount row just read in this same transaction — never from
+        // anything the client submitted (the client never sends a price
+        // or discount at all, see OrderItemInput's doc comment). Applies
+        // per unit; `price` becomes the final, already-discounted amount,
+        // so every downstream reader (totals, receipts, admin) needed no
+        // changes — see discounts.ts's doc comment.
+        const { finalPrice, discountPercent } = applyDiscount(variant.price, variant.product.discount);
+
         const orderItem = await tx.orderItem.create({
           data: {
             tenantId,
             orderId: order.id,
             productVariantId: item.productVariantId,
             quantity: item.quantity,
-            price: variant.price, // snapshot — see doc comment above
+            price: finalPrice, // snapshot — see doc comment above
+            originalUnitPrice: discountPercent !== null ? variant.price : null,
+            discountPercent,
           },
         });
         createdItems.push({ productVariantId: orderItem.productVariantId, quantity: orderItem.quantity, price: orderItem.price });
       }
+
+      // Order Audit History: written inside this same transaction, so an
+      // order and its first timeline entry commit or roll back together —
+      // there can be no order without a creation event, and no creation
+      // event for an order that failed to be created.
+      //
+      // actor is always `system`: this is guest checkout, with no
+      // signed-in user to attribute it to. The summary carries only
+      // operational facts (item count, payment method) — never the
+      // customer's name, email, phone or address.
+      await recordOrderEventInTx(tx, {
+        tenantId,
+        orderId: order.id,
+        type: "order_created",
+        newValue: order.status,
+        summary: `Order placed with ${createdItems.length} item(s) · ${order.paymentMethod}`,
+        actor: SYSTEM_ACTOR,
+      });
 
       return { orderId: order.id, items: createdItems, shippingAmount: resolvedShipping.amount };
     });
@@ -396,6 +427,11 @@ export async function updateOrderStatus(
   tenantId: string,
   orderId: string,
   nextStatus: string,
+  // Who is doing this, for the audit timeline. Supplied by the authorized
+  // caller — never by the client — and defaults to `system` so an internal
+  // or scripted transition is recorded honestly rather than attributed to
+  // an admin who did not perform it.
+  actor: OrderEventActor = SYSTEM_ACTOR,
 ): Promise<ActionResult> {
   if (!ORDER_STATUS_TRANSITIONS.includes(nextStatus as OrderStatusTransition)) {
     return { success: false, error: "Invalid order status." };
@@ -413,10 +449,39 @@ export async function updateOrderStatus(
         throw new OrderStatusError("This order can no longer be changed — it may have already been updated.");
       }
 
+      // Order Audit History: every event below is inside this same
+      // transaction as the status change and the inventory movement, so
+      // the three cannot disagree. The updateMany above already gates on
+      // status: "pending" and throws when it matches zero rows, so a
+      // duplicate retry of an already-applied transition never reaches
+      // this point and never writes a second event — the existing
+      // idempotency guard is what makes the audit trail idempotent too.
+      await recordOrderEventInTx(tx, {
+        tenantId,
+        orderId,
+        type: "order_status_changed",
+        previousValue: "pending",
+        newValue: nextStatus,
+        summary: `Status changed from pending to ${nextStatus}`,
+        actor,
+      });
+
       if (nextStatus === "cancelled") {
         const items = await tx.orderItem.findMany({ where: { orderId, tenantId } });
         for (const item of items) {
           await releaseInventoryInTx(tx, tenantId, item.productVariantId, item.quantity);
+        }
+        // A dedicated event, because "the stock came back" is the question
+        // a merchant actually asks after a cancellation, and it is not
+        // self-evident from the status change alone.
+        if (items.length > 0) {
+          await recordOrderEventInTx(tx, {
+            tenantId,
+            orderId,
+            type: "inventory_released",
+            summary: `Released reserved stock for ${items.length} item(s) after cancellation`,
+            actor,
+          });
         }
       }
 

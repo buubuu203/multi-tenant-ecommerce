@@ -42,8 +42,53 @@ model Tenant {
   productMedia    ProductMedia[]
   paymentMethods  TenantPaymentMethod[]
   shippingMethods TenantShippingMethod[]
+  banners         Banner[]
+  discounts       Discount[]
+  orderEvents     OrderEvent[]
 
   @@map("tenants")
+}
+
+// Storefront Carousel/Banner (V1). Deliberately the smallest useful
+// shape: one image + optional title/subtitle/CTA, enable/disable, and a
+// merchant-editable sort order — NOT a page builder (no arbitrary
+// HTML/blocks, no per-banner styling, no scheduling). Scheduling
+// (startAt/endAt) was considered and dropped for V1: nothing in this
+// repo's roadmap calls for time-boxed banners, and enabled/disabled
+// already covers "turn it on/off," just not "automatically" — a merchant
+// can flip the toggle by hand until real demand justifies the extra
+// fields and cron/edge-case handling that scheduling implies.
+model Banner {
+  id        String   @id @default(uuid())
+  tenantId  String
+  // Always a Vercel Blob URL under banners/<tenantId>/... — see
+  // uploadBannerImageFile() in blob-storage.ts. Never user-supplied HTML,
+  // never an arbitrary external URL.
+  imageUrl  String
+  // Optional narrower/taller crop for small viewports — same Blob
+  // namespace and validation as imageUrl (see uploadBannerImageFile's
+  // `variant` param). Null means "no separate mobile image": the
+  // storefront falls back to imageUrl on every viewport.
+  mobileImageUrl String?
+  // Nullable: the storefront no longer renders banner text (the image is
+  // the whole visual), so Tenant Admin no longer collects these — kept
+  // only so pre-existing rows retain their historical values.
+  title     String?
+  subtitle  String?
+  ctaLabel  String?
+  // Restricted to http(s) or a same-site relative path ("/products/...")
+  // at write time — see validateCtaUrl() in banner-mutations.ts. Never
+  // javascript:/data:/any other scheme.
+  ctaUrl    String?
+  enabled   Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("banners")
 }
 
 enum DomainType {
@@ -159,10 +204,56 @@ model Product {
   // not kept alongside media, to avoid two competing sources of truth for
   // "the product's picture."
   media    ProductMedia[]
+  // Product Discount (V1): at most one discount SLOT per product (see
+  // Discount's own doc comment for why this is a real @@unique, not just
+  // an application-level convention) — "one active discount per product,"
+  // never several competing/stacked discounts on the same product.
+  discount Discount?
 
   @@unique([id, tenantId])
   @@index([tenantId])
   @@map("products")
+}
+
+// Product Discount (V1) — the smallest useful scope per this repo's own
+// roadmap review: PRODUCT-level only (no collection/category-level
+// discount — there is no category concept anywhere in this schema to
+// scope one to), PERCENTAGE only (no fixed-amount — percentage composes
+// safely across any variant's price without a separate "what if the
+// fixed amount exceeds the price" edge case), and NO STACKING (the
+// `@@unique([productId])` below makes a second discount for the same
+// product an update to the same row, not a second competing one — there
+// is no code path anywhere that could apply two discounts to one line).
+//
+// Deliberately NOT implemented in V1 (revisit only if real demand shows
+// up): collection-level scope, fixed-amount discounts, minimum
+// quantity/order value thresholds, stacking multiple discounts. Adding
+// any of these later is additive (new nullable columns / a new model),
+// not a rework of this one.
+model Discount {
+  id         String    @id @default(uuid())
+  tenantId   String
+  productId  String    @unique
+  // Whole percent, 1-100 — validated in discount-mutations.ts. Never 0
+  // (that's "no discount," represented by enabled=false or no row at
+  // all) and never >100 (would make finalPrice negative).
+  percentOff Int
+  enabled    Boolean   @default(true)
+  // Both optional — a discount with neither is simply "active whenever
+  // enabled is true," no time-boxing required. When both are set,
+  // startsAt must be before endsAt (validated in discount-mutations.ts,
+  // not enforced at the DB level — same posture as other cross-field
+  // invariants in this schema, e.g. TenantShippingMethod's isDefault).
+  startsAt   DateTime?
+  endsAt     DateTime?
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+  @@map("discounts")
 }
 
 enum ProductMediaType {
@@ -385,6 +476,14 @@ model Customer {
   @@unique([tenantId, email])
   @@unique([id, tenantId])
   @@index([tenantId])
+  // Order Lookup by phone/name (V1): both new lookup paths filter on
+  // these columns together with tenantId — without these, either query
+  // falls back to the @@index([tenantId]) alone and scans every customer
+  // row for the tenant. Never used for anything phone/name ALONE would be
+  // unsafe for (see order-queries.ts's doc comments on the new lookup
+  // functions) — this is a performance index, not a new access path.
+  @@index([tenantId, phone])
+  @@index([tenantId, name])
   @@map("customers")
 }
 
@@ -438,6 +537,7 @@ model Order {
   tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
   customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
   items    OrderItem[]
+  events   OrderEvent[]
   // Step 51: a Payment row now exists for EVERY order regardless of
   // paymentMethod (cod/bank_transfer_manual included) — see PaymentProviderType
   // below. Still deliberately a separate model/status axis from
@@ -456,7 +556,18 @@ model OrderItem {
   orderId          String
   productVariantId String
   quantity         Int
-  price            Int // snapshot of ProductVariant.price at order-creation time — never live, never re-read
+  // `price` is the FINAL unit price actually charged — already
+  // discounted, if a discount applied — so every existing reader
+  // (lineTotal = price * quantity, order totals, receipts) needed zero
+  // changes when Product Discount (V1) was added. `originalUnitPrice`/
+  // `discountPercent` are purely informational snapshots of what the
+  // discount WAS at order-creation time, for display (order history,
+  // admin) — never re-derived from the live Discount row, which may
+  // since have changed or been deleted. Both null together means "no
+  // discount applied to this line" (the overwhelmingly common case).
+  price            Int // snapshot of the FINAL (post-discount) ProductVariant price at order-creation time — never live, never re-read
+  originalUnitPrice Int?
+  discountPercent   Int?
   createdAt        DateTime @default(now())
 
   order          Order          @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
@@ -551,6 +662,81 @@ model Payment {
 // payment-service.ts). Deliberately NOT an unbounded raw-log system:
 // one row per genuine webhook delivery, nothing polled/generated
 // speculatively.
+/// Append-only evidence of a webhook delivery this system REJECTED.
+///
+/// PaymentEvent records what was accepted. This records what was not, so
+/// a merchant can see an underpayment or an overpayment that previously
+/// vanished without trace: webhook-service.ts validates the reported
+/// amount before persisting anything, and a mismatch was simply dropped.
+///
+/// TENANT ATTRIBUTION IS DELIBERATELY NULLABLE. A webhook carries no
+/// storefront context; the only trustworthy source of tenant identity is
+/// the Payment row found via the provider's own correlation key. So:
+///
+///   - amount mismatch  -> the Payment was found, tenantId is VERIFIED,
+///                         and the row is visible to that tenant.
+///   - unknown payment  -> nothing resolves, so tenantId stays null and
+///                         the row is platform-level only. It is never
+///                         shown in a tenant's queue, because guessing an
+///                         owner from a name or an amount is exactly the
+///                         wrong thing to do.
+///   - invalid signature -> never recorded at all. An unauthenticated
+///                         request must not be able to write rows.
+///
+/// No raw payload is stored. `payloadDigest` is a SHA-256 of the body,
+/// which is one-way and used only to recognise a repeat delivery when the
+/// provider gives no stable event id.
+model PaymentRejection {
+  id String @id @default(uuid())
+
+  /// Null when no Payment resolved, which is also when the row is
+  /// platform-level and invisible to every tenant.
+  tenantId String?
+  provider PaymentProviderType
+
+  /// Stable per-provider key: the provider's own event id where it gives
+  /// one, otherwise the payload digest. Never a random retry id.
+  dedupeKey String
+  /// How many times this same rejected delivery has arrived. Incremented
+  /// in place, so a provider retrying forever cannot grow the table.
+  occurrences Int @default(1)
+
+  /// Safe, bounded, normalised reason. Never provider prose.
+  reason PaymentRejectionReason
+
+  /// The provider's correlation key, as supplied. Already the value
+  /// stored on Payment.providerOrderId for a resolved payment.
+  providerOrderId String?
+  /// Populated only when a Payment really was found.
+  paymentId String?
+  orderId   String?
+
+  /// Both in VND minor-unit-free integers, the same convention as
+  /// Payment.amount. Null when the payload did not yield a trustworthy
+  /// number — never a zero standing in for "unknown".
+  expectedAmount Int?
+  reportedAmount Int?
+
+  /// SHA-256 of the raw body. One-way; never rendered.
+  payloadDigest String
+
+  firstSeenAt DateTime @default(now())
+  lastSeenAt  DateTime @default(now())
+
+  @@unique([provider, dedupeKey])
+  @@index([tenantId, firstSeenAt])
+  @@map("payment_rejections")
+}
+
+enum PaymentRejectionReason {
+  /// Reported amount did not equal the amount the payment was opened for.
+  amount_mismatch
+  /// The provider's correlation key resolved to no payment in any tenant.
+  unknown_payment
+  /// Signature passed but the body could not be parsed into a usable event.
+  invalid_payload
+}
+
 model PaymentEvent {
   id              String              @id @default(uuid())
   paymentId       String
@@ -631,4 +817,93 @@ model TenantShippingMethod {
 
   @@index([tenantId])
   @@map("tenant_shipping_methods")
+}
+
+// Order Audit History: an append-only operational timeline per order, for
+// merchants answering "what happened to this order, when, and who did it".
+//
+// Deliberately SEPARATE from PaymentEvent, which is not an audit log: that
+// table exists to make provider webhooks idempotent and replay-safe and
+// stores the raw provider payload. This one stores no provider payload, no
+// signature, no token, no session id and no account number — only the
+// operational transition and a safe summary.
+enum OrderEventType {
+  // The order was created by checkout.
+  order_created
+  // Order.status moved between pending/fulfilled/cancelled.
+  order_status_changed
+  // Payment.status changed because THIS application recorded it (a
+  // merchant confirming a manual bank transfer). Provider-driven changes
+  // are not written here; they already have PaymentEvent.
+  payment_status_changed
+  // A cancellation released this order's inventory reservation.
+  inventory_released
+}
+
+// Who caused the event. Only these three: there is no customer-facing
+// action that writes an event, and no other role exists in this system.
+enum OrderEventActorType {
+  system
+  tenant_admin
+  platform_admin
+}
+
+model OrderEvent {
+  id       String         @id @default(uuid())
+  tenantId String
+  orderId  String
+  type     OrderEventType
+
+  // Plain-text SNAPSHOTS of the transition, the same convention as
+  // OrderItem.price and Order.shippingMethodName: stored as strings rather
+  // than enum references so the recorded history survives unchanged even
+  // if the order, or the enum itself, later changes. Null where a
+  // transition has no meaningful before/after (order_created has no
+  // previous value).
+  previousValue String?
+  newValue      String?
+
+  // A short operational sentence shown in Tenant Admin. Composed
+  // server-side from the transition only — never from customer input, and
+  // never containing customer name, email, phone or address.
+  summary String
+
+  actorType OrderEventActorType
+  // The acting Clerk user id where one exists, which is the same
+  // identifier requirePlatformAdmin() already returns. Null for
+  // actorType=system (guest checkout has no signed-in actor). Never a
+  // token, a session id, or an email.
+  actorId String?
+
+  createdAt DateTime @default(now())
+
+  // The authoritative creation ORDER of this event.
+  //
+  // createdAt cannot carry that on its own: it is generated client-side at
+  // MILLISECOND precision, so events written close together — two in one
+  // updateOrderStatus transaction, for instance — frequently share an
+  // identical value. Ordering then fell through to a tiebreak on `id`, a
+  // random UUID, so the recorded history of an order could be read back in
+  // an order that never happened. Measured, not assumed: three events
+  // written in one transaction were observed sharing one timestamp on some
+  // runs and splitting across two on others, which is exactly why the old
+  // test failed intermittently rather than always.
+  //
+  // A database-assigned sequence is monotonic, assigned inside the same
+  // transaction as the insert, and needs no clock. Append-only, never
+  // written by application code, never exposed in the read API.
+  sequence Int @default(autoincrement())
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  // Composite FK to (id, tenantId), the same tenant-safe pattern Payment
+  // and Customer already use, so an event can never be attached to an
+  // order from another tenant. Cascade on delete so removing an order
+  // cannot leave orphan events behind.
+  order Order @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  // The timeline query is always (tenant, order, creation order).
+  @@index([tenantId, orderId, sequence])
+  @@index([tenantId, orderId, createdAt])
+  @@index([tenantId])
+  @@map("order_events")
 }

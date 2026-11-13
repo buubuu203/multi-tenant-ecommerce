@@ -1,7 +1,7 @@
 import { createProduct } from "./product-mutations";
 
-const MAX_ROWS = 500;
-const MAX_BYTES = 1024 * 1024; // 1 MB
+export const MAX_ROWS = 500;
+export const MAX_BYTES = 1024 * 1024; // 1 MB
 
 const EXPECTED_HEADERS_WITH_STATUS = ["name", "price", "status"];
 const EXPECTED_HEADERS_WITHOUT_STATUS = ["name", "price"];
@@ -18,7 +18,7 @@ export type ImportSummary = {
  * embedded commas, embedded newlines, and escaped "" quotes), not a naive
  * split(","). Normalizes CRLF/LF line endings.
  */
-function parseCsv(text: string): string[][] {
+export function parseCsv(text: string): string[][] {
   const rows: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -82,7 +82,7 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => !(r.length === 1 && r[0].trim() === ""));
 }
 
-function validateHeader(header: string[]): { hasStatus: boolean } | { error: string } {
+export function validateHeader(header: string[]): { hasStatus: boolean } | { error: string } {
   const normalized = header.map((h) => h.trim());
   if (normalized.length === EXPECTED_HEADERS_WITH_STATUS.length) {
     const matches = normalized.every((h, idx) => h === EXPECTED_HEADERS_WITH_STATUS[idx]);

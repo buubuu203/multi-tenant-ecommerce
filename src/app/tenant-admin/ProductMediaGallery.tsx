@@ -1,13 +1,13 @@
-"use client";
+'use client';
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from 'react';
 import {
   uploadProductMediaAction,
   deleteUploadedProductMediaAction,
   addProductMediaAction,
   removeProductMediaAction,
   reorderProductMediaAction,
-} from "./actions";
+} from './actions';
 
 const MAX_MEDIA_ITEMS = 10;
 const MAX_IMAGES = 8;
@@ -15,7 +15,8 @@ const MAX_VIDEOS = 2;
 // HEIC/HEIF accepted here for the file PICKER only — they are never sent
 // to the server as-is. Some phones report an empty/generic MIME type for
 // .heic files, so the extensions are listed too, not just the MIME types.
-const ACCEPTED_TYPES = "image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm";
+const ACCEPTED_TYPES =
+  'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm';
 // MOV is deliberately NOT in this list — see classifyFile()'s explicit
 // rejection message below (Phase 4: no MOV support, no transcoding).
 
@@ -23,7 +24,7 @@ type MediaItem = {
   // In "create" mode this is a client-generated key (nothing persisted
   // yet); in "edit" mode it's the real ProductMedia.id.
   key: string;
-  type: "image" | "video";
+  type: 'image' | 'video';
   url: string;
   uploading?: boolean;
   // Distinguishes the brief client-side HEIC->JPEG conversion step from
@@ -36,12 +37,17 @@ type MediaItem = {
 
 function isHeic(file: File): boolean {
   const name = file.name.toLowerCase();
-  return file.type === "image/heic" || file.type === "image/heif" || name.endsWith(".heic") || name.endsWith(".heif");
+  return (
+    file.type === 'image/heic' ||
+    file.type === 'image/heif' ||
+    name.endsWith('.heic') ||
+    name.endsWith('.heif')
+  );
 }
 
 function isMov(file: File): boolean {
   const name = file.name.toLowerCase();
-  return file.type === "video/quicktime" || name.endsWith(".mov");
+  return file.type === 'video/quicktime' || name.endsWith('.mov');
 }
 
 /**
@@ -54,11 +60,11 @@ function isMov(file: File): boolean {
  * existing JPG/PNG/WebP path, no new storefront rendering logic needed.
  */
 async function convertHeicToJpeg(file: File): Promise<File> {
-  const heic2any = (await import("heic2any")).default;
-  const converted = await heic2any({ blob: file, toType: "image/jpeg", quality: 0.9 });
+  const heic2any = (await import('heic2any')).default;
+  const converted = await heic2any({ blob: file, toType: 'image/jpeg', quality: 0.9 });
   const blob = Array.isArray(converted) ? converted[0] : converted;
-  const newName = file.name.replace(/\.(heic|heif)$/i, "") + ".jpg";
-  return new File([blob], newName, { type: "image/jpeg" });
+  const newName = file.name.replace(/\.(heic|heif)$/i, '') + '.jpg';
+  return new File([blob], newName, { type: 'image/jpeg' });
 }
 
 // Step 50: one shared gallery component for both contexts —
@@ -79,7 +85,7 @@ export function ProductMediaGallery({
   onUploadingChange,
 }: {
   productId?: string;
-  initialMedia?: { id: string; type: "image" | "video"; url: string }[];
+  initialMedia?: { id: string; type: 'image' | 'video'; url: string }[];
   // Step 50: lets the enclosing form (create mode only — see
   // page.tsx/ActionForm's `disabled` prop) block submission while an
   // upload is still in flight. Without this, submitting mid-upload sends
@@ -89,15 +95,15 @@ export function ProductMediaGallery({
   // than round-tripping to the server just to show an error.
   onUploadingChange?: (uploading: boolean) => void;
 }) {
-  const mode = productId ? "edit" : "create";
+  const mode = productId ? 'edit' : 'create';
   const [items, setItems] = useState<MediaItem[]>(
     initialMedia.map((m) => ({ key: m.id, type: m.type, url: m.url })),
   );
   const [formError, setFormError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const imageCount = items.filter((i) => i.type === "image" && !i.error).length;
-  const videoCount = items.filter((i) => i.type === "video" && !i.error).length;
+  const imageCount = items.filter((i) => i.type === 'image' && !i.error).length;
+  const videoCount = items.filter((i) => i.type === 'video' && !i.error).length;
   const totalCount = items.filter((i) => !i.error).length;
   const anyUploading = items.some((i) => i.uploading || i.converting);
 
@@ -105,9 +111,10 @@ export function ProductMediaGallery({
     onUploadingChange?.(anyUploading);
   }, [anyUploading, onUploadingChange]);
 
-  function classifyFile(file: File): "image" | "video" | null {
-    if (["image/jpeg", "image/png", "image/webp"].includes(file.type) || isHeic(file)) return "image";
-    if (["video/mp4", "video/webm"].includes(file.type)) return "video";
+  function classifyFile(file: File): 'image' | 'video' | null {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || isHeic(file))
+      return 'image';
+    if (['video/mp4', 'video/webm'].includes(file.type)) return 'video';
     return null;
   }
 
@@ -137,28 +144,34 @@ export function ProductMediaGallery({
         setFormError(`You can only add up to ${MAX_MEDIA_ITEMS} media items.`);
         break;
       }
-      if (kind === "image" && nextImageCount >= MAX_IMAGES) {
+      if (kind === 'image' && nextImageCount >= MAX_IMAGES) {
         setFormError(`You can only add up to ${MAX_IMAGES} images.`);
         continue;
       }
-      if (kind === "video" && nextVideoCount >= MAX_VIDEOS) {
+      if (kind === 'video' && nextVideoCount >= MAX_VIDEOS) {
         setFormError(`You can only add up to ${MAX_VIDEOS} videos.`);
         continue;
       }
       accepted.push(file);
       nextTotal++;
-      if (kind === "image") nextImageCount++;
+      if (kind === 'image') nextImageCount++;
       else nextVideoCount++;
     }
 
     for (const file of accepted) {
       const key = `${file.name}-${crypto.randomUUID()}`;
-      const kind = classifyFile(file) as "image" | "video";
+      const kind = classifyFile(file) as 'image' | 'video';
       const objectUrl = URL.createObjectURL(file);
       const needsConversion = isHeic(file);
       setItems((prev) => [
         ...prev,
-        { key, type: kind, url: objectUrl, uploading: !needsConversion, converting: needsConversion },
+        {
+          key,
+          type: kind,
+          url: objectUrl,
+          uploading: !needsConversion,
+          converting: needsConversion,
+        },
       ]);
 
       // HEIC/HEIF -> JPEG happens entirely in the browser, BEFORE the file
@@ -175,32 +188,44 @@ export function ProductMediaGallery({
           setItems((prev) =>
             prev.map((i) =>
               i.key === key
-                ? { ...i, converting: false, error: "Couldn't convert this HEIC image — try exporting it as JPEG first." }
+                ? {
+                    ...i,
+                    converting: false,
+                    error: "Couldn't convert this HEIC image — try exporting it as JPEG first.",
+                  }
                 : i,
             ),
           );
           continue;
         }
-        setItems((prev) => prev.map((i) => (i.key === key ? { ...i, converting: false, uploading: true } : i)));
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { ...i, converting: false, uploading: true } : i)),
+        );
       }
 
       const formData = new FormData();
-      formData.append("file", fileToUpload);
+      formData.append('file', fileToUpload);
       const result = await uploadProductMediaAction(formData);
 
       if (!result.success) {
-        setItems((prev) => prev.map((i) => (i.key === key ? { ...i, uploading: false, error: result.error } : i)));
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { ...i, uploading: false, error: result.error } : i)),
+        );
         continue;
       }
 
       const uploaded = result.data;
-      if (mode === "edit" && productId) {
+      if (mode === 'edit' && productId) {
         const addFormData = new FormData();
-        addFormData.append("productId", productId);
-        addFormData.append("media", JSON.stringify([{ url: uploaded.url, type: uploaded.type }]));
+        addFormData.append('productId', productId);
+        addFormData.append('media', JSON.stringify([{ url: uploaded.url, type: uploaded.type }]));
         const addResult = await addProductMediaAction(addFormData);
         if (!addResult.success) {
-          setItems((prev) => prev.map((i) => (i.key === key ? { ...i, uploading: false, error: addResult.error } : i)));
+          setItems((prev) =>
+            prev.map((i) =>
+              i.key === key ? { ...i, uploading: false, error: addResult.error } : i,
+            ),
+          );
           continue;
         }
         // addProductMediaAction already persisted the row and ran
@@ -209,22 +234,28 @@ export function ProductMediaGallery({
         // made later in this same session must target the real row, not
         // the client-generated placeholder key.
         const realId = addResult.data.ids[0];
-        setItems((prev) => prev.map((i) => (i.key === key ? { key: realId, type: uploaded.type, url: uploaded.url } : i)));
+        setItems((prev) =>
+          prev.map((i) =>
+            i.key === key ? { key: realId, type: uploaded.type, url: uploaded.url } : i,
+          ),
+        );
       } else {
-        setItems((prev) => prev.map((i) => (i.key === key ? { key, type: uploaded.type, url: uploaded.url } : i)));
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { key, type: uploaded.type, url: uploaded.url } : i)),
+        );
       }
     }
   }
 
   async function handleRemove(item: MediaItem) {
-    if (mode === "edit" && productId && !item.error) {
+    if (mode === 'edit' && productId && !item.error) {
       const formData = new FormData();
-      formData.append("productId", productId);
-      formData.append("mediaId", item.key);
+      formData.append('productId', productId);
+      formData.append('mediaId', item.key);
       await removeProductMediaAction(null, formData);
-    } else if (mode === "create" && !item.error && !item.uploading) {
+    } else if (mode === 'create' && !item.error && !item.uploading) {
       const formData = new FormData();
-      formData.append("url", item.url);
+      formData.append('url', item.url);
       await deleteUploadedProductMediaAction(formData);
     }
     setItems((prev) => prev.filter((i) => i.key !== item.key));
@@ -232,10 +263,10 @@ export function ProductMediaGallery({
 
   async function persistReorder(next: MediaItem[]) {
     setItems(next);
-    if (mode === "edit" && productId) {
+    if (mode === 'edit' && productId) {
       const formData = new FormData();
-      formData.append("productId", productId);
-      formData.append("orderedMediaIds", JSON.stringify(next.map((i) => i.key)));
+      formData.append('productId', productId);
+      formData.append('orderedMediaIds', JSON.stringify(next.map((i) => i.key)));
       await reorderProductMediaAction(formData);
     }
   }
@@ -253,37 +284,48 @@ export function ProductMediaGallery({
 
   return (
     <div className="flex flex-col gap-2">
-      <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">Product media</h4>
+      <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
+        Product media
+      </h4>
       <p className="text-xs text-muted-foreground">
         Upload up to {MAX_MEDIA_ITEMS} files — Max {MAX_IMAGES} images · Max {MAX_VIDEOS} videos
       </p>
       <p className="text-xs text-muted-foreground">
         Images: JPG, PNG, WebP, HEIC/HEIF (max 10MB) · Videos: MP4, WebM (max 100MB)
       </p>
+      <p className="text-xs text-muted-foreground">
+        Raster images are optimized and stored as WebP, which reduces object-storage size and image
+        transfer size. Videos are stored as uploaded.
+      </p>
 
       {/* Only meaningful in "create" mode — the enclosing <ActionForm>'s
           own submit reads this field. In "edit" mode each change is
           already persisted immediately, so this field is inert there. */}
-      {mode === "create" && <input type="hidden" name="media" value={mediaJson} />}
+      {mode === 'create' && <input type="hidden" name="media" value={mediaJson} />}
 
       {items.length === 0 ? (
         <p className="text-xs text-muted-foreground">No media added yet.</p>
       ) : (
         <div className="flex flex-wrap gap-2">
           {items.map((item, index) => (
-            <div key={item.key} className="relative flex h-20 w-20 flex-col items-center justify-center rounded-md border border-border">
-              {item.type === "image" ? (
+            <div
+              key={item.key}
+              className="relative flex h-20 w-20 flex-col items-center justify-center rounded-md border border-border"
+            >
+              {item.type === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
                 <img src={item.url} alt="" className="h-full w-full rounded-md object-cover" />
               ) : (
                 <div className="relative h-full w-full">
                   <video src={item.url} className="h-full w-full rounded-md object-cover" muted />
-                  <span className="absolute inset-0 flex items-center justify-center text-lg text-white">▶</span>
+                  <span className="absolute inset-0 flex items-center justify-center text-lg text-white">
+                    ▶
+                  </span>
                 </div>
               )}
               {(item.uploading || item.converting) && (
                 <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50 text-[10px] text-white">
-                  {item.converting ? "Converting…" : "Uploading…"}
+                  {item.converting ? 'Converting…' : 'Uploading…'}
                 </span>
               )}
               {item.error && (
@@ -344,7 +386,7 @@ export function ProductMediaGallery({
         className="hidden"
         onChange={(e) => {
           void handleFilesSelected(e.target.files);
-          e.target.value = "";
+          e.target.value = '';
         }}
       />
     </div>
