@@ -1,20 +1,21 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
-import type { TenantProduct, TenantProductVariant } from "./get-tenant-products";
-import { useCart } from "./cart-context";
-import { ProductMediaCarousel } from "./ProductMediaCarousel";
+import { useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
+import type { TenantProduct, TenantProductVariant } from './get-tenant-products';
+import { useCart } from './cart-context';
+import { ProductMediaCarousel } from './ProductMediaCarousel';
+import { compareByStartingPrice } from '@/lib/product-sort';
+import { isLowStock } from '@/lib/inventory-availability';
 
 function formatVnd(price: number): string {
-  return `${price.toLocaleString("vi-VN")} ₫`;
+  return `${price.toLocaleString('vi-VN')} ₫`;
 }
 
 // Step 40: a fixed, non-configurable threshold for the lightweight
 // "Only N left" hint — deliberately not a database field, admin setting,
 // or prop; this is a small presentation rule, not a merchant-facing
 // feature.
-const LOW_STOCK_THRESHOLD = 5;
 
 // Resolves a customer's selection (one VariantOptionValue id per option) to
 // the exact ProductVariant whose full set of option/value pairs matches the
@@ -52,7 +53,9 @@ export function isValueSelectable(
   targetOptionId: string,
   targetValueId: string,
 ): boolean {
-  const otherSelections = Object.entries(selection).filter(([optionId]) => optionId !== targetOptionId);
+  const otherSelections = Object.entries(selection).filter(
+    ([optionId]) => optionId !== targetOptionId,
+  );
   return variants.some((variant) => {
     const hasTarget = variant.options.some(
       (ov) => ov.variantOptionId === targetOptionId && ov.variantOptionValueId === targetValueId,
@@ -61,7 +64,9 @@ export function isValueSelectable(
       return false;
     }
     return otherSelections.every(([optionId, valueId]) =>
-      variant.options.some((ov) => ov.variantOptionId === optionId && ov.variantOptionValueId === valueId),
+      variant.options.some(
+        (ov) => ov.variantOptionId === optionId && ov.variantOptionValueId === valueId,
+      ),
     );
   });
 }
@@ -121,26 +126,44 @@ export function applySelection(
 // video's thumbnail is the video element itself (muted, no controls,
 // paused) with a play-indicator overlay, matching the same convention
 // used in Tenant Admin's ProductMediaGallery previews.
-export function MediaThumbnail({ media, alt }: { media: { type: "image" | "video"; url: string }; alt: string }) {
-  if (media.type === "image") {
+export function MediaThumbnail({
+  media,
+  alt,
+}: {
+  media: { type: 'image' | 'video'; url: string };
+  alt: string;
+}) {
+  if (media.type === 'image') {
     // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra in this MVP
-    return <img src={media.url} alt={alt} className="aspect-square w-full rounded-md object-cover" />;
+    return (
+      <img src={media.url} alt={alt} className="aspect-square w-full rounded-md object-cover" />
+    );
   }
   return (
     <div className="relative aspect-square w-full overflow-hidden rounded-md">
       <video src={media.url} muted className="h-full w-full object-cover" />
-      <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-2xl text-white">▶</span>
+      <span className="absolute inset-0 flex items-center justify-center bg-black/10 text-2xl text-white">
+        ▶
+      </span>
     </div>
   );
 }
 
-export function ProductRow({ product, linkToDetail = true }: { product: TenantProduct; linkToDetail?: boolean }) {
+export function ProductRow({
+  product,
+  linkToDetail = true,
+}: {
+  product: TenantProduct;
+  linkToDetail?: boolean;
+}) {
   // Simple-product path: unchanged from before this step — a product with
   // exactly one variant carrying the combinationKey === "" sentinel (the
   // same convention product-mutations.ts and Tenant Admin already use)
   // renders exactly as it did before variant selection existed.
   const simpleVariant =
-    product.variants.length === 1 && product.variants[0].combinationKey === "" ? product.variants[0] : null;
+    product.variants.length === 1 && product.variants[0].combinationKey === ''
+      ? product.variants[0]
+      : null;
 
   // Derived purely from this product's own already-loaded variant data —
   // no extra fetch, one pass over variants/options.
@@ -151,7 +174,10 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     const byOption = new Map<string, { optionName: string; values: Map<string, string> }>();
     for (const variant of product.variants) {
       for (const ov of variant.options) {
-        const entry = byOption.get(ov.variantOptionId) ?? { optionName: ov.optionName, values: new Map<string, string>() };
+        const entry = byOption.get(ov.variantOptionId) ?? {
+          optionName: ov.optionName,
+          values: new Map<string, string>(),
+        };
         entry.values.set(ov.variantOptionValueId, ov.valueLabel);
         byOption.set(ov.variantOptionId, entry);
       }
@@ -183,6 +209,7 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // Step 50: sortOrder 0 IS the primary media everywhere the app needs
   // one — media is already returned pre-sorted by get-tenant-products.ts.
   const primaryMedia = product.media[0];
+  const hasMedia = product.media.length > 0;
 
   // Step 39: stock unavailability is a SEPARATE concept from combination
   // unavailability (Step 25) — the variant genuinely exists here
@@ -200,27 +227,43 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // much of it. Only ever shown alongside the normal in-stock price/button
   // state below, never in place of "Out of stock" or "(unavailable)".
   const lowStockHint =
-    resolvedVariant && !outOfStock && resolvedVariant.available <= LOW_STOCK_THRESHOLD
+    resolvedVariant && !outOfStock && isLowStock(resolvedVariant.available)
       ? `Only ${resolvedVariant.available} left`
       : null;
+
+  // Product Discount (V1): resolvedVariant.price is ALREADY the discounted
+  // price (see get-tenant-products.ts's applyDiscount() call) — this is
+  // purely a display addition (strikethrough original + a "-X%" badge),
+  // never a second price calculation. originalPrice/discountPercent are
+  // only ever non-null together, when a discount is currently active.
+  const showDiscount = Boolean(
+    resolvedVariant && !outOfStock && resolvedVariant.discountPercent !== null,
+  );
+  const originalPriceDisplay =
+    resolvedVariant?.originalPrice != null ? formatVnd(resolvedVariant.originalPrice) : null;
 
   let priceDisplay: string;
   let addToCartLabel: string;
   if (resolvedVariant && outOfStock) {
-    priceDisplay = "Out of stock";
-    addToCartLabel = "Out of stock";
+    // Keep showing the real price. Overwriting it with "Out of stock"
+    // printed the same words twice in one small card (the disabled
+    // button below already says it) AND destroyed the one piece of
+    // information a shopper still wants from an unavailable item — what
+    // it costs, for deciding whether to come back for it.
+    priceDisplay = formatVnd(resolvedVariant.price);
+    addToCartLabel = 'Out of stock';
   } else if (resolvedVariant) {
     // Covers both the simple-product case (resolvedVariant === simpleVariant,
     // unchanged price behavior from before Step 24) and a fully-resolved
     // variant-bearing selection.
     priceDisplay = formatVnd(resolvedVariant.price);
-    addToCartLabel = atAvailableLimit ? "Max in cart" : "Add to cart";
+    addToCartLabel = atAvailableLimit ? 'Max in cart' : 'Add to cart';
   } else if (hasCompleteSelection) {
-    priceDisplay = "Combination unavailable";
-    addToCartLabel = "Combination unavailable";
+    priceDisplay = 'Combination unavailable';
+    addToCartLabel = 'Combination unavailable';
   } else {
-    priceDisplay = "Select options";
-    addToCartLabel = "Select options";
+    priceDisplay = 'Select options';
+    addToCartLabel = 'Select options';
   }
 
   function handleAddToCart() {
@@ -240,14 +283,20 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       ? [...resolvedVariant.options]
           .sort((a, b) => a.optionName.localeCompare(b.optionName))
           .map((o) => `${o.optionName}: ${o.valueLabel}`)
-          .join(" / ")
-      : "";
+          .join(' / ')
+      : '';
     addItem({
       productVariantId: resolvedVariant.id,
       productId: product.id,
       productName: product.name,
       variantLabel,
       price: resolvedVariant.price,
+      ...(resolvedVariant.originalPrice != null && resolvedVariant.discountPercent != null
+        ? {
+            originalPrice: resolvedVariant.originalPrice,
+            discountPercent: resolvedVariant.discountPercent,
+          }
+        : {}),
       imageUrl: primaryMedia?.url,
     });
     setShowAddedFeedback(true);
@@ -258,30 +307,47 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   // stays legible as more get added — the card view keeps the original
   // compact wrapped-row layout, since a list card has no room to spare.
   const optionsBlock = !simpleVariant && options.length > 0 && (
-    <div className={linkToDetail ? "flex flex-wrap gap-3 text-xs" : "flex flex-col gap-3 text-sm"}>
+    <div className={linkToDetail ? 'flex flex-wrap gap-3 text-xs' : 'flex flex-col gap-3 text-sm'}>
       {options.map((option) => {
-        const annotatedValues = getAvailableValues(product.variants, option.variantOptionId, option.values, selection);
+        const annotatedValues = getAvailableValues(
+          product.variants,
+          option.variantOptionId,
+          option.values,
+          selection,
+        );
         return (
           <label key={option.variantOptionId} className="flex flex-col gap-1">
-            <span className={linkToDetail ? "text-muted-foreground" : "text-xs font-medium tracking-wide text-muted-foreground uppercase"}>
+            <span
+              className={
+                linkToDetail
+                  ? 'text-muted-foreground'
+                  : 'text-xs font-medium tracking-wide text-muted-foreground uppercase'
+              }
+            >
               {option.optionName}
             </span>
             <select
               className={
                 linkToDetail
-                  ? "rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-                  : "w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+                  ? 'rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
+                  : 'w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
               }
-              value={selection[option.variantOptionId] ?? ""}
+              value={selection[option.variantOptionId] ?? ''}
               onChange={(e) =>
-                setSelection((prev) => applySelection(product.variants, prev, option.variantOptionId, e.target.value))
+                setSelection((prev) =>
+                  applySelection(product.variants, prev, option.variantOptionId, e.target.value),
+                )
               }
             >
               <option value="">Select {option.optionName}</option>
               {annotatedValues.map((value) => (
-                <option key={value.variantOptionValueId} value={value.variantOptionValueId} disabled={!value.selectable}>
+                <option
+                  key={value.variantOptionValueId}
+                  value={value.variantOptionValueId}
+                  disabled={!value.selectable}
+                >
                   {value.valueLabel}
-                  {value.selectable ? "" : " (unavailable)"}
+                  {value.selectable ? '' : ' (unavailable)'}
                 </option>
               ))}
             </select>
@@ -298,11 +364,11 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
       disabled={!resolvedVariant || outOfStock || atAvailableLimit}
       className={
         linkToDetail
-          ? "w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
-          : "w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+          ? 'w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
+          : 'w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
       }
     >
-      {showAddedFeedback ? "Added to cart" : addToCartLabel}
+      {showAddedFeedback ? 'Added to cart' : addToCartLabel}
     </button>
   );
 
@@ -317,16 +383,44 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
     // grow as products carry more of that information — not visual polish
     // for its own sake.
     return (
-      <li className="flex flex-col gap-6 sm:flex-row sm:items-start">
-        <div className="sm:w-[420px] sm:flex-shrink-0">
-          <ProductMediaCarousel media={product.media} productName={product.name} />
-        </div>
-        <div className="flex flex-1 flex-col gap-5">
+      <li
+        className={
+          // Only reserve a media column when there IS media.
+          // ProductMediaCarousel renders null for an empty gallery, so the
+          // two-column layout used to leave a bordered box collapsed to a
+          // ~1px line beside a squeezed text column — a product without
+          // images looked broken rather than simply image-less.
+          hasMedia
+            ? 'grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12'
+            : 'grid gap-8'
+        }
+      >
+        {hasMedia && (
+          <div className="overflow-hidden rounded-2xl border border-border bg-surface-muted shadow-sm">
+            <ProductMediaCarousel media={product.media} productName={product.name} />
+          </div>
+        )}
+        <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <h1 className="text-xl font-semibold tracking-tight sm:text-2xl">{product.name}</h1>
-            <div className="flex items-baseline gap-3">
-              <span className="font-mono text-xl font-semibold">{priceDisplay}</span>
-              {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
+            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+              Product details
+            </p>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
+            <div className="flex flex-wrap items-baseline gap-2">
+              {showDiscount && originalPriceDisplay && (
+                <span className="money text-sm text-muted-foreground line-through">
+                  {originalPriceDisplay}
+                </span>
+              )}
+              <span className="money text-xl font-semibold">{priceDisplay}</span>
+              {showDiscount && resolvedVariant?.discountPercent != null && (
+                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                  −{resolvedVariant.discountPercent}%
+                </span>
+              )}
+              {lowStockHint && (
+                <span className="text-xs text-muted-foreground">{lowStockHint}</span>
+              )}
             </div>
           </div>
 
@@ -338,7 +432,13 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
               the raw Product.description Markdown/any other string. */}
           {product.descriptionHtml && (
             <div
-              className="max-w-prose text-sm leading-relaxed text-foreground/80 [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
+              // Body copy stays on `foreground` (at 85%) rather than
+              // `muted-foreground`: muted computes to ~4.5:1 on the
+              // default surface, i.e. exactly the AA floor for normal
+              // text, and a tenant can override that token to anything.
+              // The product description is the main thing a buyer reads,
+              // so it should not sit on the threshold.
+              className="max-w-prose text-sm leading-7 text-foreground/85 [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
               dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
             />
           )}
@@ -352,25 +452,57 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
   }
 
   return (
-    <li className="flex flex-col gap-3 rounded-lg border border-border bg-surface p-3 text-sm transition-shadow hover:shadow-sm">
+    <li className="group flex flex-col gap-3 rounded-2xl border border-border bg-surface p-3 text-sm shadow-sm transition-shadow hover:shadow-md">
       {/* Step 50: on the product list card show only the primary (first)
           media item as a thumbnail, linked to the detail page — the full
           carousel belongs on the detail page itself, where every media
           item is reachable. Deliberately the ONLY inventory-adjacent
           number never duplicated here: this reads product.media directly,
           not a separate "primary image" field. */}
-      {primaryMedia && (
-        <Link href={`/products/${product.id}`} className="block overflow-hidden rounded-md bg-surface-muted">
+      {/* Always reserve the media slot. A product imported by CSV may
+          carry no media at all, and rendering nothing made those cards a
+          different height and shape from their neighbours — the grid
+          looked broken rather than the product looking image-less. The
+          placeholder says which it is. */}
+      <Link
+        href={`/products/${product.id}`}
+        className="block overflow-hidden rounded-xl bg-surface-muted"
+      >
+        {primaryMedia ? (
           <MediaThumbnail media={primaryMedia} alt={product.name} />
-        </Link>
-      )}
+        ) : (
+          <div className="flex aspect-square w-full items-center justify-center rounded-md text-xs text-muted-foreground">
+            Chưa có ảnh
+          </div>
+        )}
+      </Link>
 
       <div className="flex flex-col gap-1">
-        <Link href={`/products/${product.id}`} className="line-clamp-2 font-medium hover:underline">
+        <Link
+          href={`/products/${product.id}`}
+          className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline"
+        >
           {product.name}
         </Link>
-        <div className="flex items-baseline justify-between gap-2">
-          <span className="font-mono text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          {/* flex-wrap + min-w-0: at 375px a discounted product has three
+              things on this row (old price, new price, the −N% pill) and
+              without wrapping the pill was clipped by the card edge.
+              whitespace-nowrap keeps "250.000 ₫" from breaking before its
+              currency symbol. */}
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
+            {showDiscount && originalPriceDisplay && (
+              <span className="money text-xs whitespace-nowrap text-muted-foreground line-through">
+                {originalPriceDisplay}
+              </span>
+            )}
+            <span className="money text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+            {showDiscount && resolvedVariant?.discountPercent != null && (
+              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+                −{resolvedVariant.discountPercent}%
+              </span>
+            )}
+          </div>
           {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
         </div>
       </div>
@@ -383,23 +515,73 @@ export function ProductRow({ product, linkToDetail = true }: { product: TenantPr
         <p className="line-clamp-2 text-xs text-muted-foreground">{product.descriptionExcerpt}</p>
       )}
 
-      {optionsBlock}
-
-      <div className="mt-1">{addToCartButton}</div>
+      {/* The card is for BROWSING, not buying. Choosing a variant and
+          adding to the cart happen on the detail page, where the shopper
+          can see every image, the full description and which options are
+          actually available. Letting them buy from here meant committing
+          before any of that was on screen — and on a multi-variant
+          product it meant picking a variant from a cramped select with
+          no picture of what they were picking. */}
+      <Link
+        href={`/products/${product.id}`}
+        className="mt-1 w-full rounded-md bg-foreground px-3 py-2 text-center text-xs font-medium text-background transition-opacity hover:opacity-90"
+      >
+        Xem chi tiết
+      </Link>
     </li>
   );
 }
 
+type SortOption = 'featured' | 'price_asc' | 'price_desc';
+const SORT_LABELS: Record<SortOption, string> = {
+  featured: 'Featured',
+  price_asc: 'Price: Low to High',
+  price_desc: 'Price: High to Low',
+};
+
 export function ProductList({ products }: { products: TenantProduct[] }) {
+  const [sort, setSort] = useState<SortOption>('featured');
+
+  const sortedProducts = useMemo(() => {
+    if (sort === 'featured') return products;
+    const withDirection: 1 | -1 = sort === 'price_asc' ? 1 : -1;
+    // A fresh array — never mutates the `products` prop, since the same
+    // array reference is also used to build availabilityByVariant in the
+    // parent page.
+    return [...products].sort((a, b) => compareByStartingPrice(a, b, withDirection));
+  }, [products, sort]);
+
   if (products.length === 0) {
     return null;
   }
 
   return (
-    <section className="flex flex-col gap-4 px-6 py-12 sm:py-16">
-      <h2 className="text-lg font-medium tracking-tight">Products</h2>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4">
-        {products.map((product) => (
+    <section className="flex flex-col gap-5 px-4 py-10 sm:px-6 sm:py-16">
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
+            Shop the collection
+          </p>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">Products</h2>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          Sort by
+          <select
+            value={sort}
+            onChange={(e) => setSort(e.target.value as SortOption)}
+            aria-label="Sort products"
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+          >
+            {(Object.entries(SORT_LABELS) as [SortOption, string][]).map(([value, label]) => (
+              <option key={value} value={value}>
+                {label}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+        {sortedProducts.map((product) => (
           <ProductRow key={product.id} product={product} />
         ))}
       </ul>

@@ -157,28 +157,3 @@ export async function updateBrandingFaviconUrl(
   }
 }
 
-export async function updateBankTransferDetails(
-  tenantId: string,
-  input: Pick<BrandingInput, 'bankName' | 'bankAccountNumber' | 'bankAccountHolder'>,
-): Promise<ActionResult> {
-  try {
-    await getScopedDb(tenantId).branding.upsert({
-      where: { tenantId },
-      create: {
-        tenantId,
-        bankName: trimToNull(input.bankName ?? ''),
-        bankAccountNumber: trimToNull(input.bankAccountNumber ?? ''),
-        bankAccountHolder: trimToNull(input.bankAccountHolder ?? ''),
-      },
-      update: {
-        bankName: trimToNull(input.bankName ?? ''),
-        bankAccountNumber: trimToNull(input.bankAccountNumber ?? ''),
-        bankAccountHolder: trimToNull(input.bankAccountHolder ?? ''),
-      },
-    });
-    return { success: true, data: undefined };
-  } catch (e) {
-    console.error('updateBankTransferDetails failed:', e);
-    return { success: false, error: 'Something went wrong saving bank transfer details.' };
-  }
-}

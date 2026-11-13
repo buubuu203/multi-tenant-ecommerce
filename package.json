@@ -11,7 +11,12 @@
     "format:check": "prettier --check .",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "db:studio": "prisma studio"
+    "db:studio": "prisma studio",
+    "test": "node --import tsx --import ./tests/env-setup.ts --test --test-concurrency=1 tests/**/*.test.ts",
+    "release:preflight:order-events": "tsx scripts/order-event-preflight.ts",
+    "release:verify:order-events": "tsx scripts/order-event-verify.ts",
+    "release:prune:rejections": "tsx scripts/prune-payment-rejections.ts",
+    "release:preflight": "tsx scripts/release-preflight.ts"
   },
   "dependencies": {
     "@clerk/nextjs": "^7.8.0",
@@ -24,7 +29,8 @@
     "next": "16.3.2",
     "pg": "^8.23.0",
     "react": "19.2.8",
-    "react-dom": "19.2.8"
+    "react-dom": "19.2.8",
+    "sharp": "^0.35.3"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
@@ -38,6 +44,7 @@
     "prettier": "^3.9.6",
     "prisma": "^7.9.1",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   },
   "allowScripts": {

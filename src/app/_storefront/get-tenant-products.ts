@@ -1,6 +1,7 @@
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 import { renderDescriptionMarkdown } from "@/lib/markdown";
+import { applyDiscount } from "@/lib/discounts";
 
 export type TenantProductVariantOption = {
   variantOptionId: string;
@@ -11,7 +12,16 @@ export type TenantProductVariantOption = {
 
 export type TenantProductVariant = {
   id: string;
+  // Product Discount (V1): the EFFECTIVE price — already discounted, if
+  // the product has an active discount — computed server-side via the
+  // same applyDiscount() helper order-mutations.ts uses to actually
+  // charge, so display and charge can never disagree. `originalPrice` is
+  // only ever set (non-null) when a discount is currently active; it is
+  // NOT "the price before some historical discount," it's "what you'd
+  // pay without today's discount."
   price: number;
+  originalPrice: number | null;
+  discountPercent: number | null;
   sku: string | null;
   // Only ever used to detect the pre-existing simple-product sentinel
   // (combinationKey === ""), the same convention already established in
@@ -89,7 +99,10 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
 
   const [products, variantOptions, variantOptionValues] = await Promise.all([
     prisma.product.findMany({
-      where: { tenantId, status: "active" },
+      // Same "has something to sell" rule the single-product read applies.
+      // Without it the grid and the related-products rail would keep
+      // linking to a product whose page now returns 404.
+      where: { tenantId, status: "active", variants: { some: { status: { not: "archived" } } } },
       orderBy: { createdAt: "asc" },
       include: {
         variants: {
@@ -97,6 +110,7 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
           include: { optionValues: true },
         },
         media: { orderBy: { sortOrder: "asc" } },
+        discount: true,
       },
     }),
     prisma.variantOption.findMany({ where: { tenantId } }),
@@ -128,6 +142,8 @@ type RawTenantProduct = {
   name: string;
   description: string | null;
   media: { id: string; type: string; url: string; sortOrder: number }[];
+  // Product Discount (V1): at most one row, per Discount.@@unique([productId]).
+  discount: { percentOff: number; enabled: boolean; startsAt: Date | null; endsAt: Date | null } | null;
   variants: {
     id: string;
     price: number;
@@ -151,9 +167,16 @@ function mapTenantProduct(
       ? renderDescriptionMarkdown(product.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
       : null,
     media: product.media.map((m) => ({ id: m.id, type: m.type as "image" | "video", url: m.url, sortOrder: m.sortOrder })),
-    variants: product.variants.map((variant) => ({
+    variants: product.variants.map((variant) => {
+      // Product Discount (V1): the exact same applyDiscount() call
+      // order-mutations.ts uses to actually charge — display and charge
+      // share one implementation, never two that could drift apart.
+      const { finalPrice, originalPrice, discountPercent } = applyDiscount(variant.price, product.discount);
+      return {
       id: variant.id,
-      price: variant.price,
+      price: finalPrice,
+      originalPrice: discountPercent !== null ? originalPrice : null,
+      discountPercent,
       sku: variant.sku,
       combinationKey: variant.combinationKey,
       options: variant.optionValues.map((ov) => ({
@@ -163,7 +186,8 @@ function mapTenantProduct(
         valueLabel: valueLabelById.get(ov.variantOptionValueId) ?? "?",
       })),
       available: availableByVariant.get(variant.id) ?? 0,
-    })),
+      };
+    }),
   };
 }
 
@@ -180,13 +204,45 @@ function mapTenantProduct(
  */
 export async function getTenantProduct(productId: string): Promise<TenantProduct | null> {
   const headerList = await headers();
+  // The ONLY source of tenant identity: the x-tenant-id header src/proxy.ts
+  // derived from the verified request hostname. Never a query param, cookie,
+  // request body or anything else client-controlled.
   const tenantId = headerList.get("x-tenant-id");
 
-  if (!tenantId || !productId.trim()) {
+  if (!tenantId) {
+    return null;
+  }
+
+  return getTenantProductForTenant(tenantId, productId);
+}
+
+/**
+ * The visibility decision itself, with tenantId passed in explicitly so it
+ * can be exercised against a real database without a request context — the
+ * same reason resolveTenantAdminAuthorization() was split out of
+ * requireTenantAdmin().
+ *
+ * Returns null, indistinguishably, for a blank or malformed id, a
+ * nonexistent id, a draft product, a product belonging to another tenant,
+ * and an active product with no non-archived variant left to sell. The
+ * route turns that null into notFound(), so every one of those cases is
+ * one real 404 that reveals nothing about which case occurred.
+ *
+ * Callers must pass a tenantId they have already established from trusted
+ * request context; this function does not and cannot verify its provenance.
+ */
+export async function getTenantProductForTenant(
+  tenantId: string,
+  productId: string,
+): Promise<TenantProduct | null> {
+  if (!tenantId.trim() || !productId.trim()) {
     return null;
   }
 
   const product = await prisma.product.findFirst({
+    // Both id AND tenantId AND status are required to match: a correct id
+    // belonging to a different tenant, or a non-active product, resolves to
+    // null exactly as a nonexistent id does.
     where: { id: productId, tenantId, status: "active" },
     include: {
       variants: {
@@ -194,9 +250,30 @@ export async function getTenantProduct(productId: string): Promise<TenantProduct
         include: { optionValues: true },
       },
       media: { orderBy: { sortOrder: "asc" } },
+      discount: true,
     },
   });
   if (!product) {
+    return null;
+  }
+
+  // A product with nothing purchasable is not a public product page.
+  // `variants` above is already filtered to non-archived rows, so an empty
+  // list means every variant was archived, or the product never had one.
+  // There is no price to show, no Offer to emit and nothing to add to a
+  // cart, so this resolves to null and the route turns it into the same
+  // real 404 as a nonexistent or cross-tenant id — indistinguishably, so
+  // the 404 still reveals nothing about which case occurred.
+  //
+  // Checked here rather than after mapping so an unsellable product also
+  // skips the three option/inventory queries below.
+  //
+  // DELIBERATELY NOT a stock check: an out-of-stock variant still exists
+  // and still has a price, and the storefront shows it with an "Out of
+  // stock" button on purpose. Making stock drive the status code would
+  // flap a product URL between 200 and 404 as inventory moves, which is
+  // worse for crawlers and for a customer who wants to see the product.
+  if (product.variants.length === 0) {
     return null;
   }
 
