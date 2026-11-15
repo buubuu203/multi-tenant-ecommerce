@@ -75,7 +75,7 @@ before(async () => {
   // A discount on A only, so the discount columns are exercised and
   // isolation on discounts is covered too.
   await prisma.discount.create({
-    data: { tenantId: tenantA.id, productId: a.product.id, percentOff: 20, enabled: true },
+    data: { tenantId: tenantA.id, productId: a.product.id, discountType: "percentage", discountValue: 20, enabled: true },
   });
 
   // Several orders per tenant, enough to exercise ordering.

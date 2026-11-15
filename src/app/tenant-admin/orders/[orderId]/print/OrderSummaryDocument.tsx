@@ -103,6 +103,12 @@ export function OrderSummaryDocument({ order }: { order: PrintableOrder }) {
             <dt className="text-muted-foreground">Shipping</dt>
             <dd className="tabular-nums">{formatVnd(order.totals.shipping)}</dd>
           </div>
+          {order.voucher && (
+            <div className="flex justify-between gap-4">
+              <dt className="text-muted-foreground">Voucher ({order.voucher.code})</dt>
+              <dd className="tabular-nums">−{formatVnd(order.voucher.discount)}</dd>
+            </div>
+          )}
           <div className="flex justify-between gap-4 border-t border-foreground pt-1 text-sm font-semibold">
             <dt>Total ({order.totals.currency})</dt>
             <dd className="tabular-nums">{formatVnd(order.totals.total)}</dd>

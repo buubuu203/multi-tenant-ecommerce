@@ -45,6 +45,8 @@ model Tenant {
   banners         Banner[]
   discounts       Discount[]
   orderEvents     OrderEvent[]
+  vouchers        Voucher[]
+  voucherUsages   VoucherUsage[]
 
   @@map("tenants")
 }
@@ -208,7 +210,8 @@ model Product {
   // Discount's own doc comment for why this is a real @@unique, not just
   // an application-level convention) — "one active discount per product,"
   // never several competing/stacked discounts on the same product.
-  discount Discount?
+  discount        Discount?
+  voucherProducts VoucherProduct[]
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -225,20 +228,19 @@ model Product {
 // product an update to the same row, not a second competing one — there
 // is no code path anywhere that could apply two discounts to one line).
 //
-// Deliberately NOT implemented in V1 (revisit only if real demand shows
-// up): collection-level scope, fixed-amount discounts, minimum
-// quantity/order value thresholds, stacking multiple discounts. Adding
-// any of these later is additive (new nullable columns / a new model),
-// not a rework of this one.
+enum DiscountType {
+  percentage
+  fixed_amount
+}
+
 model Discount {
-  id         String    @id @default(uuid())
-  tenantId   String
-  productId  String    @unique
-  // Whole percent, 1-100 — validated in discount-mutations.ts. Never 0
-  // (that's "no discount," represented by enabled=false or no row at
-  // all) and never >100 (would make finalPrice negative).
-  percentOff Int
-  enabled    Boolean   @default(true)
+  id            String       @id @default(uuid())
+  tenantId      String
+  productId     String       @unique
+  discountType  DiscountType @default(percentage)
+  // For percentage: 1-100. For fixed_amount: VND amount > 0.
+  discountValue Int
+  enabled       Boolean      @default(true)
   // Both optional — a discount with neither is simply "active whenever
   // enabled is true," no time-boxing required. When both are set,
   // startsAt must be before endsAt (validated in discount-mutations.ts,
@@ -534,15 +536,20 @@ model Order {
   createdAt          DateTime      @default(now())
   updatedAt          DateTime      @updatedAt
 
-  tenant   Tenant      @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer Customer    @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  items    OrderItem[]
-  events   OrderEvent[]
-  // Step 51: a Payment row now exists for EVERY order regardless of
-  // paymentMethod (cod/bank_transfer_manual included) — see PaymentProviderType
-  // below. Still deliberately a separate model/status axis from
-  // OrderStatus — payment succeeding or failing never changes Order.status.
-  payment  Payment?
+  // Voucher (V1): snapshots of the voucher applied at checkout, same
+  // convention as shippingMethodName/shippingAmount — stored once, never a
+  // live reference to the Voucher row (which may be deleted/changed later).
+  // Both null together means "no voucher applied." voucherDiscount is the
+  // actual VND amount deducted from the order total.
+  voucherCode     String?
+  voucherDiscount Int           @default(0)
+
+  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer     Customer       @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items        OrderItem[]
+  events       OrderEvent[]
+  payment      Payment?
+  voucherUsage VoucherUsage?
 
   @@unique([id, tenantId])
   @@index([tenantId])
@@ -565,9 +572,14 @@ model OrderItem {
   // admin) — never re-derived from the live Discount row, which may
   // since have changed or been deleted. Both null together means "no
   // discount applied to this line" (the overwhelmingly common case).
-  price            Int // snapshot of the FINAL (post-discount) ProductVariant price at order-creation time — never live, never re-read
+  price            Int // snapshot of the FINAL (post-Layer-1-discount) ProductVariant price at order-creation time — never live, never re-read
   originalUnitPrice Int?
   discountPercent   Int?
+  // Layer 2: product voucher snapshot — the VND amount deducted from this
+  // item's price by a product-scoped voucher. 0 means no product voucher
+  // applied. The actual charged unit price is (price - voucherUnitDiscount).
+  voucherUnitDiscount Int      @default(0)
+  voucherCode         String?
   createdAt        DateTime @default(now())
 
   order          Order          @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
@@ -906,4 +918,109 @@ model OrderEvent {
   @@index([tenantId, orderId, createdAt])
   @@index([tenantId])
   @@map("order_events")
+}
+
+// --- Voucher / Coupon (V1) ------------------------------------------------
+//
+// Order-level discount codes a customer enters at checkout. Deliberately
+// SEPARATE from the existing Product Discount system (Discount model above):
+// product discounts are automatic price reductions the merchant sets per
+// product; vouchers are opt-in codes a customer must enter. They stack:
+// product discount reduces individual item prices, then the voucher
+// reduces the ORDER total (subtotal + shipping), so a customer can benefit
+// from both without the system double-counting.
+//
+// V1 scope: percentage OR fixed-amount, optional min-order, optional max
+// uses, optional time-boxing. No per-customer usage limit, no product/
+// category restrictions, no stacking of multiple vouchers on one order.
+
+enum VoucherDiscountType {
+  percentage
+  fixed_amount
+}
+
+enum VoucherScope {
+  order
+  product
+}
+
+enum PromotionTrigger {
+  code
+  automatic
+}
+
+model Voucher {
+  id             String              @id @default(uuid())
+  tenantId       String
+  // Case-insensitive lookup — see voucher-mutations.ts. Stored
+  // uppercased, searched uppercased, displayed as entered.
+  // Null for automatic promotions (no code needed).
+  code           String?
+  discountType   VoucherDiscountType
+  // percentage: whole percent 1-100. fixed_amount: VND amount > 0.
+  discountValue  Int
+  // order = reduces order total (V1 behavior).
+  // product = reduces price of targeted products only (V2).
+  scope          VoucherScope        @default(order)
+  triggerType    PromotionTrigger    @default(code)
+  // Human-readable name for automatic promotions, shown in cart.
+  label          String?
+  // The voucher won't apply if the order subtotal (items only, before
+  // shipping) is below this. Null = no minimum. For product-scoped
+  // vouchers this checks the subtotal of targeted items only.
+  minOrderAmount Int?
+  // For percentage vouchers: caps the VND deduction so "50% off" on a
+  // 10M order doesn't give 5M off. Null = no cap. Ignored for fixed.
+  maxDiscount    Int?
+  // Null = unlimited redemptions.
+  maxUses        Int?
+  usedCount      Int                 @default(0)
+  startsAt       DateTime?
+  endsAt         DateTime?
+  enabled        Boolean             @default(true)
+  createdAt      DateTime            @default(now())
+  updatedAt      DateTime            @updatedAt
+
+  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  usages   VoucherUsage[]
+  products VoucherProduct[]
+
+  @@unique([tenantId, code])
+  @@unique([tenantId, label])
+  @@index([tenantId])
+  @@map("vouchers")
+}
+
+model VoucherProduct {
+  id        String @id @default(uuid())
+  voucherId String
+  productId String
+
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([voucherId, productId])
+  @@index([productId])
+  @@map("voucher_products")
+}
+
+// One-to-one with Order: at most one voucher per order, enforced by
+// @@unique([orderId]). Records the actual VND amount deducted so the
+// historical discount survives even if the Voucher row is later deleted.
+model VoucherUsage {
+  id             String   @id @default(uuid())
+  tenantId       String
+  voucherId      String
+  orderId        String   @unique
+  discountAmount Int
+  createdAt      DateTime @default(now())
+
+  tenant  Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  voucher Voucher @relation(fields: [voucherId], references: [id], onDelete: Cascade)
+  order   Order   @relation(fields: [orderId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@unique([orderId, tenantId])
+  @@index([voucherId])
+  @@index([tenantId])
+  @@map("voucher_usages")
 }

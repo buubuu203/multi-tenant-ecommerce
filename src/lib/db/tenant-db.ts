@@ -21,7 +21,8 @@ import { prisma } from "../prisma";
  * Scoped models: domain, branding, product (Checkpoint 4C); productVariant,
  * variantOption, variantOptionValue, productOption, productVariantOptionValue,
  * location, inventory (Checkpoint 4F, architecture v4.1); tenantShippingMethod
- * (V1 Configurable Shipping). Future tenant-owned models must be added here
+ * (V1 Configurable Shipping); voucher, voucherUsage (Voucher/coupon system).
+ * Future tenant-owned models must be added here
  * explicitly — they are not automatically covered just by having a tenantId
  * column. Note: tenantPaymentMethod, order, orderItem, and customer remain
  * NOT covered by this extension (an established, pre-existing gap this
@@ -141,6 +142,21 @@ export function getScopedDb(tenantId: string) {
         },
       },
       tenantShippingMethod: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      discount: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      voucher: {
+        async $allOperations({ operation, args, query }) {
+          return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
+        },
+      },
+      voucherUsage: {
         async $allOperations({ operation, args, query }) {
           return query(scopeArgsForOperation(operation, args as QueryArgs, tenantId));
         },

@@ -13,6 +13,7 @@ import { CartWidget } from '../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { TenantTheme } from '@/components/TenantTheme';
+import { getLocale, getDictionary } from '@/lib/i18n';
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header). Force dynamic rendering so
@@ -22,27 +23,26 @@ export const dynamic = 'force-dynamic';
 
 export default async function StorefrontHomePage() {
   const tenant = await getCurrentTenant();
+  const locale = await getLocale();
+  const dict = await getDictionary(locale);
 
   if (!tenant) {
-    // Proxy already rewrites unresolved hostnames to /store-not-found; this
-    // is a defensive fallback in case the page is ever reached without a
-    // resolved tenant context.
     return (
-      <PlatformMessage title="Store not found" body="We couldn't find a store at this address." />
+      <PlatformMessage title={dict.storefront.storeNotFound} body={dict.storefront.storeNotFoundBody} />
     );
   }
 
   if (tenant.status === 'suspended') {
     return (
       <PlatformMessage
-        title="Store temporarily unavailable"
-        body="This store is temporarily unavailable. Please check back later."
+        title={dict.storefront.storeSuspended}
+        body={dict.storefront.storeSuspendedBody}
       />
     );
   }
 
   if (tenant.status === 'archived') {
-    return <PlatformMessage title="Store unavailable" body="This store is no longer available." />;
+    return <PlatformMessage title={dict.storefront.storeArchived} body={dict.storefront.storeArchivedBody} />;
   }
 
   const branding = resolveBranding(tenant, tenant.branding);
@@ -77,7 +77,7 @@ export default async function StorefrontHomePage() {
                   href="/orders"
                   className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
                 >
-                  My orders
+                  {dict.common.myOrders}
                 </Link>
                 <CartWidget
                   availabilityByVariant={availabilityByVariant}
@@ -93,6 +93,7 @@ export default async function StorefrontHomePage() {
             <StorefrontHero
               branding={branding}
               comingSoon={comingSoon}
+              dict={dict}
               // The hero is the whole page only when there is no
               // catalogue under it; ProductList renders nothing for an
               // empty product list.

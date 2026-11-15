@@ -8,19 +8,16 @@ import {
   lookupOrderHistoryByNameAndPhoneAction,
 } from './actions';
 import type { CustomerOrderView } from '@/lib/order-queries';
+import { useDictionary } from '@/lib/i18n/use-dictionary';
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString('vi-VN')} ₫`;
 }
 
-// Mirrors tenant-admin/page.tsx's own PAYMENT_METHOD_LABELS convention —
-// small, local, duplicated rather than shared, matching how this codebase
-// already treats formatVnd/payment-label maps as per-file conveniences
-// (see CartWidget.tsx) rather than a shared utils module.
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: 'Cash on delivery',
-  momo: 'MoMo',
-  bank_transfer: 'Bank transfer',
+const PAYMENT_LABEL_KEYS: Record<string, string> = {
+  cod: 'cod',
+  momo: 'momo',
+  bank_transfer: 'bankTransfer',
 };
 
 // Mirrors tenant-admin/page.tsx's ORDER_STATUS_BADGE/PAYMENT_STATUS_BADGE —
@@ -45,52 +42,48 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
 };
 
 function OrderDetails({ order }: { order: CustomerOrderView }) {
+  const dict = useDictionary();
+  const paymentDict = dict.payment as Record<string, string>;
   return (
     <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface text-sm shadow-sm">
       <div className="border-b border-border bg-surface-muted px-4 py-4 sm:px-6">
         <div className="flex flex-wrap items-center gap-2">
-          <span className="font-mono text-xs">Order {order.id}</span>
+          <span className="font-mono text-xs">{dict.orders.order} {order.id}</span>
           <span
             className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${ORDER_STATUS_BADGE[order.status] ?? 'border-border'}`}
           >
             {order.status}
           </span>
           <span className="rounded-full border border-border px-2.5 py-1 text-xs text-muted-foreground">
-            {PAYMENT_METHOD_LABELS[order.paymentMethod] ?? order.paymentMethod}
+            {paymentDict[PAYMENT_LABEL_KEYS[order.paymentMethod] ?? ''] ?? order.paymentMethod}
           </span>
-          {/* Step 49: lets the customer tell whether they still need to pay
-            (or their payment failed) without guessing — null for
-            cod/bank_transfer, which never have a Payment record. */}
           {order.paymentStatus && (
             <span
               className={`rounded-full border px-2 py-0.5 text-xs font-medium capitalize ${PAYMENT_STATUS_BADGE[order.paymentStatus] ?? 'border-border'}`}
             >
-              Payment: {order.paymentStatus}
+              {dict.orders.paymentLabel} {order.paymentStatus}
             </span>
           )}
         </div>
         <p className="mt-1 text-xs text-muted-foreground">
-          {order.createdAt.toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })}
+          {order.createdAt.toLocaleString('vi-VN', { dateStyle: 'medium', timeStyle: 'short' })}
         </p>
       </div>
 
       <div className="grid gap-6 p-4 sm:p-6">
         <div>
           <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-            Shipping address
+            {dict.orders.shippingAddress}
           </h4>
           <div className="mt-2 rounded-xl border border-border p-3">
             <p>{order.shippingAddress}</p>
             <p className="text-xs text-muted-foreground">
-              {/* District is no longer collected (Vietnam's 2025 2-tier reform
-              dropped it) — only shown for orders placed before that change,
-              which still have a real value on file. */}
               {[order.shippingWard, order.shippingDistrict, order.shippingCity]
                 .filter(Boolean)
                 .join(', ')}
             </p>
             {order.shippingNote && (
-              <p className="mt-1 text-xs text-muted-foreground">Note: {order.shippingNote}</p>
+              <p className="mt-1 text-xs text-muted-foreground">{dict.orders.note} {order.shippingNote}</p>
             )}
           </div>
         </div>
@@ -98,20 +91,20 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         <div>
           <div className="flex items-center justify-between">
             <h4 className="text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Items
+              {dict.orders.items}
             </h4>
             <span className="text-xs text-muted-foreground">
-              {order.items.length} item{order.items.length === 1 ? '' : 's'}
+              {order.items.length} {order.items.length === 1 ? dict.orders.item : dict.orders.items_plural}
             </span>
           </div>
           <div className="mt-2 overflow-x-auto rounded-xl border border-border">
             <table className="w-full min-w-[520px] text-left text-xs">
               <thead>
                 <tr className="border-b border-border">
-                  <th className="py-1.5 pr-2 font-medium">Item</th>
-                  <th className="py-1.5 pr-2 font-medium">Qty</th>
-                  <th className="py-1.5 pr-2 font-medium">Unit price</th>
-                  <th className="py-1.5 font-medium">Line total</th>
+                  <th className="py-1.5 pr-2 font-medium">{dict.orders.itemHeader}</th>
+                  <th className="py-1.5 pr-2 font-medium">{dict.orders.qtyHeader}</th>
+                  <th className="py-1.5 pr-2 font-medium">{dict.orders.unitPriceHeader}</th>
+                  <th className="py-1.5 font-medium">{dict.orders.lineTotalHeader}</th>
                 </tr>
               </thead>
               <tbody>
@@ -167,17 +160,23 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
           from order-queries.ts. */}
         <div className="rounded-xl bg-surface-muted p-4">
           <div className="flex items-center justify-between text-muted-foreground">
-            <span>Subtotal</span>
+            <span>{dict.cart.subtotal}</span>
             <span className="money">{formatVnd(order.subtotal)}</span>
           </div>
           <div className="flex items-center justify-between text-muted-foreground">
-            <span>Shipping{order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}</span>
+            <span>{dict.cart.shipping}{order.shippingMethodName ? ` (${order.shippingMethodName})` : ''}</span>
             <span className="money">
-              {order.shippingAmount === 0 ? 'Free' : formatVnd(order.shippingAmount)}
+              {order.shippingAmount === 0 ? dict.common.free : formatVnd(order.shippingAmount)}
             </span>
           </div>
+          {order.voucherCode && order.voucherDiscount > 0 && (
+            <div className="flex items-center justify-between text-green-700">
+              <span>{(dict.voucher as Record<string, string>).discount} ({order.voucherCode})</span>
+              <span className="money">−{formatVnd(order.voucherDiscount)}</span>
+            </div>
+          )}
           <div className="mt-3 flex items-center justify-between border-t border-border pt-3 font-medium text-foreground">
-            <span>Total</span>
+            <span>{dict.cart.total}</span>
             <span className="money text-lg">{formatVnd(order.total)}</span>
           </div>
         </div>
@@ -209,14 +208,14 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
             // eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset
             <img
               src={order.paymentInstructions.qrCodeUrl}
-              alt="Payment QR code"
+              alt={dict.payment.paymentQrCode}
               className="mt-3 h-40 w-40 rounded-lg border border-border bg-white p-2"
             />
           )}
           {order.paymentInstructions.expiresAt && (
             <p className="mt-1 text-muted-foreground">
-              Expires:{' '}
-              {new Date(order.paymentInstructions.expiresAt).toLocaleString('en-US', {
+              {dict.payment.expires}{' '}
+              {new Date(order.paymentInstructions.expiresAt).toLocaleString('vi-VN', {
                 dateStyle: 'medium',
                 timeStyle: 'short',
               })}
@@ -240,6 +239,7 @@ const inputClassName =
 // existed.
 function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId?: string; defaultEmail?: string }) {
   const [state, formAction, pending] = useActionState(lookupOrderAction, null);
+  const dict = useDictionary();
 
   return (
     <div>
@@ -248,21 +248,21 @@ function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId
           <input type="hidden" name="orderId" value={fixedOrderId} />
         ) : (
           <label className="flex flex-col gap-1.5">
-            Order ID
+            {dict.orders.orderId}
             <input
               name="orderId"
-              placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20"
+              placeholder={dict.orders.orderIdPlaceholder}
               className={inputClassName}
             />
           </label>
         )}
         <label className="flex flex-col gap-1.5">
-          Email used at checkout
+          {dict.orders.emailUsedAtCheckout}
           <input
             type="email"
             name="email"
             defaultValue={defaultEmail}
-            placeholder="you@example.com"
+            placeholder={dict.checkout.emailPlaceholder}
             className={inputClassName}
           />
         </label>
@@ -271,7 +271,7 @@ function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId
           disabled={pending}
           className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
-          {pending ? 'Looking up…' : 'View order'}
+          {pending ? dict.orders.lookingUp : dict.orders.viewOrder}
         </button>
       </form>
 
@@ -286,6 +286,7 @@ function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId
 // remember which email they used but does remember their order id.
 function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
   const [state, formAction, pending] = useActionState(lookupOrderByPhoneAction, null);
+  const dict = useDictionary();
 
   return (
     <div>
@@ -294,24 +295,24 @@ function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
           <input type="hidden" name="orderId" value={fixedOrderId} />
         ) : (
           <label className="flex flex-col gap-1.5">
-            Order ID
+            {dict.orders.orderId}
             <input
               name="orderId"
-              placeholder="e.g. 8f9ce3bd-a984-401f-bcfa-70804553cd20"
+              placeholder={dict.orders.orderIdPlaceholder}
               className={inputClassName}
             />
           </label>
         )}
         <label className="flex flex-col gap-1.5">
-          Phone number used at checkout
-          <input type="tel" name="phone" placeholder="0912345678" className={inputClassName} />
+          {dict.orders.phoneUsedAtCheckout}
+          <input type="tel" name="phone" placeholder={dict.checkout.phonePlaceholder} className={inputClassName} />
         </label>
         <button
           type="submit"
           disabled={pending}
           className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
-          {pending ? 'Looking up…' : 'View order'}
+          {pending ? dict.orders.lookingUp : dict.orders.viewOrder}
         </button>
       </form>
 
@@ -327,6 +328,7 @@ function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
 // have handy," never a weaker fallback.
 function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: string; defaultEmail?: string }) {
   const [verifyBy, setVerifyBy] = useState<'email' | 'phone'>('email');
+  const dict = useDictionary();
 
   return (
     <div>
@@ -337,7 +339,7 @@ function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: stri
           aria-pressed={verifyBy === 'email'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          Verify by email
+          {dict.orders.verifyByEmail}
         </button>
         <button
           type="button"
@@ -345,7 +347,7 @@ function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: stri
           aria-pressed={verifyBy === 'phone'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'phone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          Verify by phone
+          {dict.orders.verifyByPhone}
         </button>
       </div>
       {verifyBy === 'email' ? (
@@ -364,16 +366,17 @@ function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: stri
 // this implies: email alone, no order id, proves ownership here).
 function OrderHistoryByEmail() {
   const [state, formAction, pending] = useActionState(lookupOrderHistoryAction, null);
+  const dict = useDictionary();
 
   return (
     <div>
       <form action={formAction} className="flex flex-col gap-4 text-sm">
         <label className="flex flex-col gap-1.5">
-          Email used at checkout
+          {dict.orders.emailUsedAtCheckout}
           <input
             type="email"
             name="email"
-            placeholder="you@example.com"
+            placeholder={dict.checkout.emailPlaceholder}
             className={inputClassName}
           />
         </label>
@@ -382,7 +385,7 @@ function OrderHistoryByEmail() {
           disabled={pending}
           className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
-          {pending ? 'Looking up…' : 'View my orders'}
+          {pending ? dict.orders.lookingUp : dict.orders.viewMyOrders}
         </button>
       </form>
 
@@ -404,29 +407,28 @@ function OrderHistoryByEmail() {
 // email but does remember what name/phone they gave at checkout.
 function OrderHistoryByNameAndPhone() {
   const [state, formAction, pending] = useActionState(lookupOrderHistoryByNameAndPhoneAction, null);
+  const dict = useDictionary();
 
   return (
     <div>
       <form action={formAction} className="flex flex-col gap-4 text-sm">
         <label className="flex flex-col gap-1.5">
-          Full name used at checkout
-          <input type="text" name="name" placeholder="Nguyen Van A" className={inputClassName} />
+          {dict.orders.fullNameUsedAtCheckout}
+          <input type="text" name="name" placeholder={dict.checkout.namePlaceholder} className={inputClassName} />
         </label>
         <label className="flex flex-col gap-1.5">
-          Phone number used at checkout
-          <input type="tel" name="phone" placeholder="0912345678" className={inputClassName} />
+          {dict.orders.phoneUsedAtCheckout}
+          <input type="tel" name="phone" placeholder={dict.checkout.phonePlaceholder} className={inputClassName} />
         </label>
         <p className="text-xs text-muted-foreground">
-          Both name and phone must match exactly what you gave at checkout — this is a stronger
-          check than email alone, since a name or phone number by itself isn&apos;t unique enough
-          to prove it&apos;s really your order.
+          {dict.orders.namePhoneDisclaimer}
         </p>
         <button
           type="submit"
           disabled={pending}
           className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
         >
-          {pending ? 'Looking up…' : 'View my orders'}
+          {pending ? dict.orders.lookingUp : dict.orders.viewMyOrders}
         </button>
       </form>
 
@@ -449,6 +451,7 @@ function OrderHistoryByNameAndPhone() {
 // doc comments for why).
 function OrderHistoryLookup() {
   const [verifyBy, setVerifyBy] = useState<'email' | 'namePhone'>('email');
+  const dict = useDictionary();
 
   return (
     <div>
@@ -459,7 +462,7 @@ function OrderHistoryLookup() {
           aria-pressed={verifyBy === 'email'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          By email
+          {dict.orders.byEmail}
         </button>
         <button
           type="button"
@@ -467,7 +470,7 @@ function OrderHistoryLookup() {
           aria-pressed={verifyBy === 'namePhone'}
           className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'namePhone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          By name + phone
+          {dict.orders.byNamePhone}
         </button>
       </div>
       {verifyBy === 'email' ? <OrderHistoryByEmail /> : <OrderHistoryByNameAndPhone />}
@@ -488,6 +491,7 @@ export function OrderLookupForm({
   defaultEmail?: string;
 }) {
   const [mode, setMode] = useState<'single' | 'history'>('single');
+  const dict = useDictionary();
 
   if (fixedOrderId) {
     return <SingleOrderLookup fixedOrderId={fixedOrderId} defaultEmail={defaultEmail} />;
@@ -502,7 +506,7 @@ export function OrderLookupForm({
           aria-pressed={mode === 'single'}
           className={`rounded px-3 py-1 transition-colors ${mode === 'single' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          Look up an order
+          {dict.orders.lookUpAnOrder}
         </button>
         <button
           type="button"
@@ -510,7 +514,7 @@ export function OrderLookupForm({
           aria-pressed={mode === 'history'}
           className={`rounded px-3 py-1 transition-colors ${mode === 'history' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
-          My order history
+          {dict.orders.myOrderHistory}
         </button>
       </div>
 

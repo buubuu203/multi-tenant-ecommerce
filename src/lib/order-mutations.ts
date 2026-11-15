@@ -4,6 +4,7 @@ import { recordOrderEventInTx, SYSTEM_ACTOR, type OrderEventActor } from "./orde
 import { isValidVietnamesePhone } from "./validation/phone";
 import { resolveShippingMethod } from "./shipping-service";
 import { applyDiscount } from "./discounts";
+import { validateVoucher, isVoucherActive, calculateVoucherDiscount, calculatePerItemDiscounts, toVoucherInfo, type VoucherInfo, type CartItemForVoucher } from "./vouchers";
 import type { ActionResult } from "./action-result";
 
 // The client cart (see cart-context.tsx) is NOT authoritative — this is
@@ -210,7 +211,9 @@ export async function createOrder(
   customer: CustomerInput,
   shipping: ShippingInput,
   shippingMethodId: string,
-): Promise<ActionResult<{ orderId: string; items: CreatedOrderItem[]; shippingAmount: number }>> {
+  voucherCode?: string,
+  autoPromotionId?: string,
+): Promise<ActionResult<{ orderId: string; items: CreatedOrderItem[]; shippingAmount: number; voucherDiscount: number }>> {
   const inputError = validateItemsInput(items);
   if (inputError) {
     return { success: false, error: inputError.error };
@@ -255,6 +258,31 @@ export async function createOrder(
     return { success: false, error: shippingInput.error };
   }
 
+  // Voucher pre-flight: validate now so the customer gets a clear error
+  // before we open the inventory-reserving transaction. The actual
+  // discount is re-computed inside the transaction from the real subtotal
+  // (not any client-supplied number). usedCount is incremented atomically
+  // inside the transaction as well.
+  let preflightVoucher: Awaited<ReturnType<typeof validateVoucher>> | null = null;
+  if (voucherCode) {
+    preflightVoucher = await validateVoucher(tenantId, voucherCode, 0);
+    if (!preflightVoucher.valid) {
+      return { success: false, error: preflightVoucher.error };
+    }
+  } else if (autoPromotionId) {
+    const db2 = getScopedDb(tenantId);
+    const autoVoucher = await db2.voucher.findUnique({
+      where: { id: autoPromotionId, tenantId },
+      include: { products: { select: { productId: true } } },
+    });
+    if (autoVoucher && autoVoucher.triggerType === "automatic") {
+      const info = toVoucherInfo(autoVoucher);
+      if (isVoucherActive(info)) {
+        preflightVoucher = { valid: true, voucher: info, discountAmount: 0, perItemDiscounts: [] };
+      }
+    }
+  }
+
   const merged = mergeDuplicateItems(items);
   const db = getScopedDb(tenantId);
 
@@ -283,15 +311,14 @@ export async function createOrder(
           shippingDistrict: shippingInput.district,
           shippingCity: shippingInput.city,
           shippingNote: shippingInput.note,
-          // Snapshots, taken once, here, from the already-resolved value
-          // above — never a live reference to TenantShippingMethod (see
-          // schema.prisma's doc comment on these two columns).
           shippingAmount: resolvedShipping.amount,
           shippingMethodName: resolvedShipping.name,
+          voucherCode: preflightVoucher?.valid ? preflightVoucher.voucher.code : null,
         },
       });
 
       const createdItems: CreatedOrderItem[] = [];
+      const variantProductMap = new Map<string, string>();
       for (const item of merged) {
         // Authoritative lookup — the client never supplies price, name,
         // SKU, or anything else about this variant. Also re-verifies
@@ -322,6 +349,7 @@ export async function createOrder(
           throw new InventoryError("One or more items in your order are no longer available.");
         }
 
+        variantProductMap.set(item.productVariantId, variant.productId);
         await reserveInventoryInTx(tx, tenantId, item.productVariantId, item.quantity);
 
         // Product Discount (V1): computed HERE, server-side, from the
@@ -331,7 +359,8 @@ export async function createOrder(
         // per unit; `price` becomes the final, already-discounted amount,
         // so every downstream reader (totals, receipts, admin) needed no
         // changes — see discounts.ts's doc comment.
-        const { finalPrice, discountPercent } = applyDiscount(variant.price, variant.product.discount);
+        const { finalPrice, discountPercent, discountAmount } = applyDiscount(variant.price, variant.product.discount);
+        const hasDiscount = discountPercent !== null || discountAmount > 0;
 
         const orderItem = await tx.orderItem.create({
           data: {
@@ -339,33 +368,95 @@ export async function createOrder(
             orderId: order.id,
             productVariantId: item.productVariantId,
             quantity: item.quantity,
-            price: finalPrice, // snapshot — see doc comment above
-            originalUnitPrice: discountPercent !== null ? variant.price : null,
+            price: finalPrice,
+            originalUnitPrice: hasDiscount ? variant.price : null,
             discountPercent,
           },
         });
         createdItems.push({ productVariantId: orderItem.productVariantId, quantity: orderItem.quantity, price: orderItem.price });
       }
 
-      // Order Audit History: written inside this same transaction, so an
-      // order and its first timeline entry commit or roll back together —
-      // there can be no order without a creation event, and no creation
-      // event for an order that failed to be created.
-      //
-      // actor is always `system`: this is guest checkout, with no
-      // signed-in user to attribute it to. The summary carries only
-      // operational facts (item count, payment method) — never the
-      // customer's name, email, phone or address.
+      // Voucher application: re-read the voucher INSIDE the transaction so
+      // the usedCount check + increment is atomic — the preflight outside
+      // the transaction was a UX courtesy, not a concurrency guarantee.
+      let voucherDiscount = 0;
+      if (preflightVoucher?.valid) {
+        const subtotal = createdItems.reduce((sum, i) => sum + i.price * i.quantity, 0);
+        const freshVoucher = await tx.voucher.findUnique({
+          where: { id: preflightVoucher.voucher.id },
+          include: { products: { select: { productId: true } } },
+        });
+        if (freshVoucher) {
+          const info = toVoucherInfo(freshVoucher);
+
+          if (info.scope === "product") {
+            // Product-scoped: compute per-item discounts, write them on each OrderItem
+            const cartItemsForVoucher: CartItemForVoucher[] = createdItems.map((ci) => ({
+              productVariantId: ci.productVariantId,
+              productId: variantProductMap.get(ci.productVariantId)!,
+              unitPrice: ci.price,
+              quantity: ci.quantity,
+            }));
+            const targeted = info.targetProductIds.length > 0
+              ? cartItemsForVoucher.filter((i) => info.targetProductIds.includes(i.productId))
+              : cartItemsForVoucher;
+            const targetedSubtotal = targeted.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+
+            if (isVoucherActive(info) && targeted.length > 0 && (info.minOrderAmount === null || targetedSubtotal >= info.minOrderAmount)) {
+              const perItem = calculatePerItemDiscounts(info, cartItemsForVoucher);
+              voucherDiscount = perItem.reduce((sum, d) => sum + d.unitDiscount * d.quantity, 0);
+
+              for (const d of perItem) {
+                if (d.unitDiscount > 0) {
+                  await tx.orderItem.updateMany({
+                    where: { orderId: order.id, productVariantId: d.productVariantId },
+                    data: { voucherUnitDiscount: d.unitDiscount, voucherCode: info.code },
+                  });
+                }
+              }
+
+              await tx.order.update({
+                where: { id: order.id },
+                data: { voucherDiscount },
+              });
+              await tx.voucherUsage.create({
+                data: { tenantId, voucherId: info.id, orderId: order.id, discountAmount: voucherDiscount },
+              });
+              await tx.voucher.update({
+                where: { id: info.id },
+                data: { usedCount: { increment: 1 } },
+              });
+            }
+          } else {
+            // Order-scoped: original behavior
+            if (isVoucherActive(info) && (info.minOrderAmount === null || subtotal >= info.minOrderAmount)) {
+              voucherDiscount = calculateVoucherDiscount(info, subtotal);
+              await tx.order.update({
+                where: { id: order.id },
+                data: { voucherDiscount },
+              });
+              await tx.voucherUsage.create({
+                data: { tenantId, voucherId: info.id, orderId: order.id, discountAmount: voucherDiscount },
+              });
+              await tx.voucher.update({
+                where: { id: info.id },
+                data: { usedCount: { increment: 1 } },
+              });
+            }
+          }
+        }
+      }
+
       await recordOrderEventInTx(tx, {
         tenantId,
         orderId: order.id,
         type: "order_created",
         newValue: order.status,
-        summary: `Order placed with ${createdItems.length} item(s) · ${order.paymentMethod}`,
+        summary: `Order placed with ${createdItems.length} item(s) · ${order.paymentMethod}${voucherDiscount > 0 ? ` · voucher −${voucherDiscount.toLocaleString("vi-VN")} ₫` : ""}`,
         actor: SYSTEM_ACTOR,
       });
 
-      return { orderId: order.id, items: createdItems, shippingAmount: resolvedShipping.amount };
+      return { orderId: order.id, items: createdItems, shippingAmount: resolvedShipping.amount, voucherDiscount };
     });
 
     return { success: true, data: result };

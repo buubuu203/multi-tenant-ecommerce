@@ -9,6 +9,7 @@ import { createPaymentForOrder } from "@/lib/payments/payment-service";
 import type { PaymentInstructions } from "@/lib/payments/provider";
 import type { PaymentMethod } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
+import { validateVoucher, findBestAutoPromotion, type CartItemForVoucher } from "@/lib/vouchers";
 
 // Only the two identity fields this checkout flow is allowed to trust from
 // the client cart — see cart-context.tsx's own doc comment for why price/
@@ -71,6 +72,8 @@ export async function checkoutAction(
   customer: CheckoutCustomerInput,
   shipping: CheckoutShippingInput,
   shippingMethodId: string,
+  voucherCode?: string,
+  autoPromotionId?: string,
 ): Promise<ActionResult<{ orderId: string; instructions: PaymentInstructions }>> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
@@ -107,16 +110,17 @@ export async function checkoutAction(
     sanitizedCustomer,
     sanitizedShipping,
     shippingMethodId,
+    voucherCode || undefined,
+    autoPromotionId || undefined,
   );
   if (!result.success) {
     return result;
   }
 
-  // Server-computed total from the just-created, server-snapshotted order
-  // items PLUS the server-resolved shipping amount (V1 Configurable
-  // Shipping) — never a client-supplied amount for either term.
   const total =
-    result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0) + result.data.shippingAmount;
+    result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
+    + result.data.shippingAmount
+    - result.data.voucherDiscount;
   const paymentResult = await createPaymentForOrder(
     tenantId,
     result.data.orderId,
@@ -188,13 +192,106 @@ export async function getCurrentCartPrices(
   return {
     success: true,
     data: variants.map((variant) => {
-      const { finalPrice, discountPercent } = applyDiscount(variant.price, variant.product.discount);
+      const { finalPrice, discountPercent, discountAmount } = applyDiscount(variant.price, variant.product.discount);
+      const hasDiscount = discountPercent !== null || discountAmount > 0;
       return {
         productVariantId: variant.id,
         price: finalPrice,
-        originalPrice: discountPercent !== null ? variant.price : null,
+        originalPrice: hasDiscount ? variant.price : null,
         discountPercent,
       };
     }),
+  };
+}
+
+export async function validateVoucherAction(
+  code: string,
+  orderSubtotal: number,
+  cartItems?: CheckoutItemInput[],
+): Promise<ActionResult<{ discountAmount: number; code: string | null; label: string | null; discountType: string; discountValue: number; scope: string }>> {
+  const headerList = await headers();
+  const tenantId = headerList.get("x-tenant-id");
+  if (!tenantId) {
+    return { success: false, error: "Store not found." };
+  }
+
+  let enrichedItems: CartItemForVoucher[] | undefined;
+  if (cartItems && cartItems.length > 0) {
+    const variantIds = [...new Set(cartItems.map((i) => i.productVariantId))];
+    const variants = await prisma.productVariant.findMany({
+      where: { id: { in: variantIds }, tenantId },
+      include: { product: { include: { discount: true } } },
+    });
+    const variantMap = new Map(variants.map((v) => [v.id, v]));
+    enrichedItems = cartItems
+      .filter((i) => variantMap.has(i.productVariantId))
+      .map((i) => {
+        const v = variantMap.get(i.productVariantId)!;
+        const { finalPrice } = applyDiscount(v.price, v.product.discount);
+        return {
+          productVariantId: i.productVariantId,
+          productId: v.productId,
+          unitPrice: finalPrice,
+          quantity: i.quantity,
+        };
+      });
+  }
+
+  const result = await validateVoucher(tenantId, code, orderSubtotal, enrichedItems);
+  if (!result.valid) {
+    return { success: false, error: result.error };
+  }
+  return {
+    success: true,
+    data: {
+      discountAmount: result.discountAmount,
+      code: result.voucher.code,
+      label: result.voucher.label ?? null,
+      discountType: result.voucher.discountType,
+      discountValue: result.voucher.discountValue,
+      scope: result.voucher.scope,
+    },
+  };
+}
+
+export type AutoPromotionResult = {
+  label: string;
+  discountAmount: number;
+  voucherId: string;
+} | null;
+
+export async function findAutoPromotionAction(
+  cartItems: CheckoutItemInput[],
+  orderSubtotal: number,
+): Promise<AutoPromotionResult> {
+  const headerList = await headers();
+  const tenantId = headerList.get("x-tenant-id");
+  if (!tenantId) return null;
+
+  const variantIds = cartItems.map((item) => item.productVariantId);
+  const variants = await prisma.productVariant.findMany({
+    where: { id: { in: variantIds }, tenantId },
+    include: { product: { include: { discount: true } } },
+  });
+
+  const enrichedItems: CartItemForVoucher[] = cartItems.map((item) => {
+    const variant = variants.find((v) => v.id === item.productVariantId);
+    if (!variant) return { productVariantId: item.productVariantId, productId: "", unitPrice: 0, quantity: item.quantity };
+    const { finalPrice } = applyDiscount(variant.price, variant.product.discount);
+    return {
+      productVariantId: item.productVariantId,
+      productId: variant.productId,
+      unitPrice: finalPrice,
+      quantity: item.quantity,
+    };
+  });
+
+  const result = await findBestAutoPromotion(tenantId, enrichedItems, orderSubtotal);
+  if (!result || !result.valid) return null;
+
+  return {
+    label: result.voucher.label ?? "Auto promotion",
+    discountAmount: result.discountAmount,
+    voucherId: result.voucher.id,
   };
 }

@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import type { ResolvedBranding } from "./resolve-branding";
+import { LocaleSwitcher } from "@/components/LocaleSwitcher";
 
 // Single sticky header for every storefront page (home + PDP) — previously
 // only the homepage rendered this (with branding) while the PDP had its
@@ -15,10 +16,12 @@ import type { ResolvedBranding } from "./resolve-branding";
 export function StorefrontHeader({
   branding,
   backHref,
+  backLabel = "← Back",
   rightSlot,
 }: {
   branding: ResolvedBranding;
   backHref?: string;
+  backLabel?: string;
   rightSlot?: ReactNode;
 }) {
   const initial = branding.storeName.trim().charAt(0).toUpperCase() || "?";
@@ -33,7 +36,7 @@ export function StorefrontHeader({
           href={backHref}
           className="mr-1 text-sm text-muted-foreground transition-colors hover:text-foreground"
         >
-          ← Back
+          {backLabel}
         </Link>
       )}
       {branding.logoUrl ? (
@@ -53,7 +56,10 @@ export function StorefrontHeader({
         </div>
       )}
       <span className="text-lg font-semibold tracking-tight">{branding.storeName}</span>
-      {rightSlot && <div className="ml-auto flex items-center gap-2">{rightSlot}</div>}
+      <div className="ml-auto flex items-center gap-2">
+        <LocaleSwitcher />
+        {rightSlot}
+      </div>
     </header>
   );
 }

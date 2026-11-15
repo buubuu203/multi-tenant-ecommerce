@@ -64,7 +64,8 @@ export type OrderDetail = {
     amount: number;
   };
   items: OrderDetailLine[];
-  totals: { subtotal: number; shipping: number; total: number; currency: 'VND' };
+  voucher: { code: string; discount: number } | null;
+  totals: { subtotal: number; shipping: number; voucherDiscount: number; total: number; currency: 'VND' };
   totalUnits: number;
   timeline: OrderTimelineEntry[];
 };
@@ -99,6 +100,8 @@ export async function getOrderDetail(
       shippingNote: true,
       shippingMethodName: true,
       shippingAmount: true,
+      voucherCode: true,
+      voucherDiscount: true,
       customer: { select: { id: true, name: true, email: true, phone: true } },
       payment: {
         select: {
@@ -159,6 +162,7 @@ export async function getOrderDetail(
   });
 
   const subtotal = items.reduce((sum, line) => sum + line.lineTotal, 0);
+  const voucherDiscount = order.voucherDiscount ?? 0;
 
   return {
     id: order.id,
@@ -178,10 +182,12 @@ export async function getOrderDetail(
       amount: order.shippingAmount,
     },
     items,
+    voucher: order.voucherCode ? { code: order.voucherCode, discount: voucherDiscount } : null,
     totals: {
       subtotal,
       shipping: order.shippingAmount,
-      total: subtotal + order.shippingAmount,
+      voucherDiscount,
+      total: subtotal + order.shippingAmount - voucherDiscount,
       currency: 'VND',
     },
     totalUnits: items.reduce((sum, line) => sum + line.quantity, 0),

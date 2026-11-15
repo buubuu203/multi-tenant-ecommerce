@@ -12,6 +12,8 @@ import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { TenantTheme } from '@/components/TenantTheme';
 import type { Metadata } from 'next';
+import { getLocale, getDictionary } from '@/lib/i18n';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { getRequestOrigin } from '@/lib/seo/request-origin';
 import {
   buildMetaDescription,
@@ -151,6 +153,8 @@ export default async function ProductDetailPage({
   // result) had no way to tell which store they were on.
   const tenant = await getCurrentTenant();
   const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
+  const locale = await getLocale();
+  const dict = await getDictionary(locale);
 
   // Reuses resolveProductSeo()'s tenant-scoped reads; React dedupes the
   // identical fetches this and generateMetadata() both perform within one
@@ -188,13 +192,15 @@ export default async function ProductDetailPage({
             <StorefrontHeader
               branding={branding}
               backHref="/"
+              backLabel={dict.common.back}
               rightSlot={
                 <>
+                  <LocaleSwitcher />
                   <Link
                     href="/orders"
                     className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
                   >
-                    My orders
+                    {dict.common.myOrders}
                   </Link>
                   <CartWidget
                     availabilityByVariant={availabilityByVariant}
@@ -210,14 +216,15 @@ export default async function ProductDetailPage({
                 href="/"
                 className="text-sm text-muted-foreground transition-colors hover:text-foreground"
               >
-                ← Back to store
+                {dict.common.backToStore}
               </Link>
               <div className="flex items-center gap-2">
+                <LocaleSwitcher />
                 <Link
                   href="/orders"
                   className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
                 >
-                  My orders
+                  {dict.common.myOrders}
                 </Link>
                 <CartWidget
                   availabilityByVariant={availabilityByVariant}
@@ -235,9 +242,9 @@ export default async function ProductDetailPage({
             {relatedProducts.length > 0 && (
               <section className="mx-auto mt-16 max-w-5xl border-t border-border pt-10">
                 <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                  Keep browsing
+                  {dict.products.keepBrowsing}
                 </p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight">You might also like</h2>
+                <h2 className="mt-1 text-xl font-semibold tracking-tight">{dict.products.youMightAlsoLike}</h2>
                 <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-5">
                   {relatedProducts.map((related) => (
                     <ProductRow key={related.id} product={related} />

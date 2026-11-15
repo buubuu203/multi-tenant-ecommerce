@@ -2,6 +2,9 @@ import type { Metadata } from 'next';
 import { Be_Vietnam_Pro, Geist_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { getCurrentTenant } from './_storefront/get-current-tenant';
+import { getLocale, getDictionary } from '@/lib/i18n';
+import { LocaleProvider } from '@/lib/i18n/locale-context';
+import { DictionaryProvider } from '@/lib/i18n/use-dictionary';
 import './globals.css';
 
 // Be Vietnam Pro is the storefront and admin typeface: a Vietnamese-first
@@ -48,14 +51,20 @@ export async function generateMetadata(): Promise<Metadata> {
   };
 }
 
-export default function RootLayout({ children }: LayoutProps<'/'>) {
+export default async function RootLayout({ children }: LayoutProps<'/'>) {
+  const locale = await getLocale();
+  const dictionary = await getDictionary(locale);
+
   return (
     <ClerkProvider signInUrl="/sign-in">
-      {/* lang="vi": the storefronts, their content and their currency are
-          Vietnamese. It drives correct hyphenation and font selection, and
-          tells a screen reader which language to pronounce. */}
-      <html lang="vi" className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}>
-        <body className="min-h-full flex flex-col">{children}</body>
+      <html lang={locale} className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}>
+        <body className="min-h-full flex flex-col">
+          <LocaleProvider locale={locale}>
+            <DictionaryProvider dictionary={dictionary}>
+              {children}
+            </DictionaryProvider>
+          </LocaleProvider>
+        </body>
       </html>
     </ClerkProvider>
   );

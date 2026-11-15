@@ -72,10 +72,12 @@ export type PrintableOrder = {
   totals: {
     subtotal: number;
     shipping: number;
+    voucherDiscount: number;
     total: number;
     /** No currency column exists; this market is VND-only. */
     currency: 'VND';
   };
+  voucher: { code: string; discount: number } | null;
   /** Sum of quantities, for the packing slip and the handoff note. */
   totalUnits: number;
   /**
@@ -115,6 +117,8 @@ export async function getOrderForPrint(
       shippingNote: true,
       shippingAmount: true,
       shippingMethodName: true,
+      voucherCode: true,
+      voucherDiscount: true,
       createdAt: true,
       customer: { select: { name: true, email: true, phone: true } },
       payment: { select: { status: true } },
@@ -163,7 +167,8 @@ export async function getOrderForPrint(
 
   const subtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
   const shipping = order.shippingAmount;
-  const total = subtotal + shipping;
+  const voucherDiscount = order.voucherDiscount ?? 0;
+  const total = subtotal + shipping - voucherDiscount;
 
   const tenant = await db.tenant.findUnique({
     where: { id: tenantId },
@@ -193,7 +198,8 @@ export async function getOrderForPrint(
       amount: shipping,
     },
     items,
-    totals: { subtotal, shipping, total, currency: 'VND' },
+    voucher: order.voucherCode ? { code: order.voucherCode, discount: voucherDiscount } : null,
+    totals: { subtotal, shipping, voucherDiscount, total, currency: 'VND' },
     totalUnits: items.reduce((sum, item) => sum + item.quantity, 0),
     // Only COD collects on delivery. Anything else is already paid for, or
     // settled by transfer, so printing an amount to collect would be wrong.

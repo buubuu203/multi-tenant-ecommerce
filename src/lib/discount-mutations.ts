@@ -1,11 +1,12 @@
 import { getScopedDb } from "./db/tenant-db";
 import type { ActionResult } from "./action-result";
-import type { Discount } from "@/generated/prisma/client";
+import type { Discount, DiscountType } from "@/generated/prisma/client";
 
 export type DiscountInput = {
-  percentOff: string; // whole-number-from-form-field convention, same as ShippingMethodInput.amount
+  discountType: string;
+  discountValue: string;
   enabled: boolean;
-  startsAt: string; // "" or a datetime-local input value
+  startsAt: string;
   endsAt: string;
 };
 
@@ -21,13 +22,19 @@ function parseOptionalDate(value: string, fieldLabel: string): { date: Date | nu
 
 function validateDiscountInput(
   input: DiscountInput,
-): { percentOff: number; enabled: boolean; startsAt: Date | null; endsAt: Date | null } | { error: string } {
-  if (!/^\d+$/.test(input.percentOff.trim())) {
-    return { error: "Discount percent must be a whole number." };
+): { discountType: DiscountType; discountValue: number; enabled: boolean; startsAt: Date | null; endsAt: Date | null } | { error: string } {
+  const discountType = input.discountType === "fixed_amount" ? "fixed_amount" : "percentage";
+
+  const raw = input.discountValue.trim();
+  if (!/^\d+$/.test(raw)) {
+    return { error: "Discount value must be a whole number." };
   }
-  const percentOff = Number(input.percentOff.trim());
-  if (!Number.isSafeInteger(percentOff) || percentOff < 1 || percentOff > 100) {
-    return { error: "Discount percent must be between 1 and 100." };
+  const discountValue = Number(raw);
+  if (!Number.isSafeInteger(discountValue) || discountValue < 1) {
+    return { error: "Discount value must be at least 1." };
+  }
+  if (discountType === "percentage" && discountValue > 100) {
+    return { error: "Percentage discount must be between 1 and 100." };
   }
 
   const startsAtResult = parseOptionalDate(input.startsAt, "Start date");
@@ -39,7 +46,7 @@ function validateDiscountInput(
     return { error: "Start date must be before end date." };
   }
 
-  return { percentOff, enabled: input.enabled, startsAt: startsAtResult.date, endsAt: endsAtResult.date };
+  return { discountType, discountValue, enabled: input.enabled, startsAt: startsAtResult.date, endsAt: endsAtResult.date };
 }
 
 /**
@@ -77,13 +84,15 @@ export async function upsertProductDiscount(
       create: {
         tenantId,
         productId,
-        percentOff: validated.percentOff,
+        discountType: validated.discountType,
+        discountValue: validated.discountValue,
         enabled: validated.enabled,
         startsAt: validated.startsAt,
         endsAt: validated.endsAt,
       },
       update: {
-        percentOff: validated.percentOff,
+        discountType: validated.discountType,
+        discountValue: validated.discountValue,
         enabled: validated.enabled,
         startsAt: validated.startsAt,
         endsAt: validated.endsAt,

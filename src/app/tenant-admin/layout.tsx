@@ -13,6 +13,8 @@ import {
 import Link from 'next/link';
 import { AdminAccountBar } from '@/components/AdminAccountBar';
 import { AdminDenied } from '@/components/AdminDenied';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
+import { getLocale, getDictionary } from '@/lib/i18n';
 
 // Phase 1 of the admin route split: this layout now owns the chrome
 // (theme, header, tab nav) that used to live inside the single giant
@@ -21,6 +23,9 @@ import { AdminDenied } from '@/components/AdminDenied';
 // itself needs (tenant name, branding for TenantTheme, the primary
 // domain for "View storefront"), once, shared across every section.
 export default async function TenantAdminLayout({ children }: { children: ReactNode }) {
+  const locale = await getLocale();
+  const dict = await getDictionary(locale);
+
   let tenantId: string;
   try {
     ({ tenantId } = await requireTenantAdmin());
@@ -58,7 +63,7 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
                 which tool they are in; what they need confirmed before
                 changing anything — especially running more than one shop —
                 is which shop this is. */}
-            <p className={adminEyebrowClassName}>Tenant Admin</p>
+            <p className={adminEyebrowClassName}>{dict.admin.tenantAdmin}</p>
             <h1 className="truncate text-lg font-semibold tracking-tight">
               {tenant?.name ?? '(unknown tenant)'}
             </h1>
@@ -71,9 +76,8 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
                 rel="noreferrer"
                 className={adminButtonSecondaryClassName}
               >
-                View storefront
+                {dict.admin.viewStorefront}
                 <span aria-hidden="true">↗</span>
-                <span className="sr-only">(opens in a new tab)</span>
               </a>
             )}
             {/* Lối vào duy nhất của hướng dẫn sử dụng. Một link bình
@@ -81,12 +85,13 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
                 dùng chung cho mọi trang trong khu vực quản trị. */}
             <Link
               href="/tenant-admin/help"
-              aria-label="Mở hướng dẫn sử dụng"
-              title="Hướng dẫn sử dụng"
+              aria-label={dict.admin.openUserGuide}
+              title={dict.admin.userGuide}
               className="inline-flex size-11 items-center justify-center rounded-md border border-border text-sm font-semibold transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:size-9"
             >
               <span aria-hidden="true">?</span>
             </Link>
+            <LocaleSwitcher />
             <AdminAccountBar />
           </div>
         </div>

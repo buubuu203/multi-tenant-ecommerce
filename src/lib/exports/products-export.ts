@@ -1,5 +1,6 @@
 import { getScopedDb } from "../db/tenant-db";
 import { listDiscountsByProduct } from "../discount-mutations";
+import { applyDiscount } from "../discounts";
 import { formatCsvAmount, formatCsvTimestamp } from "../csv";
 
 export type ExportTable = {
@@ -79,7 +80,11 @@ export async function buildProductsExport(tenantId: string): Promise<ExportTable
   const rows: ExportTable["rows"] = [];
   for (const product of products) {
     const discount = discountByProduct.get(product.id);
-    const percentOff = discount?.percentOff ?? null;
+    const discountLabel = discount
+      ? discount.discountType === "fixed_amount"
+        ? `${discount.discountValue}₫`
+        : `${discount.discountValue}%`
+      : null;
     const descriptionExcerpt = product.description
       ? product.description.replace(/\s+/g, " ").trim().slice(0, 200)
       : "";
@@ -99,7 +104,7 @@ export async function buildProductsExport(tenantId: string): Promise<ExportTable
           "",
           "",
           "",
-          percentOff ?? "",
+          discountLabel ?? "",
           "",
           "",
           "",
@@ -122,10 +127,8 @@ export async function buildProductsExport(tenantId: string): Promise<ExportTable
         .filter((part): part is string => part !== null)
         .join(" / ");
 
-      const discountedPrice =
-        percentOff !== null
-          ? Math.max(0, variant.price - Math.round((variant.price * percentOff) / 100))
-          : null;
+      const { finalPrice, discountAmount } = applyDiscount(variant.price, discount);
+      const discountedPrice = discountAmount > 0 ? finalPrice : null;
 
       rows.push([
         product.id,
@@ -137,7 +140,7 @@ export async function buildProductsExport(tenantId: string): Promise<ExportTable
         label,
         variant.status,
         formatCsvAmount(variant.price),
-        percentOff ?? "",
+        discountLabel ?? "",
         discountedPrice !== null ? formatCsvAmount(discountedPrice) : "",
         onHand,
         reserved,

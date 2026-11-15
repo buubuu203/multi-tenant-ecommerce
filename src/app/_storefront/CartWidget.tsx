@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useCart } from "./cart-context";
-import { checkoutAction, getCurrentCartPrices } from "./checkout-actions";
+import { checkoutAction, getCurrentCartPrices, validateVoucherAction, findAutoPromotionAction } from "./checkout-actions";
+import type { AutoPromotionResult } from "./checkout-actions";
 import { reconcileCartPrices, PRICE_CHANGE_NOTICE } from "@/lib/cart-reconcile";
 import { isValidVietnamesePhone } from "@/lib/validation/phone";
 import type { PaymentInstructions } from "@/lib/payments/provider";
 import type { ShippingMethodOption } from "@/lib/shipping-service";
+import { useDictionary } from "@/lib/i18n/use-dictionary";
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString("vi-VN")} ₫`;
@@ -18,16 +20,10 @@ const BASIC_EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 // `enabledPaymentMethods` (server-resolved from TenantPaymentMethod), not
 // hardcoded per tenant. All three remain valid PaymentMethod values; a
 // tenant simply may not have enabled/configured all of them.
-const PAYMENT_METHOD_LABELS: Record<string, string> = {
-  cod: "Cash on delivery",
-  momo: "MoMo",
-  bank_transfer: "Bank transfer",
-};
-
-const PAYMENT_METHOD_HINTS: Record<string, string> = {
-  cod: "Pay in cash when your order arrives",
-  momo: "Pay instantly via the MoMo app",
-  bank_transfer: "Transfer the exact amount to complete your order",
+const PAYMENT_LABEL_KEYS: Record<string, [string, string]> = {
+  cod: ["cod", "codHint"],
+  momo: ["momo", "momoHint"],
+  bank_transfer: ["bankTransfer", "bankTransferHint"],
 };
 
 const inputClassName =
@@ -63,17 +59,17 @@ type CheckoutState =
 // only how much is shown at a time changed. "success" isn't a step here —
 // it's still driven by `checkout.status === "success"`, same as before.
 type CheckoutStep = "cart" | "shipping" | "payment";
-const STEP_LABELS: Record<CheckoutStep, string> = {
-  cart: "Cart",
-  shipping: "Shipping & contact",
-  payment: "Payment",
+const STEP_LABEL_KEYS: Record<CheckoutStep, "stepCart" | "stepShipping" | "stepPayment"> = {
+  cart: "stepCart",
+  shipping: "stepShipping",
+  payment: "stepPayment",
 };
 const STEP_ORDER: CheckoutStep[] = ["cart", "shipping", "payment"];
 
 // Small, self-contained "copy to clipboard" button — used for the order id
 // and bank/VA account number in the success panel, where a customer is
 // very likely to need to paste the value elsewhere (their banking app).
-function CopyButton({ value, label }: { value: string; label: string }) {
+function CopyButton({ value, label, copiedLabel = "Copied!" }: { value: string; label: string; copiedLabel?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
@@ -86,7 +82,7 @@ function CopyButton({ value, label }: { value: string; label: string }) {
       }}
       className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
     >
-      {copied ? "Copied!" : label}
+      {copied ? copiedLabel : label}
     </button>
   );
 }
@@ -129,6 +125,8 @@ export function CartWidget({
   enabledShippingMethods: ShippingMethodOption[];
 }) {
   const { items, itemCount, updateQuantity, removeItem, clearCart, replacePrices } = useCart();
+  const dict = useDictionary();
+  const paymentDict = dict.payment as Record<string, string>;
   const [open, setOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
   const [step, setStep] = useState<CheckoutStep>("cart");
@@ -162,6 +160,40 @@ export function CartWidget({
   const [ward, setWard] = useState("");
   const [note, setNote] = useState("");
 
+  // Voucher / coupon code state
+  const [voucherInput, setVoucherInput] = useState("");
+  const [voucherApplied, setVoucherApplied] = useState<{ code: string; discountAmount: number } | null>(null);
+  const [voucherError, setVoucherError] = useState<string | null>(null);
+  const [voucherLoading, setVoucherLoading] = useState(false);
+
+  // Auto-promotion: evaluated when the cart changes and no manual voucher is applied
+  const [autoPromo, setAutoPromo] = useState<AutoPromotionResult>(null);
+
+  async function handleApplyVoucher() {
+    if (!voucherInput.trim()) return;
+    setVoucherLoading(true);
+    setVoucherError(null);
+    const cartItemsForVoucher = items.map((item) => ({
+      productVariantId: item.productVariantId,
+      quantity: item.quantity,
+    }));
+    const result = await validateVoucherAction(voucherInput, subtotal, cartItemsForVoucher);
+    setVoucherLoading(false);
+    if (result.success) {
+      setVoucherApplied({ code: result.data.code ?? voucherInput, discountAmount: result.data.discountAmount });
+      setVoucherError(null);
+    } else {
+      setVoucherApplied(null);
+      setVoucherError(result.error);
+    }
+  }
+
+  function handleRemoveVoucher() {
+    setVoucherApplied(null);
+    setVoucherInput("");
+    setVoucherError(null);
+  }
+
   const [provinces, setProvinces] = useState<VnProvince[]>([]);
   useEffect(() => {
     if (!open || provinces.length > 0) return;
@@ -190,7 +222,30 @@ export function CartWidget({
   // shown the same way — see the summary row below.
   const selectedShippingMethod = enabledShippingMethods.find((m) => m.id === shippingMethodId);
   const selectedShippingAmount = selectedShippingMethod?.amount ?? 0;
-  const total = subtotal + selectedShippingAmount;
+
+  useEffect(() => {
+    if (voucherApplied || items.length === 0) {
+      setAutoPromo(null);
+      return;
+    }
+    let cancelled = false;
+    const cartItemsForCheck = items.map((item) => ({
+      productVariantId: item.productVariantId,
+      quantity: item.quantity,
+    }));
+    const sub = items.reduce((s, item) => s + item.price * item.quantity, 0);
+    findAutoPromotionAction(cartItemsForCheck, sub).then((result) => {
+      if (!cancelled) setAutoPromo(result);
+    });
+    return () => { cancelled = true; };
+  }, [items, voucherApplied]);
+
+  const activeDiscount = voucherApplied
+    ? { label: voucherApplied.code, amount: voucherApplied.discountAmount, isAuto: false }
+    : autoPromo
+      ? { label: autoPromo.label, amount: autoPromo.discountAmount, isAuto: true }
+      : null;
+  const total = Math.max(0, subtotal + selectedShippingAmount - (activeDiscount?.amount ?? 0));
 
   // Escape-to-close, and lock page scroll while the drawer is open — a
   // full-height overlay behind a still-scrollable page reads as broken.
@@ -213,13 +268,13 @@ export function CartWidget({
   // relies on HTML `required` alone.
   function validate(): FieldErrors {
     const errors: FieldErrors = {};
-    if (!name.trim()) errors.name = "Full name is required.";
-    if (!email.trim() || !BASIC_EMAIL_PATTERN.test(email.trim())) errors.email = "A valid email is required.";
-    if (!phone.trim() || !isValidVietnamesePhone(phone)) errors.phone = "A valid Vietnamese phone number is required.";
-    if (!address.trim()) errors.address = "Street address is required.";
-    if (!city.trim()) errors.city = "Please select a province/city.";
-    if (!ward.trim()) errors.ward = "Please select a ward.";
-    if (!shippingMethodId) errors.shippingMethod = "Please select a shipping method.";
+    if (!name.trim()) errors.name = dict.validation.nameRequired;
+    if (!email.trim() || !BASIC_EMAIL_PATTERN.test(email.trim())) errors.email = dict.validation.emailRequired;
+    if (!phone.trim() || !isValidVietnamesePhone(phone)) errors.phone = dict.validation.phoneRequired;
+    if (!address.trim()) errors.address = dict.validation.addressRequired;
+    if (!city.trim()) errors.city = dict.validation.cityRequired;
+    if (!ward.trim()) errors.ward = dict.validation.wardRequired;
+    if (!shippingMethodId) errors.shippingMethod = dict.validation.shippingMethodRequired;
     return errors;
   }
 
@@ -300,6 +355,8 @@ export function CartWidget({
       { name, email, phone },
       { address, ward, district: "", city, note },
       shippingMethodId,
+      voucherApplied?.code ?? undefined,
+      !voucherApplied && autoPromo ? autoPromo.voucherId : undefined,
     );
     if (result.success) {
       // Only clear the cart on genuine success — a failed checkout must
@@ -323,6 +380,9 @@ export function CartWidget({
       // Touching the cart after a price change is the customer reviewing
       // it — the notice has done its job and must not linger.
       setPriceNotice(null);
+      // Cart changes invalidate the applied voucher's discount amount
+      // (subtotal changed), so clear it and let the customer re-apply.
+      if (voucherApplied) handleRemoveVoucher();
       fn(...args);
     };
   }
@@ -335,7 +395,7 @@ export function CartWidget({
         className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         aria-expanded={open}
       >
-        Cart ({itemCount})
+        {dict.cart.cartButton.replace("{count}", String(itemCount))}
       </button>
 
       {open && (
@@ -343,7 +403,7 @@ export function CartWidget({
           {/* Backdrop */}
           <button
             type="button"
-            aria-label="Close cart"
+            aria-label={dict.cart.closeCart}
             onClick={() => setOpen(false)}
             className="absolute inset-0 bg-black/30"
           />
@@ -352,15 +412,15 @@ export function CartWidget({
           <div className="relative z-10 flex h-full min-w-0 w-full max-w-md flex-col bg-surface shadow-xl sm:my-3 sm:mr-3 sm:h-[calc(100%-1.5rem)] sm:rounded-2xl sm:border sm:border-border">
             <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6">
               <div>
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">Checkout</p>
+                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{dict.cart.checkout}</p>
                 <h2 className="mt-1 text-base font-semibold">
-                {checkout.status === "success" ? "Order confirmed" : "Your cart"}
+                {checkout.status === "success" ? dict.cart.orderConfirmed : dict.cart.yourCart}
                 </h2>
               </div>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
-                aria-label="Close cart"
+                aria-label={dict.cart.closeCart}
                 className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
               >
                 ✕
@@ -390,7 +450,7 @@ export function CartWidget({
                         <span
                           className={`text-xs whitespace-nowrap ${isActive ? "font-medium text-foreground" : "text-muted-foreground"}`}
                         >
-                          {STEP_LABELS[s]}
+                          {dict.cart[STEP_LABEL_KEYS[s]]}
                         </span>
                       </div>
                       {index < STEP_ORDER.length - 1 && (
@@ -410,10 +470,10 @@ export function CartWidget({
                       ✓
                     </span>
                     <div className="min-w-0">
-                      <p className="font-medium text-green-900">Your order was placed</p>
+                      <p className="font-medium text-green-900">{dict.payment.orderPlaced}</p>
                       <div className="mt-1 flex items-center gap-1.5">
                         <p className="truncate font-mono text-xs text-green-800">{checkout.orderId}</p>
-                        <CopyButton value={checkout.orderId} label="Copy" />
+                        <CopyButton value={checkout.orderId} label={dict.common.copy} copiedLabel={dict.common.copied} />
                       </div>
                     </div>
                   </div>
@@ -442,7 +502,7 @@ export function CartWidget({
                           {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset */}
                           <img
                             src={checkout.instructions.qrCodeUrl}
-                            alt="Payment QR code"
+                            alt={dict.payment.paymentQrCode}
                             className="h-48 w-48 rounded-md border border-border bg-white p-2"
                           />
                         </div>
@@ -451,14 +511,14 @@ export function CartWidget({
                       <div className="mt-3 flex flex-col gap-1.5 text-sm">
                         {checkout.instructions.bankName && (
                           <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Bank</span>
+                            <span className="text-muted-foreground">{dict.payment.bank}</span>
                             <span className="font-medium">{checkout.instructions.bankName}</span>
                           </div>
                         )}
                         {(checkout.instructions.accountNumber || checkout.instructions.virtualAccountNumber) && (
                           <div className="flex items-center justify-between gap-2">
                             <span className="text-muted-foreground">
-                              {checkout.instructions.virtualAccountNumber ? "Virtual account" : "Account number"}
+                              {checkout.instructions.virtualAccountNumber ? dict.payment.virtualAccount : dict.payment.accountNumber}
                             </span>
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono">
@@ -466,26 +526,26 @@ export function CartWidget({
                               </span>
                               <CopyButton
                                 value={(checkout.instructions.virtualAccountNumber ?? checkout.instructions.accountNumber)!}
-                                label="Copy"
+                                label={dict.common.copy} copiedLabel={dict.common.copied}
                               />
                             </div>
                           </div>
                         )}
                         {checkout.instructions.accountHolder && (
                           <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">Account holder</span>
+                            <span className="text-muted-foreground">{dict.payment.accountHolder}</span>
                             <span className="font-medium">{checkout.instructions.accountHolder}</span>
                           </div>
                         )}
                         <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5">
-                          <span className="text-muted-foreground">Amount</span>
+                          <span className="text-muted-foreground">{dict.payment.amount}</span>
                           <span className="money text-base font-semibold">
                             {formatVnd(checkout.instructions.amount)}
                           </span>
                         </div>
                         {checkout.instructions.expiresAt && (
                           <p className="text-xs text-muted-foreground">
-                            Expires:{" "}
+                            {dict.payment.expires}{" "}
                             {new Date(checkout.instructions.expiresAt).toLocaleString("en-US", {
                               dateStyle: "medium",
                               timeStyle: "short",
@@ -506,13 +566,13 @@ export function CartWidget({
                 </div>
               ) : items.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
-                  <p className="text-sm text-muted-foreground">Your cart is empty.</p>
+                  <p className="text-sm text-muted-foreground">{dict.cart.cartEmpty}</p>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
                     className="text-xs text-foreground underline underline-offset-2"
                   >
-                    Continue shopping
+                    {dict.common.continueShopping}
                   </button>
                 </div>
               ) : (
@@ -557,7 +617,7 @@ export function CartWidget({
                                 aria-hidden="true"
                                 className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[10px] text-muted-foreground"
                               >
-                                Chưa có ảnh
+                                {dict.products.noImage}
                               </span>
                             )}
                             <div className="min-w-0 flex-1">
@@ -572,9 +632,11 @@ export function CartWidget({
                                   </span>
                                 )}
                                 <span className="money text-xs">{formatVnd(item.price)}</span>
-                                {item.discountPercent != null && (
+                                {(item.discountPercent != null || (item.discountAmount != null && item.discountAmount > 0)) && (
                                   <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
-                                    −{item.discountPercent}%
+                                    {item.discountPercent != null
+                                      ? `−${item.discountPercent}%`
+                                      : `−${formatVnd(item.discountAmount!)}`}
                                   </span>
                                 )}
                               </span>
@@ -586,7 +648,7 @@ export function CartWidget({
                                 type="button"
                                 onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity - 1))}
                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted"
-                                aria-label={`Decrease quantity of ${item.productName}`}
+                                aria-label={dict.cart.decreaseQuantity.replace("{name}", item.productName)}
                               >
                                 −
                               </button>
@@ -596,7 +658,7 @@ export function CartWidget({
                                 onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity + 1))}
                                 disabled={atAvailableLimit}
                                 className="flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted disabled:opacity-40"
-                                aria-label={`Increase quantity of ${item.productName}`}
+                                aria-label={dict.cart.increaseQuantity.replace("{name}", item.productName)}
                               >
                                 +
                               </button>
@@ -606,7 +668,7 @@ export function CartWidget({
                               onClick={handleCartAction(() => removeItem(item.productVariantId))}
                               className="text-xs text-red-600 hover:underline"
                             >
-                              Remove
+                              {dict.cart.remove}
                             </button>
                           </div>
                         </li>
@@ -620,36 +682,36 @@ export function CartWidget({
                   {step === "shipping" && (
                   <>
                   <fieldset className="flex flex-col gap-3">
-                    <legend className="mb-1 text-sm font-medium">Contact info</legend>
+                    <legend className="mb-1 text-sm font-medium">{dict.checkout.contactInfo}</legend>
                     <label className="flex flex-col gap-1 text-xs">
-                      Full name
+                      {dict.checkout.fullName}
                       <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
-                        placeholder="Nguyen Van A"
+                        placeholder={dict.checkout.namePlaceholder}
                         className={fieldErrors.name ? errorInputClassName : inputClassName}
                       />
                       {fieldErrors.name && <span className="text-red-600">{fieldErrors.name}</span>}
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
-                      Email
+                      {dict.checkout.email}
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
-                        placeholder="you@example.com"
+                        placeholder={dict.checkout.emailPlaceholder}
                         className={fieldErrors.email ? errorInputClassName : inputClassName}
                       />
                       {fieldErrors.email && <span className="text-red-600">{fieldErrors.email}</span>}
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
-                      Phone
+                      {dict.checkout.phone}
                       <input
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
-                        placeholder="0912345678"
+                        placeholder={dict.checkout.phonePlaceholder}
                         className={fieldErrors.phone ? errorInputClassName : inputClassName}
                       />
                       {fieldErrors.phone && <span className="text-red-600">{fieldErrors.phone}</span>}
@@ -657,7 +719,7 @@ export function CartWidget({
                   </fieldset>
 
                   <fieldset className="flex flex-col gap-3">
-                    <legend className="mb-1 text-sm font-medium">Shipping address</legend>
+                    <legend className="mb-1 text-sm font-medium">{dict.checkout.shippingAddress}</legend>
                     {/* Province -> ward, per Vietnam's current (post-July-
                         2025) 2-tier administrative structure — see
                         public/vn-address.json and the VnProvince comment
@@ -666,7 +728,7 @@ export function CartWidget({
                         ward name only makes sense within its own province. */}
                     <div className="grid grid-cols-2 gap-2">
                       <label className="flex flex-col gap-1 text-xs">
-                        Province / City
+                        {dict.checkout.provinceCity}
                         <select
                           value={city}
                           onChange={(e) => {
@@ -675,7 +737,7 @@ export function CartWidget({
                           }}
                           className={fieldErrors.city ? errorSelectClassName : selectClassName}
                         >
-                          <option value="">Select a province…</option>
+                          <option value="">{dict.checkout.selectProvince}</option>
                           {provinces.map((p) => (
                             <option key={p.province} value={p.province}>
                               {p.province}
@@ -685,14 +747,14 @@ export function CartWidget({
                         {fieldErrors.city && <span className="text-red-600">{fieldErrors.city}</span>}
                       </label>
                       <label className="flex flex-col gap-1 text-xs">
-                        Ward
+                        {dict.checkout.ward}
                         <select
                           value={ward}
                           onChange={(e) => setWard(e.target.value)}
                           disabled={!selectedProvince}
                           className={`${fieldErrors.ward ? errorSelectClassName : selectClassName} disabled:opacity-50`}
                         >
-                          <option value="">{selectedProvince ? "Select a ward…" : "Select a province first"}</option>
+                          <option value="">{selectedProvince ? dict.checkout.selectWard : dict.checkout.selectProvinceFirst}</option>
                           {selectedProvince?.wards.map((w) => (
                             <option key={w} value={w}>
                               {w}
@@ -703,32 +765,32 @@ export function CartWidget({
                       </label>
                     </div>
                     <label className="flex flex-col gap-1 text-xs">
-                      Street address
+                      {dict.checkout.streetAddress}
                       <input
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
-                        placeholder="House number, street name"
+                        placeholder={dict.checkout.addressPlaceholder}
                         className={fieldErrors.address ? errorInputClassName : inputClassName}
                       />
                       {fieldErrors.address && <span className="text-red-600">{fieldErrors.address}</span>}
                     </label>
                     <label className="flex flex-col gap-1 text-xs">
-                      Delivery note (optional)
+                      {dict.checkout.deliveryNote}
                       <input
                         type="text"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
-                        placeholder="e.g. Leave with the receptionist"
+                        placeholder={dict.checkout.deliveryNotePlaceholder}
                         className={inputClassName}
                       />
                     </label>
                   </fieldset>
 
                   <fieldset className="flex flex-col gap-2">
-                    <legend className="mb-1 text-sm font-medium">Shipping method</legend>
+                    <legend className="mb-1 text-sm font-medium">{dict.checkout.shippingMethod}</legend>
                     {enabledShippingMethods.length === 0 ? (
-                      <p className="text-xs text-red-600">This store hasn&apos;t enabled any shipping method yet.</p>
+                      <p className="text-xs text-red-600">{dict.checkout.noShippingMethod}</p>
                     ) : (
                       enabledShippingMethods.map((method) => (
                         <label
@@ -750,7 +812,7 @@ export function CartWidget({
                             />
                             <span className="font-medium">{method.name}</span>
                           </span>
-                          <span className="money text-xs">{method.amount === 0 ? "Free" : formatVnd(method.amount)}</span>
+                          <span className="money text-xs">{method.amount === 0 ? dict.common.free : formatVnd(method.amount)}</span>
                         </label>
                       ))
                     )}
@@ -762,9 +824,9 @@ export function CartWidget({
                   {step === "payment" && (
                   <>
                   <fieldset className="flex flex-col gap-2">
-                    <legend className="mb-1 text-sm font-medium">Payment method</legend>
+                    <legend className="mb-1 text-sm font-medium">{dict.checkout.paymentMethod}</legend>
                     {enabledPaymentMethods.length === 0 ? (
-                      <p className="text-xs text-red-600">This store hasn&apos;t enabled any payment method yet.</p>
+                      <p className="text-xs text-red-600">{dict.checkout.noPaymentMethod}</p>
                     ) : (
                       enabledPaymentMethods.map((method) => (
                         <label
@@ -784,9 +846,9 @@ export function CartWidget({
                             className="flex-shrink-0"
                           />
                           <div className="flex flex-col">
-                            <span className="font-medium">{PAYMENT_METHOD_LABELS[method] ?? method}</span>
-                            {PAYMENT_METHOD_HINTS[method] && (
-                              <span className="text-xs text-muted-foreground">{PAYMENT_METHOD_HINTS[method]}</span>
+                            <span className="font-medium">{PAYMENT_LABEL_KEYS[method] ? paymentDict[PAYMENT_LABEL_KEYS[method][0]] : method}</span>
+                            {PAYMENT_LABEL_KEYS[method] && (
+                              <span className="text-xs text-muted-foreground">{paymentDict[PAYMENT_LABEL_KEYS[method][1]]}</span>
                             )}
                           </div>
                         </label>
@@ -808,11 +870,11 @@ export function CartWidget({
             {checkout.status !== "success" && items.length > 0 && (
               <div className="border-t border-border px-5 py-4">
                 <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Subtotal</span>
+                  <span>{dict.cart.subtotal}</span>
                   <span className="money">{formatVnd(subtotal)}</span>
                 </div>
                 <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
-                  <span>Shipping</span>
+                  <span>{dict.cart.shipping}</span>
                   {/* Only a chosen method can be "Free". With none chosen
                       — including a store that has enabled none at all,
                       where checkout is blocked entirely — this used to
@@ -821,20 +883,71 @@ export function CartWidget({
                   <span className="money">
                     {selectedShippingMethod ? (
                       selectedShippingMethod.amount === 0 ? (
-                        "Free"
+                        dict.common.free
                       ) : (
                         formatVnd(selectedShippingMethod.amount)
                       )
                     ) : (
                       <>
                         <span aria-hidden="true">—</span>
-                        <span className="sr-only">Not selected yet</span>
+                        <span className="sr-only">{dict.common.notSelectedYet}</span>
                       </>
                     )}
                   </span>
                 </div>
+                {/* Auto-promotion banner */}
+                {autoPromo && !voucherApplied && (
+                  <div className="mb-2 flex items-center justify-between rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-green-950">
+                    <span className="font-medium text-green-700 dark:text-green-400">
+                      {autoPromo.label}
+                    </span>
+                    <span className="money font-medium text-green-700 dark:text-green-400">
+                      −{formatVnd(autoPromo.discountAmount)}
+                    </span>
+                  </div>
+                )}
+                {/* Voucher code input */}
+                {!voucherApplied ? (
+                  <div className="mb-2">
+                    <div className="flex gap-1.5">
+                      <input
+                        type="text"
+                        value={voucherInput}
+                        onChange={(e) => { setVoucherInput(e.target.value); setVoucherError(null); }}
+                        placeholder={(dict.voucher as Record<string, string>).enterCode}
+                        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs uppercase placeholder:normal-case focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleApplyVoucher(); } }}
+                      />
+                      <button
+                        type="button"
+                        onClick={handleApplyVoucher}
+                        disabled={voucherLoading || !voucherInput.trim()}
+                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-muted disabled:opacity-40"
+                      >
+                        {voucherLoading ? (dict.voucher as Record<string, string>).applying : (dict.voucher as Record<string, string>).apply}
+                      </button>
+                    </div>
+                    {voucherError && <p className="mt-1 text-xs text-red-600">{voucherError}</p>}
+                  </div>
+                ) : (
+                  <div className="mb-2 flex items-center justify-between text-xs">
+                    <span className="font-medium text-green-700">
+                      {(dict.voucher as Record<string, string>).applied.replace("{code}", voucherApplied.code)}
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="money text-green-700">−{formatVnd(voucherApplied.discountAmount)}</span>
+                      <button
+                        type="button"
+                        onClick={handleRemoveVoucher}
+                        className="text-muted-foreground underline hover:text-foreground"
+                      >
+                        {(dict.voucher as Record<string, string>).remove}
+                      </button>
+                    </div>
+                  </div>
+                )}
                 <div className="mb-3 flex items-center justify-between border-t border-border pt-2 text-sm">
-                  <span className="text-muted-foreground">Total</span>
+                  <span className="text-muted-foreground">{dict.cart.total}</span>
                   <span className="money text-base font-semibold">{formatVnd(total)}</span>
                 </div>
                 <div className="flex gap-2">
@@ -845,7 +958,7 @@ export function CartWidget({
                       disabled={checkout.status === "submitting"}
                       className="rounded-md border border-border px-4 py-3 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-40"
                     >
-                      Back
+                      {dict.common.back}
                     </button>
                   )}
                   {step === "cart" && (
@@ -854,7 +967,7 @@ export function CartWidget({
                       onClick={() => setStep("shipping")}
                       className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
                     >
-                      Continue to shipping
+                      {dict.cart.continueToShipping}
                     </button>
                   )}
                   {step === "shipping" && (
@@ -864,7 +977,7 @@ export function CartWidget({
                       disabled={enabledPaymentMethods.length === 0 || enabledShippingMethods.length === 0}
                       className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
-                      Continue to payment
+                      {dict.cart.continueToPayment}
                     </button>
                   )}
                   {step === "payment" && (
@@ -879,7 +992,7 @@ export function CartWidget({
                       }
                       className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
-                      {checkout.status === "submitting" ? "Placing order…" : "Place order"}
+                      {checkout.status === "submitting" ? dict.cart.placingOrder : dict.cart.placeOrder}
                     </button>
                   )}
                 </div>
@@ -889,7 +1002,7 @@ export function CartWidget({
                     onClick={handleCartAction(clearCart)}
                     className="mt-2 w-full text-center text-xs text-muted-foreground underline hover:text-foreground"
                   >
-                    Clear cart
+                    {dict.cart.clearCart}
                   </button>
                 )}
               </div>
@@ -909,7 +1022,7 @@ export function CartWidget({
                     href={`/orders/${checkout.orderId}?email=${encodeURIComponent(email)}`}
                     className="flex-1 rounded-md border border-border px-4 py-2.5 text-center text-sm font-medium transition-colors hover:bg-surface-muted"
                   >
-                    View your order
+                    {dict.cart.viewYourOrder}
                   </a>
                   <button
                     type="button"
@@ -920,7 +1033,7 @@ export function CartWidget({
                     }}
                     className="flex-1 rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
                   >
-                    Continue shopping
+                    {dict.common.continueShopping}
                   </button>
                 </div>
               </div>

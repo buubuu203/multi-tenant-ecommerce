@@ -58,6 +58,8 @@ export type OrderListEntry = {
   subtotal: number;
   shippingAmount: number;
   shippingMethodName: string | null;
+  voucherCode: string | null;
+  voucherDiscount: number;
   total: number;
   items: OrderListItem[];
   // Step 33: only the three contact fields the UI needs — never the raw
@@ -293,6 +295,8 @@ export async function listOrders(
       discountPercent: item.discountPercent,
     }));
 
+    const orderSubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+    const orderVoucherDiscount = order.voucherDiscount ?? 0;
     return {
       id: order.id,
       status: order.status,
@@ -301,10 +305,12 @@ export async function listOrders(
       paymentProvider: order.payment?.provider ?? null,
       createdAt: order.createdAt,
       itemCount: items.length,
-      subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+      subtotal: orderSubtotal,
       shippingAmount: order.shippingAmount,
       shippingMethodName: order.shippingMethodName,
-      total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
+      voucherCode: order.voucherCode ?? null,
+      voucherDiscount: orderVoucherDiscount,
+      total: orderSubtotal + order.shippingAmount - orderVoucherDiscount,
       items,
       customer: {
         name: order.customer.name,
@@ -365,6 +371,8 @@ export type CustomerOrderView = {
   subtotal: number;
   shippingAmount: number;
   shippingMethodName: string | null;
+  voucherCode: string | null;
+  voucherDiscount: number;
   total: number;
   shippingAddress: string;
   shippingWard: string;
@@ -435,6 +443,8 @@ type RawCustomerOrder = {
   createdAt: Date;
   shippingAmount: number;
   shippingMethodName: string | null;
+  voucherCode: string | null;
+  voucherDiscount: number;
   shippingAddress: string;
   shippingWard: string;
   shippingDistrict: string;
@@ -511,6 +521,8 @@ async function toCustomerOrderView(
     ? await getStoredPaymentInstructions(tenantId, order.payment)
     : null;
 
+  const custSubtotal = items.reduce((sum, item) => sum + item.lineTotal, 0);
+  const custVoucherDiscount = order.voucherDiscount ?? 0;
   return {
     id: order.id,
     status: order.status,
@@ -518,10 +530,12 @@ async function toCustomerOrderView(
     paymentStatus: order.payment?.status ?? null,
     createdAt: order.createdAt,
     items,
-    subtotal: items.reduce((sum, item) => sum + item.lineTotal, 0),
+    subtotal: custSubtotal,
     shippingAmount: order.shippingAmount,
     shippingMethodName: order.shippingMethodName,
-    total: items.reduce((sum, item) => sum + item.lineTotal, 0) + order.shippingAmount,
+    voucherCode: order.voucherCode ?? null,
+    voucherDiscount: custVoucherDiscount,
+    total: custSubtotal + order.shippingAmount - custVoucherDiscount,
     shippingAddress: order.shippingAddress,
     shippingWard: order.shippingWard,
     shippingDistrict: order.shippingDistrict,

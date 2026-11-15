@@ -29,6 +29,7 @@ export type CartItem = {
   // total is computed.
   originalPrice?: number;
   discountPercent?: number;
+  discountAmount?: number;
   quantity: number;
   // Step 45: the product's externally-hosted image URL at the moment this
   // item was added (see get-tenant-products.ts/ProductList.tsx) — display

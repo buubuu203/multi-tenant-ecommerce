@@ -35,6 +35,7 @@ export type PricedLine = {
   price: number;
   originalPrice?: number;
   discountPercent?: number;
+  discountAmount?: number;
 };
 
 /**

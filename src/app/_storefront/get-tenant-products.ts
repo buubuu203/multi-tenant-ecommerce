@@ -22,6 +22,7 @@ export type TenantProductVariant = {
   price: number;
   originalPrice: number | null;
   discountPercent: number | null;
+  discountAmount: number;
   sku: string | null;
   // Only ever used to detect the pre-existing simple-product sentinel
   // (combinationKey === ""), the same convention already established in
@@ -143,7 +144,7 @@ type RawTenantProduct = {
   description: string | null;
   media: { id: string; type: string; url: string; sortOrder: number }[];
   // Product Discount (V1): at most one row, per Discount.@@unique([productId]).
-  discount: { percentOff: number; enabled: boolean; startsAt: Date | null; endsAt: Date | null } | null;
+  discount: { discountType: "percentage" | "fixed_amount"; discountValue: number; enabled: boolean; startsAt: Date | null; endsAt: Date | null } | null;
   variants: {
     id: string;
     price: number;
@@ -171,12 +172,14 @@ function mapTenantProduct(
       // Product Discount (V1): the exact same applyDiscount() call
       // order-mutations.ts uses to actually charge — display and charge
       // share one implementation, never two that could drift apart.
-      const { finalPrice, originalPrice, discountPercent } = applyDiscount(variant.price, product.discount);
+      const { finalPrice, originalPrice, discountPercent, discountAmount } = applyDiscount(variant.price, product.discount);
+      const hasDiscount = discountPercent !== null || discountAmount > 0;
       return {
       id: variant.id,
       price: finalPrice,
-      originalPrice: discountPercent !== null ? originalPrice : null,
+      originalPrice: hasDiscount ? originalPrice : null,
       discountPercent,
+      discountAmount,
       sku: variant.sku,
       combinationKey: variant.combinationKey,
       options: variant.optionValues.map((ov) => ({

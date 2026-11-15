@@ -925,7 +925,8 @@ export async function upsertProductDiscountAction(
   const productId = String(formData.get('productId') ?? '');
 
   const input: DiscountInput = {
-    percentOff: String(formData.get('percentOff') ?? ''),
+    discountType: String(formData.get('discountType') ?? 'percentage'),
+    discountValue: String(formData.get('discountValue') ?? ''),
     enabled: formData.get('enabled') === 'on',
     startsAt: String(formData.get('startsAt') ?? ''),
     endsAt: String(formData.get('endsAt') ?? ''),

@@ -7,6 +7,7 @@ import { useCart } from './cart-context';
 import { ProductMediaCarousel } from './ProductMediaCarousel';
 import { compareByStartingPrice } from '@/lib/product-sort';
 import { isLowStock } from '@/lib/inventory-availability';
+import { useDictionary } from '@/lib/i18n/use-dictionary';
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString('vi-VN')} ₫`;
@@ -197,6 +198,7 @@ export function ProductRow({
   const [selection, setSelection] = useState<Record<string, string>>({});
   const [showAddedFeedback, setShowAddedFeedback] = useState(false);
   const { items, addItem } = useCart();
+  const dict = useDictionary();
 
   useEffect(() => {
     if (!showAddedFeedback) return;
@@ -228,7 +230,7 @@ export function ProductRow({
   // state below, never in place of "Out of stock" or "(unavailable)".
   const lowStockHint =
     resolvedVariant && !outOfStock && isLowStock(resolvedVariant.available)
-      ? `Only ${resolvedVariant.available} left`
+      ? dict.products.onlyNLeft.replace("{count}", String(resolvedVariant.available))
       : null;
 
   // Product Discount (V1): resolvedVariant.price is ALREADY the discounted
@@ -237,7 +239,7 @@ export function ProductRow({
   // never a second price calculation. originalPrice/discountPercent are
   // only ever non-null together, when a discount is currently active.
   const showDiscount = Boolean(
-    resolvedVariant && !outOfStock && resolvedVariant.discountPercent !== null,
+    resolvedVariant && !outOfStock && (resolvedVariant.discountPercent !== null || resolvedVariant.discountAmount > 0),
   );
   const originalPriceDisplay =
     resolvedVariant?.originalPrice != null ? formatVnd(resolvedVariant.originalPrice) : null;
@@ -251,19 +253,16 @@ export function ProductRow({
     // information a shopper still wants from an unavailable item — what
     // it costs, for deciding whether to come back for it.
     priceDisplay = formatVnd(resolvedVariant.price);
-    addToCartLabel = 'Out of stock';
+    addToCartLabel = dict.products.outOfStock;
   } else if (resolvedVariant) {
-    // Covers both the simple-product case (resolvedVariant === simpleVariant,
-    // unchanged price behavior from before Step 24) and a fully-resolved
-    // variant-bearing selection.
     priceDisplay = formatVnd(resolvedVariant.price);
-    addToCartLabel = atAvailableLimit ? 'Max in cart' : 'Add to cart';
+    addToCartLabel = atAvailableLimit ? dict.products.maxInCart : dict.products.addToCart;
   } else if (hasCompleteSelection) {
-    priceDisplay = 'Combination unavailable';
-    addToCartLabel = 'Combination unavailable';
+    priceDisplay = dict.products.combinationUnavailable;
+    addToCartLabel = dict.products.combinationUnavailable;
   } else {
-    priceDisplay = 'Select options';
-    addToCartLabel = 'Select options';
+    priceDisplay = dict.products.selectOptions;
+    addToCartLabel = dict.products.selectOptions;
   }
 
   function handleAddToCart() {
@@ -291,10 +290,11 @@ export function ProductRow({
       productName: product.name,
       variantLabel,
       price: resolvedVariant.price,
-      ...(resolvedVariant.originalPrice != null && resolvedVariant.discountPercent != null
+      ...(resolvedVariant.originalPrice != null
         ? {
             originalPrice: resolvedVariant.originalPrice,
-            discountPercent: resolvedVariant.discountPercent,
+            discountPercent: resolvedVariant.discountPercent ?? undefined,
+            discountAmount: resolvedVariant.discountAmount || undefined,
           }
         : {}),
       imageUrl: primaryMedia?.url,
@@ -339,7 +339,7 @@ export function ProductRow({
                 )
               }
             >
-              <option value="">Select {option.optionName}</option>
+              <option value="">{dict.products.select.replace("{option}", option.optionName)}</option>
               {annotatedValues.map((value) => (
                 <option
                   key={value.variantOptionValueId}
@@ -347,7 +347,7 @@ export function ProductRow({
                   disabled={!value.selectable}
                 >
                   {value.valueLabel}
-                  {value.selectable ? '' : ' (unavailable)'}
+                  {value.selectable ? '' : ` ${dict.products.unavailable}`}
                 </option>
               ))}
             </select>
@@ -368,7 +368,7 @@ export function ProductRow({
           : 'w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
       }
     >
-      {showAddedFeedback ? 'Added to cart' : addToCartLabel}
+      {showAddedFeedback ? dict.products.addedToCart : addToCartLabel}
     </button>
   );
 
@@ -403,7 +403,7 @@ export function ProductRow({
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              Product details
+              {dict.products.productDetails}
             </p>
             <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
             <div className="flex flex-wrap items-baseline gap-2">
@@ -413,9 +413,11 @@ export function ProductRow({
                 </span>
               )}
               <span className="money text-xl font-semibold">{priceDisplay}</span>
-              {showDiscount && resolvedVariant?.discountPercent != null && (
+              {showDiscount && resolvedVariant && (
                 <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
-                  −{resolvedVariant.discountPercent}%
+                  {resolvedVariant.discountPercent != null
+                    ? `−${resolvedVariant.discountPercent}%`
+                    : `−${formatVnd(resolvedVariant.discountAmount)}`}
                 </span>
               )}
               {lowStockHint && (
@@ -472,7 +474,7 @@ export function ProductRow({
           <MediaThumbnail media={primaryMedia} alt={product.name} />
         ) : (
           <div className="flex aspect-square w-full items-center justify-center rounded-md text-xs text-muted-foreground">
-            Chưa có ảnh
+            {dict.products.noImage}
           </div>
         )}
       </Link>
@@ -497,9 +499,11 @@ export function ProductRow({
               </span>
             )}
             <span className="money text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
-            {showDiscount && resolvedVariant?.discountPercent != null && (
+            {showDiscount && resolvedVariant && (
               <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
-                −{resolvedVariant.discountPercent}%
+                {resolvedVariant.discountPercent != null
+                  ? `−${resolvedVariant.discountPercent}%`
+                  : `−${formatVnd(resolvedVariant.discountAmount)}`}
               </span>
             )}
           </div>
@@ -526,28 +530,26 @@ export function ProductRow({
         href={`/products/${product.id}`}
         className="mt-1 w-full rounded-md bg-foreground px-3 py-2 text-center text-xs font-medium text-background transition-opacity hover:opacity-90"
       >
-        Xem chi tiết
+        {dict.products.viewDetails}
       </Link>
     </li>
   );
 }
 
 type SortOption = 'featured' | 'price_asc' | 'price_desc';
-const SORT_LABELS: Record<SortOption, string> = {
-  featured: 'Featured',
-  price_asc: 'Price: Low to High',
-  price_desc: 'Price: High to Low',
-};
 
 export function ProductList({ products }: { products: TenantProduct[] }) {
   const [sort, setSort] = useState<SortOption>('featured');
+  const dict = useDictionary();
+  const sortLabels: Record<SortOption, string> = {
+    featured: dict.products.sortFeatured,
+    price_asc: dict.products.sortPriceLowHigh,
+    price_desc: dict.products.sortPriceHighLow,
+  };
 
   const sortedProducts = useMemo(() => {
     if (sort === 'featured') return products;
     const withDirection: 1 | -1 = sort === 'price_asc' ? 1 : -1;
-    // A fresh array — never mutates the `products` prop, since the same
-    // array reference is also used to build availabilityByVariant in the
-    // parent page.
     return [...products].sort((a, b) => compareByStartingPrice(a, b, withDirection));
   }, [products, sort]);
 
@@ -560,19 +562,19 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            Shop the collection
+            {dict.products.shopTheCollection}
           </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">Products</h2>
+          <h2 className="mt-1 text-xl font-semibold tracking-tight">{dict.products.products}</h2>
         </div>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Sort by
+          {dict.products.sortBy}
           <select
             value={sort}
             onChange={(e) => setSort(e.target.value as SortOption)}
-            aria-label="Sort products"
+            aria-label={dict.products.sortBy}
             className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           >
-            {(Object.entries(SORT_LABELS) as [SortOption, string][]).map(([value, label]) => (
+            {(Object.entries(sortLabels) as [SortOption, string][]).map(([value, label]) => (
               <option key={value} value={value}>
                 {label}
               </option>

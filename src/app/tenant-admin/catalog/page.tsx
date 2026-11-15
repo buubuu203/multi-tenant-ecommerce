@@ -28,6 +28,7 @@ import { DescriptionEditor } from '../DescriptionEditor';
 import { Pagination } from '../Pagination';
 import { PRODUCT_STATUSES } from '../product-status';
 import { formatVnd } from '../format';
+import { DateTimePicker } from '@/components/DateTimePicker';
 import { LOW_STOCK_THRESHOLD } from '@/lib/inventory-availability';
 import {
   adminInputClassName,
@@ -493,33 +494,42 @@ export default async function CatalogPage({
                         >
                           <input type="hidden" name="productId" value={product.id} />
                           <label className={adminLabelClassName}>
-                            Percent off
+                            Type
+                            <select
+                              name="discountType"
+                              defaultValue={discount?.discountType ?? 'percentage'}
+                              className={`w-28 ${adminInputClassName}`}
+                            >
+                              <option value="percentage">% off</option>
+                              <option value="fixed_amount">₫ off</option>
+                            </select>
+                          </label>
+                          <label className={adminLabelClassName}>
+                            Value
                             <input
-                              name="percentOff"
+                              name="discountValue"
                               inputMode="numeric"
-                              placeholder="10"
-                              defaultValue={discount ? String(discount.percentOff) : ''}
+                              placeholder={discount?.discountType === 'fixed_amount' ? '50000' : '10'}
+                              defaultValue={discount ? String(discount.discountValue) : ''}
                               className={`w-24 ${adminInputClassName}`}
                             />
                           </label>
-                          <label className={adminLabelClassName}>
-                            Starts (optional)
-                            <input
-                              type="datetime-local"
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-muted-foreground">Starts (optional)</span>
+                            <DateTimePicker
                               name="startsAt"
-                              defaultValue={toDatetimeLocalValue(discount?.startsAt)}
-                              className={adminInputClassName}
+                              defaultValue={discount?.startsAt ?? null}
+                              placeholder="No start date"
                             />
-                          </label>
-                          <label className={adminLabelClassName}>
-                            Ends (optional)
-                            <input
-                              type="datetime-local"
+                          </div>
+                          <div className="flex flex-col gap-1">
+                            <span className="text-xs font-medium text-muted-foreground">Ends (optional)</span>
+                            <DateTimePicker
                               name="endsAt"
-                              defaultValue={toDatetimeLocalValue(discount?.endsAt)}
-                              className={adminInputClassName}
+                              defaultValue={discount?.endsAt ?? null}
+                              placeholder="No end date"
                             />
-                          </label>
+                          </div>
                           <label className="flex items-center gap-2 pb-1.5 text-xs">
                             <input
                               type="checkbox"

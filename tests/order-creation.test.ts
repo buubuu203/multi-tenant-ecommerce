@@ -151,7 +151,7 @@ test("inventory: a successful order reserves stock", async () => {
 
 test("discount: an ACTIVE discount is applied server-side and snapshotted onto the order item", async () => {
   await prisma.discount.create({
-    data: { tenantId: tenantA.id, productId: productA.id, percentOff: 25, enabled: true },
+    data: { tenantId: tenantA.id, productId: productA.id, discountType: "percentage", discountValue: 25, enabled: true },
   });
 
   const result = await createOrder(
@@ -187,7 +187,7 @@ test("discount: editing the discount later never changes an already-placed order
   // Change the live discount out from under the placed order.
   await prisma.discount.updateMany({
     where: { tenantId: tenantA.id, productId: productA.id },
-    data: { percentOff: 90 },
+    data: { discountValue: 90 },
   });
 
   const items = await prisma.orderItem.findMany({ where: { orderId: result.data.orderId } });
@@ -198,7 +198,7 @@ test("discount: editing the discount later never changes an already-placed order
 test("discount: a DISABLED discount is not applied", async () => {
   await prisma.discount.updateMany({
     where: { tenantId: tenantA.id, productId: productA.id },
-    data: { enabled: false, percentOff: 50 },
+    data: { enabled: false, discountValue: 50 },
   });
 
   const result = await createOrder(
@@ -220,7 +220,7 @@ test("discount: a DISABLED discount is not applied", async () => {
 test("discount: an EXPIRED discount is not applied", async () => {
   await prisma.discount.updateMany({
     where: { tenantId: tenantA.id, productId: productA.id },
-    data: { enabled: true, percentOff: 50, endsAt: new Date(Date.now() - 60_000) },
+    data: { enabled: true, discountValue: 50, endsAt: new Date(Date.now() - 60_000) },
   });
 
   const result = await createOrder(

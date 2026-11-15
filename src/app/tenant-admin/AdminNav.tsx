@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useId, useState } from "react";
+import { useDictionary } from "@/lib/i18n/use-dictionary";
 
 /**
  * The Tenant Admin information architecture.
@@ -25,38 +26,45 @@ import { useEffect, useId, useState } from "react";
  * what a buyer is offered at checkout, which is the merchant's own name
  * for it.
  */
-const GROUPS = [
-  { label: null, items: [["/tenant-admin", "Overview"]] },
-  {
-    label: "Commerce",
-    items: [
-      ["/tenant-admin/orders", "Orders"],
-      ["/tenant-admin/customers", "Customers"],
-      ["/tenant-admin/fulfillment", "Fulfillment"],
-      ["/tenant-admin/catalog", "Catalog"],
-      ["/tenant-admin/analytics", "Analytics"],
-    ],
-  },
-  {
-    label: "Storefront",
-    items: [
-      ["/tenant-admin/branding", "Branding"],
-      ["/tenant-admin/banners", "Banners"],
-    ],
-  },
-  {
-    label: "Checkout",
-    items: [
-      ["/tenant-admin/payments", "Payments"],
-      ["/tenant-admin/payment-operations", "Payment operations"],
-      ["/tenant-admin/bank-transfer", "Bank transfer"],
-      ["/tenant-admin/shipping", "Shipping"],
-    ],
-  },
-] as const satisfies readonly {
-  label: string | null;
-  items: readonly (readonly [string, string])[];
-}[];
+type NavGroupKey = "root" | "commerce" | "storefront" | "checkout";
+const NAV_ITEMS: readonly { group: NavGroupKey; href: string; key: keyof typeof ADMIN_LABEL_KEYS }[] = [
+  { group: "root", href: "/tenant-admin", key: "overview" },
+  { group: "commerce", href: "/tenant-admin/orders", key: "orders" },
+  { group: "commerce", href: "/tenant-admin/customers", key: "customers" },
+  { group: "commerce", href: "/tenant-admin/fulfillment", key: "fulfillment" },
+  { group: "commerce", href: "/tenant-admin/catalog", key: "catalog" },
+  { group: "commerce", href: "/tenant-admin/analytics", key: "analytics" },
+  { group: "storefront", href: "/tenant-admin/branding", key: "branding" },
+  { group: "storefront", href: "/tenant-admin/banners", key: "banners" },
+  { group: "checkout", href: "/tenant-admin/payments", key: "payments" },
+  { group: "checkout", href: "/tenant-admin/payment-operations", key: "paymentOperations" },
+  { group: "checkout", href: "/tenant-admin/bank-transfer", key: "bankTransfer" },
+  { group: "checkout", href: "/tenant-admin/shipping", key: "shipping" },
+  { group: "commerce", href: "/tenant-admin/vouchers", key: "promotions" },
+] as const;
+
+const ADMIN_LABEL_KEYS = {
+  overview: "overview",
+  orders: "orders",
+  customers: "customers",
+  fulfillment: "fulfillment",
+  catalog: "catalog",
+  analytics: "analytics",
+  branding: "branding",
+  banners: "banners",
+  payments: "payments",
+  paymentOperations: "paymentOperations",
+  bankTransfer: "bankTransfer",
+  shipping: "shipping",
+  promotions: "promotions",
+} as const;
+
+const GROUP_ORDER: { group: NavGroupKey; labelKey: string | null }[] = [
+  { group: "root", labelKey: null },
+  { group: "commerce", labelKey: "commerce" },
+  { group: "storefront", labelKey: "storefrontGroup" },
+  { group: "checkout", labelKey: "checkoutGroup" },
+];
 
 /**
  * One glyph per destination, drawn inline.
@@ -84,6 +92,8 @@ const ICON_PATHS: Record<string, string> = {
   "/tenant-admin/bank-transfer": "M4 10h16M5 10V9l7-4 7 4v1M6 10v7m4-7v7m4-7v7m4-7v7M3 20h18",
   "/tenant-admin/shipping":
     "M3 7h11v9H3V7Zm11 3h4l3 3v3h-7v-6ZM7 19a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Zm10 0a1.5 1.5 0 1 0 0-3 1.5 1.5 0 0 0 0 3Z",
+  "/tenant-admin/vouchers":
+    "M2 9.5 12 4l10 5.5M4.5 20V11m15 9V11M9 20v-5a3 3 0 1 1 6 0v5",
 };
 
 function NavIcon({ href }: { href: string }) {
@@ -133,6 +143,8 @@ export function AdminNav() {
   const pathname = usePathname();
   const [open, setOpen] = useState(false);
   const panelId = useId();
+  const dict = useDictionary();
+  const adminDict = dict.admin as Record<string, string>;
 
   useEffect(() => {
     if (!open) return;
@@ -156,59 +168,42 @@ export function AdminNav() {
       >
         {/* The label states what pressing it DOES, so it is never
             ambiguous which state the control is announcing. */}
-        <span>{open ? "Close menu" : "Menu"}</span>
+        <span>{open ? dict.common.closeMenu : dict.common.menu}</span>
         <span aria-hidden="true" className="text-muted-foreground">
           {open ? "✕" : "☰"}
         </span>
       </button>
 
       <div id={panelId} className={`${open ? "flex" : "hidden"} flex-col gap-4 lg:flex`}>
-        {GROUPS.map((group) => (
-          <div key={group.label ?? "root"} className="flex flex-col gap-1">
-            {group.label && (
-              // A visible group label, also used as the list's accessible
-              // name. Not a heading: the layout owns the h1 and each page
-              // owns its h2, and injecting nav headings between them would
-              // muddle the document outline rather than clarify it.
+        {GROUP_ORDER.map(({ group, labelKey }) => {
+          const items = NAV_ITEMS.filter((item) => item.group === group);
+          const groupLabel = labelKey ? adminDict[labelKey] : null;
+          return (
+          <div key={group} className="flex flex-col gap-1">
+            {groupLabel && (
               <p
-                id={`${panelId}-${group.label}`}
+                id={`${panelId}-${group}`}
                 className="px-3 pt-1 text-xs font-medium tracking-wide text-muted-foreground uppercase"
               >
-                {group.label}
+                {groupLabel}
               </p>
             )}
             <ul
-              aria-labelledby={group.label ? `${panelId}-${group.label}` : undefined}
+              aria-labelledby={groupLabel ? `${panelId}-${group}` : undefined}
               className="flex flex-col gap-0.5"
             >
-              {group.items.map(([href, label]) => {
+              {items.map(({ href, key }) => {
                 const active = isActive(href, pathname);
+                const label = adminDict[key];
                 return (
                   <li key={href}>
                     <Link
                       href={href}
-                      // Closing on the link itself rather than in an effect
-                      // keyed on pathname: navigating closes the panel
-                      // without a state write during render, and it is
-                      // harmless on desktop where the panel is always open.
                       onClick={() => setOpen(false)}
                       aria-current={active ? "page" : undefined}
                       className={`flex min-h-11 items-center gap-2.5 rounded-xl px-3 py-2 text-sm transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground lg:min-h-9 ${
                         active
-                          ? // Three signals, not one: a left rule, a filled
-                            // surface, and a weight change — plus
-                            // aria-current for assistive tech. None of them
-                            // is colour alone, so the state survives
-                            // greyscale and low vision. A fully inverted
-                            // pill was too heavy sitting under grouped
-                            // labels; this reads as "you are here" without
-                            // dominating the sidebar.
-                            // A filled pill, as in the design: the active
-                            // destination is the one thing in the sidebar
-                            // that should read at a glance. Still three
-                            // signals rather than colour alone — fill,
-                            // weight and aria-current.
-                            "bg-foreground font-semibold text-background"
+                          ? "bg-foreground font-semibold text-background"
                           : "font-medium text-muted-foreground hover:bg-surface hover:text-foreground"
                       }`}
                     >
@@ -220,7 +215,8 @@ export function AdminNav() {
               })}
             </ul>
           </div>
-        ))}
+          );
+        })}
       </div>
     </nav>
   );

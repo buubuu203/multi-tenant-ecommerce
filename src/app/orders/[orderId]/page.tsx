@@ -4,6 +4,8 @@ import { getCurrentTenant } from '../../_storefront/get-current-tenant';
 import { resolveBranding } from '../../_storefront/resolve-branding';
 import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
 import { TenantTheme } from '@/components/TenantTheme';
+import { LocaleSwitcher } from '@/components/LocaleSwitcher';
+import { getLocale, getDictionary } from '@/lib/i18n';
 
 // The bookmarkable order-confirmation link a customer is given right
 // after checkout (see CartWidget.tsx's success state). The order ID alone
@@ -22,15 +24,12 @@ export default async function OrderConfirmationPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { orderId } = await params;
-  // Phase 5 (post-purchase friction): only ever used to prefill the email
-  // input below — see CartWidget.tsx's "View your order" link, the only
-  // place that ever sets this param. Never trusted as proof of anything;
-  // OrderLookupForm still requires an explicit submit, and
-  // getOrderForCustomer() is still the sole access-control check.
   const { email } = await searchParams;
   const prefillEmail = typeof email === "string" ? email : undefined;
   const tenant = await getCurrentTenant();
   const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
+  const locale = await getLocale();
+  const dict = await getDictionary(locale);
 
   const content = (
     <div className="flex min-h-full flex-1 flex-col">
@@ -38,13 +37,17 @@ export default async function OrderConfirmationPage({
         <StorefrontHeader
           branding={branding}
           backHref="/"
+          backLabel={dict.common.back}
           rightSlot={
-            <Link
-              href="/orders"
-              className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-            >
-              Track another order
-            </Link>
+            <>
+              <LocaleSwitcher />
+              <Link
+                href="/orders"
+                className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+              >
+                {dict.orders.trackAnotherOrder}
+              </Link>
+            </>
           }
         />
       )}
@@ -52,18 +55,17 @@ export default async function OrderConfirmationPage({
         <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-8">
           <div className="flex flex-col gap-2">
             <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              Order access
+              {dict.orders.orderAccess}
             </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">View your order</h1>
+            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{dict.orders.viewYourOrder}</h1>
             <p className="text-sm leading-6 text-muted-foreground">
-              Enter the email used at checkout to securely view the status and payment details for
-              this order.
+              {dict.orders.viewOrderDescription}
             </p>
             <p
               className="mt-1 truncate rounded-md bg-surface-muted px-3 py-2 font-mono text-xs text-muted-foreground"
               title={orderId}
             >
-              Order {orderId}
+              {dict.orders.order} {orderId}
             </p>
           </div>
           <div className="mt-7 border-t border-border pt-6">

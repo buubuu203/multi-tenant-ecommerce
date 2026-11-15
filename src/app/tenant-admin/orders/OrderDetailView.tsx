@@ -220,6 +220,16 @@ export function OrderDetailView({ order }: { order: OrderDetail }) {
                   {formatVnd(order.totals.shipping)}
                 </td>
               </tr>
+              {order.voucher && (
+                <tr>
+                  <th scope="row" colSpan={3} className="py-1.5 text-right font-normal text-green-700">
+                    Voucher ({order.voucher.code})
+                  </th>
+                  <td className="py-1.5 text-right tabular-nums text-green-700">
+                    −{formatVnd(order.voucher.discount)}
+                  </td>
+                </tr>
+              )}
               <tr>
                 <th scope="row" colSpan={3} className="py-1.5 text-right font-semibold">
                   Total
