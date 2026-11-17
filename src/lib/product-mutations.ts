@@ -14,6 +14,9 @@ export type ProductInput = {
   // whitespace-only becomes `null` (see validateDescription()), never an
   // empty string.
   description?: string;
+  // Optional id of a tenant-managed category. Omitted or whitespace-only
+  // means the product is uncategorized; ownership is verified at write time.
+  categoryId?: string;
   // Step 50: already-uploaded media (via uploadProductMediaAction/
   // uploadProductMediaFile — see blob-storage.ts) to attach at creation
   // time, in display order. Optional here (the shared foundation used by
@@ -84,7 +87,13 @@ function validateMedia(media: { url: string; type: MediaKind }[] | undefined): {
  */
 export function validateProductInput(
   input: ProductInput,
-): { name: string; price: number; status: ProductStatusInput; description: string | null } | { error: string } {
+): {
+  name: string;
+  price: number;
+  status: ProductStatusInput;
+  description: string | null;
+  categoryId: string | null;
+} | { error: string } {
   const name = input.name.trim();
   if (!name) {
     return { error: "Name is required." };
@@ -103,14 +112,17 @@ export function validateProductInput(
   }
 
   const description = validateDescription(input.description);
+  const categoryId = input.categoryId?.trim() || null;
 
   const mediaError = validateMedia(input.media);
   if (mediaError) {
     return { error: mediaError.error };
   }
 
-  return { name, price, status: input.status as ProductStatusInput, description };
+  return { name, price, status: input.status as ProductStatusInput, description, categoryId };
 }
+
+class InvalidProductCategoryError extends Error {}
 
 // Architecture v4.1 (Checkpoint 4F): Product no longer carries price —
 // price lives on ProductVariant. Every Product still has exactly one
@@ -196,8 +208,21 @@ export async function createProduct(
 
     if (variantOptionIds.length === 0) {
       const productId = await db.$transaction(async (tx) => {
+        if (validated.categoryId) {
+          const category = await tx.productCategory.findUnique({
+            where: { id: validated.categoryId, tenantId },
+          });
+          if (!category) throw new InvalidProductCategoryError();
+        }
+
         const product = await tx.product.create({
-          data: { name: validated.name, status: validated.status, description: validated.description, tenantId },
+          data: {
+            name: validated.name,
+            status: validated.status,
+            description: validated.description,
+            categoryId: validated.categoryId,
+            tenantId,
+          },
         });
 
         await createProductMediaRowsInTx(tx, tenantId, product.id, input.media);
@@ -229,8 +254,21 @@ export async function createProduct(
     }
 
     const productId = await db.$transaction(async (tx) => {
+      if (validated.categoryId) {
+        const category = await tx.productCategory.findUnique({
+          where: { id: validated.categoryId, tenantId },
+        });
+        if (!category) throw new InvalidProductCategoryError();
+      }
+
       const product = await tx.product.create({
-        data: { name: validated.name, status: validated.status, description: validated.description, tenantId },
+        data: {
+          name: validated.name,
+          status: validated.status,
+          description: validated.description,
+          categoryId: validated.categoryId,
+          tenantId,
+        },
       });
 
       await createProductMediaRowsInTx(tx, tenantId, product.id, input.media);
@@ -253,11 +291,104 @@ export async function createProduct(
 
     return { success: true, data: { productId } };
   } catch (e) {
+    if (e instanceof InvalidProductCategoryError) {
+      return { success: false, error: 'Selected category not found.' };
+    }
     if (e instanceof VariantGenerationError) {
       return { success: false, error: e.message };
     }
     console.error("createProduct failed:", e);
     return { success: false, error: "Something went wrong creating the product." };
+  }
+}
+
+/**
+ * Deletes a product belonging to the calling tenant, and (via the
+ * database's own Cascade rules, not application code) its variants,
+ * inventory, media, option declarations and discount slot with it.
+ *
+ * Never cascades over an OrderItem: ProductVariant's FK from OrderItem is
+ * onDelete: Restrict (see OrderItem in schema.prisma), so Postgres itself
+ * refuses this delete if any variant of this product was ever ordered —
+ * surfaced here as P2003, never worked around. A product with order
+ * history has no delete path; that is deliberate, not a gap to fill in.
+ */
+export async function deleteProduct(tenantId: string, productId: string): Promise<ActionResult> {
+  try {
+    const db = getScopedDb(tenantId);
+    await db.product.delete({ where: { id: productId, tenantId } });
+    return { success: true, data: undefined };
+  } catch (e) {
+    // P2025: record not found (already deleted, or belongs to another
+    // tenant — getScopedDb()'s injected tenantId in `where` makes a
+    // foreign id simply match no row, same as the rest of the codebase).
+    if (typeof e === "object" && e !== null && "code" in e) {
+      if (e.code === "P2025") {
+        return { success: false, error: "Product not found." };
+      }
+      if (e.code === "P2003") {
+        return {
+          success: false,
+          error: "This product has order history and cannot be deleted.",
+        };
+      }
+    }
+    console.error("deleteProduct failed:", e);
+    return { success: false, error: "Something went wrong deleting the product." };
+  }
+}
+
+class ProductsNotFoundError extends Error {}
+
+/**
+ * Deletes several products belonging to the calling tenant in one
+ * transaction — all or nothing, same reasoning as the CSV importer's own
+ * atomic apply: a batch that partially deletes leaves the operator unable
+ * to tell which half survived. Every id is re-verified against this
+ * tenant inside the transaction before anything is deleted; an id that
+ * does not resolve (wrong tenant, already gone, typo) aborts the whole
+ * batch rather than silently deleting fewer rows than requested.
+ *
+ * Same Restrict rule as the single-product deleteProduct(): a product
+ * whose variant was ever ordered blocks the entire batch (P2003), not
+ * just its own row.
+ */
+export async function deleteProducts(
+  tenantId: string,
+  productIds: string[],
+): Promise<ActionResult<{ deleted: number }>> {
+  const ids = [...new Set(productIds.map((id) => id.trim()).filter((id) => id !== ""))];
+  if (ids.length === 0) {
+    return { success: false, error: "No products selected." };
+  }
+
+  try {
+    const db = getScopedDb(tenantId);
+    const deleted = await db.$transaction(async (tx) => {
+      const found = await tx.product.findMany({ where: { id: { in: ids }, tenantId }, select: { id: true } });
+      if (found.length !== ids.length) {
+        throw new ProductsNotFoundError();
+      }
+      const result = await tx.product.deleteMany({ where: { id: { in: ids }, tenantId } });
+      return result.count;
+    });
+    return { success: true, data: { deleted } };
+  } catch (e) {
+    if (e instanceof ProductsNotFoundError) {
+      return {
+        success: false,
+        error: "One or more selected products were not found. Nothing was deleted.",
+      };
+    }
+    if (typeof e === "object" && e !== null && "code" in e && e.code === "P2003") {
+      return {
+        success: false,
+        error:
+          "One or more selected products have order history and cannot be deleted. Nothing was deleted.",
+      };
+    }
+    console.error("deleteProducts failed:", e);
+    return { success: false, error: "Something went wrong deleting the selected products." };
   }
 }
 
@@ -300,9 +431,21 @@ export async function updateProduct(
         throw new Error(`updateProduct: product ${productId} not found for tenant`);
       }
 
+      if (validated.categoryId) {
+        const category = await tx.productCategory.findUnique({
+          where: { id: validated.categoryId, tenantId },
+        });
+        if (!category) throw new InvalidProductCategoryError();
+      }
+
       await tx.product.update({
         where: { id: productId },
-        data: { name: validated.name, status: validated.status, description: validated.description },
+        data: {
+          name: validated.name,
+          status: validated.status,
+          description: validated.description,
+          categoryId: validated.categoryId,
+        },
       });
 
       const activeVariants = await tx.productVariant.findMany({
@@ -322,6 +465,9 @@ export async function updateProduct(
 
     return { success: true, data: undefined };
   } catch (e) {
+    if (e instanceof InvalidProductCategoryError) {
+      return { success: false, error: 'Selected category not found.' };
+    }
     console.error("updateProduct failed:", e);
     return { success: false, error: "Product not found." };
   }

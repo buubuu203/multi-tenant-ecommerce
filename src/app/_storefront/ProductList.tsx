@@ -6,6 +6,11 @@ import type { TenantProduct, TenantProductVariant } from './get-tenant-products'
 import { useCart } from './cart-context';
 import { ProductMediaCarousel } from './ProductMediaCarousel';
 import { compareByStartingPrice } from '@/lib/product-sort';
+import {
+  filterCatalogProducts,
+  paginateCatalogProducts,
+  STOREFRONT_PAGE_SIZE,
+} from '@/lib/product-catalog';
 import { isLowStock } from '@/lib/inventory-availability';
 import { useDictionary } from '@/lib/i18n/use-dictionary';
 
@@ -480,6 +485,11 @@ export function ProductRow({
       </Link>
 
       <div className="flex flex-col gap-1">
+        {product.category && (
+          <span className="w-fit rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+            {product.category}
+          </span>
+        )}
         <Link
           href={`/products/${product.id}`}
           className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline"
@@ -540,6 +550,9 @@ type SortOption = 'featured' | 'price_asc' | 'price_desc';
 
 export function ProductList({ products }: { products: TenantProduct[] }) {
   const [sort, setSort] = useState<SortOption>('featured');
+  const [query, setQuery] = useState('');
+  const [category, setCategory] = useState('');
+  const [page, setPage] = useState(1);
   const dict = useDictionary();
   const sortLabels: Record<SortOption, string> = {
     featured: dict.products.sortFeatured,
@@ -547,11 +560,25 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
     price_desc: dict.products.sortPriceHighLow,
   };
 
+  const categories = useMemo(
+    () =>
+      [...new Set(products.flatMap((product) => (product.category ? [product.category] : [])))].sort(
+        (a, b) => a.localeCompare(b),
+      ),
+    [products],
+  );
+
+  const filteredProducts = useMemo(
+    () => filterCatalogProducts(products, query, category),
+    [products, query, category],
+  );
+
   const sortedProducts = useMemo(() => {
-    if (sort === 'featured') return products;
+    if (sort === 'featured') return filteredProducts;
     const withDirection: 1 | -1 = sort === 'price_asc' ? 1 : -1;
-    return [...products].sort((a, b) => compareByStartingPrice(a, b, withDirection));
-  }, [products, sort]);
+    return [...filteredProducts].sort((a, b) => compareByStartingPrice(a, b, withDirection));
+  }, [filteredProducts, sort]);
+  const paginated = paginateCatalogProducts(sortedProducts, page, STOREFRONT_PAGE_SIZE);
 
   if (products.length === 0) {
     return null;
@@ -582,11 +609,90 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
           </select>
         </label>
       </div>
-      <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-        {sortedProducts.map((product) => (
-          <ProductRow key={product.id} product={product} />
-        ))}
-      </ul>
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
+        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
+          {dict.products.searchProducts}
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => {
+              setQuery(event.target.value);
+              setPage(1);
+            }}
+            placeholder={dict.products.searchPlaceholder}
+            aria-label={dict.products.searchProducts}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+          />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          {dict.products.filterByCategory}
+          <select
+            value={category}
+            onChange={(event) => {
+              setCategory(event.target.value);
+              setPage(1);
+            }}
+            aria-label={dict.products.filterByCategory}
+            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+          >
+            <option value="">{dict.products.allCategories}</option>
+            {categories.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      </div>
+      {paginated.totalCount === 0 ? (
+        <p className="py-8 text-center text-sm text-muted-foreground">
+          {dict.products.noMatchingProducts}
+        </p>
+      ) : (
+        <>
+          <p className="text-xs text-muted-foreground" role="status">
+            {dict.products.showingProducts
+              .replace('{start}', String(paginated.start))
+              .replace('{end}', String(paginated.end))
+              .replace('{total}', String(paginated.totalCount))}
+          </p>
+          <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
+            {paginated.items.map((product) => (
+              <ProductRow key={product.id} product={product} />
+            ))}
+          </ul>
+          {paginated.totalPages > 1 && (
+            <nav
+              aria-label={dict.products.pagination}
+              className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
+            >
+              <span>
+                {dict.products.pageIndicator
+                  .replace('{current}', String(paginated.page))
+                  .replace('{total}', String(paginated.totalPages))}
+              </span>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  disabled={paginated.page <= 1}
+                  onClick={() => setPage(paginated.page - 1)}
+                  className="rounded-md border border-border px-3 py-1.5 transition-colors enabled:hover:bg-surface-muted disabled:opacity-40"
+                >
+                  {dict.products.previousPage}
+                </button>
+                <button
+                  type="button"
+                  disabled={paginated.page >= paginated.totalPages}
+                  onClick={() => setPage(paginated.page + 1)}
+                  className="rounded-md border border-border px-3 py-1.5 transition-colors enabled:hover:bg-surface-muted disabled:opacity-40"
+                >
+                  {dict.products.nextPage}
+                </button>
+              </div>
+            </nav>
+          )}
+        </>
+      )}
     </section>
   );
 }

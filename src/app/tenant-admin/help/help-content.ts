@@ -300,6 +300,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       'Nhập file dạng đơn giản chỉ gồm tên và giá.',
       'Nhập file dạng mở rộng có SKU để cập nhật sản phẩm đã có.',
       'Đặt tồn kho theo số tuyệt đối hoặc tăng giảm tương đối.',
+      'Gán phân loại (category) cho sản phẩm, tự tạo phân loại mới nếu tên đó chưa có.',
       'Xuất danh sách sản phẩm hiện tại.',
     ],
     workflow: [
@@ -327,6 +328,11 @@ export const HELP_SECTIONS: HelpSection[] = [
         term: 'Chế độ tồn kho',
         meaning:
           'set_on_hand là đặt về đúng con số bạn ghi. adjust_on_hand là cộng hoặc trừ đi. Bắt buộc ghi rõ, hệ thống không tự đoán.',
+      },
+      {
+        term: 'Cột category',
+        meaning:
+          'Chỉ có ở dạng mở rộng. Ghi tên phân loại vào đó — nếu tên này chưa tồn tại, hệ thống tự tạo mới; nếu đã có thì dùng lại, không tạo trùng. Để trống hoặc bỏ cột này thì giữ nguyên phân loại sản phẩm đang có, không xoá.',
       },
     ],
     limits: [

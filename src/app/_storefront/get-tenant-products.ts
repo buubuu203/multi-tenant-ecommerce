@@ -53,6 +53,7 @@ export type TenantProductMedia = {
 export type TenantProduct = {
   id: string;
   name: string;
+  category: string | null;
   // Product Description Rich Text: Product.description is stored as plain
   // Markdown in the database (no schema change), but this purpose-built
   // read shape hands the storefront ALREADY-SANITIZED HTML, never the raw
@@ -112,6 +113,7 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
         },
         media: { orderBy: { sortOrder: "asc" } },
         discount: true,
+        category: true,
       },
     }),
     prisma.variantOption.findMany({ where: { tenantId } }),
@@ -141,6 +143,7 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
 type RawTenantProduct = {
   id: string;
   name: string;
+  category: { name: string } | null;
   description: string | null;
   media: { id: string; type: string; url: string; sortOrder: number }[];
   // Product Discount (V1): at most one row, per Discount.@@unique([productId]).
@@ -163,6 +166,7 @@ function mapTenantProduct(
   return {
     id: product.id,
     name: product.name,
+    category: product.category?.name ?? null,
     descriptionHtml: product.description ? renderDescriptionMarkdown(product.description) : null,
     descriptionExcerpt: product.description
       ? renderDescriptionMarkdown(product.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
@@ -254,6 +258,7 @@ export async function getTenantProductForTenant(
       },
       media: { orderBy: { sortOrder: "asc" } },
       discount: true,
+      category: true,
     },
   });
   if (!product) {

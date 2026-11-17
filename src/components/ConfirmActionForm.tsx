@@ -31,6 +31,7 @@ export function ConfirmActionForm<T>({
   className,
   confirmWhen,
   skipConfirmation = false,
+  id,
 }: {
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children?: React.ReactNode;
@@ -66,6 +67,14 @@ export function ConfirmActionForm<T>({
    * Decided on the server, where the stored state is known.
    */
   skipConfirmation?: boolean;
+  /**
+   * Lets inputs OUTSIDE this form's own children submit through it, via
+   * their own `form={id}` attribute (standard HTML — forms cannot nest,
+   * so a batch action whose checkboxes live beside unrelated per-row
+   * forms must associate them this way instead of wrapping everything in
+   * one giant <form>).
+   */
+  id?: string;
 }) {
   const [state, formAction, pending] = useActionState(action, null);
 
@@ -87,6 +96,7 @@ export function ConfirmActionForm<T>({
 
   return (
     <form
+      id={id}
       action={formAction}
       className={mergeFormClassName(className)}
       aria-busy={pending}

@@ -226,6 +226,27 @@ test('invalid inventory values are rejected', () => {
   assert.match(modeOnly.errors[0].message, /without on_hand/);
 });
 
+// ---------- category column ----------
+
+test('an empty or omitted category cell parses as null, not empty string', () => {
+  const withColumn = parsed(`sku,name,price,category\nC-1,Alpha,1000,\n`);
+  assert.equal(withColumn.rows[0].category, null);
+
+  const withoutColumn = parsed(`${EXT}\nC-2,Beta,1000,active\n`);
+  assert.equal(withoutColumn.rows[0].category, null);
+});
+
+test('a category name is trimmed', () => {
+  const p = parsed(`sku,name,price,category\nC-3,Gamma,1000,  Toys  \n`);
+  assert.equal(p.rows[0].category, 'Toys');
+});
+
+test('an overlong category name is rejected like any other field', () => {
+  const p = parsed(`sku,name,price,category\nC-4,Delta,1000,${'x'.repeat(2001)}\n`);
+  assert.equal(p.rows.length, 0);
+  assert.match(p.errors[0].message, /maximum is 2000/);
+});
+
 // ---------- planning ----------
 
 test('a duplicate SKU inside one file is a conflict, not a last-one-wins', () => {
@@ -335,6 +356,104 @@ test('a changed row updates in place and preserves unrelated fields', async () =
   assert.equal(variant?.price, 4500);
   assert.equal(variant?.product.description, 'keep me', 'an omitted column never blanks data');
   assert.deepEqual(await snapshot(tenantA.id), before_, 'update created no new rows');
+});
+
+test('a new category is created by name and reused across rows in the same file', async () => {
+  const skuA = `CAT-A-${suffix}`;
+  const skuB = `CAT-B-${suffix}`;
+  const categoryName = `Decor ${suffix}`;
+  const csv =
+    'sku,name,price,category\n' +
+    `${skuA},Alpha ${suffix},1000,${categoryName}\n` +
+    `${skuB},Beta ${suffix},2000,${categoryName}\n`;
+
+  const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
+  assert.ok(result.success, result.success ? '' : result.error);
+  assert.equal(result.data.created, 2);
+
+  const categories = await prisma.productCategory.findMany({
+    where: { tenantId: tenantA.id, name: categoryName },
+  });
+  assert.equal(categories.length, 1, 'one file naming the same new category twice creates it once');
+
+  const variants = await prisma.productVariant.findMany({
+    where: { tenantId: tenantA.id, sku: { in: [skuA, skuB] } },
+    include: { product: true },
+  });
+  assert.ok(variants.every((v) => v.product.categoryId === categories[0].id));
+});
+
+test('an existing category is matched by name, not duplicated', async () => {
+  const sku = `CAT-EXIST-${suffix}`;
+  const categoryName = `Jewelry ${suffix}`;
+  const existing = await prisma.productCategory.create({
+    data: { tenantId: tenantA.id, name: categoryName },
+  });
+
+  const csv = `sku,name,price,category\n${sku},Gamma ${suffix},1000,${categoryName}\n`;
+  const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
+  assert.ok(result.success, result.success ? '' : result.error);
+
+  const stillOne = await prisma.productCategory.count({
+    where: { tenantId: tenantA.id, name: categoryName },
+  });
+  assert.equal(stillOne, 1);
+
+  const variant = await prisma.productVariant.findFirst({
+    where: { tenantId: tenantA.id, sku },
+    include: { product: true },
+  });
+  assert.equal(variant?.product.categoryId, existing.id);
+});
+
+test('an omitted category column leaves an existing assignment untouched; a given one updates it, surfaced as a plan change', async () => {
+  const sku = `CAT-UPD-${suffix}`;
+  const firstCategory = `Lighting ${suffix}`;
+  const create = `sku,name,price,category\n${sku},Delta ${suffix},1000,${firstCategory}\n`;
+  assert.ok((await applyProductCsv(tenantA.id, create, csvFingerprint(create))).success);
+
+  // Price changes; category column omitted entirely — must not clear it.
+  const touchPrice = `sku,name,price\n${sku},Delta ${suffix},1500\n`;
+  const touchPlan = await plan(tenantA.id, touchPrice);
+  assert.deepEqual(touchPlan.rows[0].changes.map((c) => c.field), ['price']);
+  assert.ok((await applyProductCsv(tenantA.id, touchPrice, csvFingerprint(touchPrice))).success);
+
+  const afterPriceOnly = await prisma.productVariant.findFirst({
+    where: { tenantId: tenantA.id, sku },
+    include: { product: { include: { category: true } } },
+  });
+  assert.equal(afterPriceOnly?.product.category?.name, firstCategory, 'omitted category column left it alone');
+
+  // Now re-category explicitly.
+  const secondCategory = `Decor ${suffix}`;
+  const recategorize = `sku,name,price,category\n${sku},Delta ${suffix},1500,${secondCategory}\n`;
+  const recatPlan = await plan(tenantA.id, recategorize);
+  const categoryChange = recatPlan.rows[0].changes.find((c) => c.field === 'category');
+  assert.ok(categoryChange, 'the plan surfaces the category change');
+  assert.equal(categoryChange?.from, firstCategory);
+  assert.equal(categoryChange?.to, secondCategory);
+
+  assert.ok((await applyProductCsv(tenantA.id, recategorize, csvFingerprint(recategorize))).success);
+  const afterRecategorize = await prisma.productVariant.findFirst({
+    where: { tenantId: tenantA.id, sku },
+    include: { product: { include: { category: true } } },
+  });
+  assert.equal(afterRecategorize?.product.category?.name, secondCategory);
+});
+
+test('CATEGORY TENANT ISOLATION — same category name in two tenants stays two separate rows', async () => {
+  const name = `Shared Name ${suffix}`;
+  const skuA = `CAT-ISO-A-${suffix}`;
+  const skuB = `CAT-ISO-B-${suffix}`;
+  const csvA = `sku,name,price,category\n${skuA},Owned by A,1000,${name}\n`;
+  const csvB = `sku,name,price,category\n${skuB},Owned by B,1000,${name}\n`;
+
+  assert.ok((await applyProductCsv(tenantA.id, csvA, csvFingerprint(csvA))).success);
+  assert.ok((await applyProductCsv(tenantB.id, csvB, csvFingerprint(csvB))).success);
+
+  const categories = await prisma.productCategory.findMany({ where: { name } });
+  assert.equal(categories.length, 2, 'each tenant gets its own category row for the same name');
+  assert.notEqual(categories[0].tenantId, categories[1].tenantId);
 });
 
 test('set_on_hand and adjust_on_hand both go through the guarded helper', async () => {

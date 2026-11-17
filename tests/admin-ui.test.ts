@@ -490,6 +490,11 @@ test('empty states say what to do next, not only that nothing is there', () => {
   assert.match(catalog, /No variant options yet/);
 });
 
+test('storefront banners are constrained to a readable desktop width', () => {
+  const carousel = readCode('src/app/_storefront/BannerCarousel.tsx');
+  assert.match(carousel, /mx-auto aspect-\[4\/3\] w-full max-w-4xl/);
+});
+
 test('the shipping amount field names its currency and its zero case', () => {
   const src = readCode('src/app/tenant-admin/shipping/page.tsx');
   assert.match(src, /in VND/);

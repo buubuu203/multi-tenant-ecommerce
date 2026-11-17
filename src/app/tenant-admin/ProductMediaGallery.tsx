@@ -101,6 +101,14 @@ export function ProductMediaGallery({
   );
   const [formError, setFormError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Native HTML5 drag-and-drop, not a library — same reasoning as
+  // ImageCropModal's own pan/zoom: this interaction (drag a tile to a new
+  // slot in a small, flat list) is small enough that a dependency costs
+  // more than it saves. The `‹`/`›` buttons below are NOT replaced by
+  // this — HTML5 drag-and-drop fires no events on touch and is not
+  // keyboard-operable, so they remain the accessible path; dragging is
+  // purely an added convenience for a mouse.
+  const [dragIndex, setDragIndex] = useState<number | null>(null);
 
   const imageCount = items.filter((i) => i.type === 'image' && !i.error).length;
   const videoCount = items.filter((i) => i.type === 'video' && !i.error).length;
@@ -279,6 +287,35 @@ export function ProductMediaGallery({
     void persistReorder(next);
   }
 
+  // Live preview only — moves the tile in local state as the pointer
+  // crosses into a new slot, with NO server call. The actual persistence
+  // happens once, in handleDrop, exactly like the buttons' moveItem()
+  // already does one persistReorder() per completed move rather than per
+  // intermediate position.
+  function handleDragOver(e: React.DragEvent, overIndex: number) {
+    e.preventDefault();
+    if (dragIndex === null || dragIndex === overIndex) return;
+    setItems((prev) => {
+      const next = [...prev];
+      const [moved] = next.splice(dragIndex, 1);
+      next.splice(overIndex, 0, moved);
+      return next;
+    });
+    setDragIndex(overIndex);
+  }
+
+  function handleDragEnd() {
+    setDragIndex(null);
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault();
+    setDragIndex(null);
+    // `items` already reflects every handleDragOver move made during this
+    // drag, so this just commits the array already shown on screen.
+    void persistReorder(items);
+  }
+
   const validItems = items.filter((i) => !i.error);
   const mediaJson = JSON.stringify(validItems.map((i) => ({ url: i.url, type: i.type })));
 
@@ -310,7 +347,14 @@ export function ProductMediaGallery({
           {items.map((item, index) => (
             <div
               key={item.key}
-              className="relative flex h-20 w-20 flex-col items-center justify-center rounded-md border border-border"
+              draggable={!item.error}
+              onDragStart={() => setDragIndex(index)}
+              onDragOver={(e) => handleDragOver(e, index)}
+              onDrop={handleDrop}
+              onDragEnd={handleDragEnd}
+              className={`relative flex h-20 w-20 flex-col items-center justify-center rounded-md border border-border ${
+                dragIndex === index ? 'opacity-40' : ''
+              } ${!item.error ? 'cursor-grab active:cursor-grabbing' : ''}`}
             >
               {item.type === 'image' ? (
                 // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx

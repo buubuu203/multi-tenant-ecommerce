@@ -22,7 +22,11 @@ import {
 // URL instead of the real Blob URL (validateMedia() now also rejects that
 // server-side, but blocking submission here means the admin never sees
 // the round-trip error at all).
-export function CreateProductForm() {
+export function CreateProductForm({
+  categories,
+}: {
+  categories: { id: string; name: string }[];
+}) {
   const [uploading, setUploading] = useState(false);
 
   return (
@@ -47,6 +51,17 @@ export function CreateProductForm() {
         <label className={productLabelClassName}>
           Price (VND)
           <input name="price" inputMode="numeric" className={productInputClassName} />
+        </label>
+        <label className={productLabelClassName}>
+          Category
+          <select name="categoryId" defaultValue="" className={productInputClassName}>
+            <option value="">Uncategorized</option>
+            {categories.map((category) => (
+              <option key={category.id} value={category.id}>
+                {category.name}
+              </option>
+            ))}
+          </select>
         </label>
       </div>
 

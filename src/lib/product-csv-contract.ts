@@ -18,6 +18,15 @@ import { MAX_BYTES, MAX_ROWS, parseCsv } from './product-csv';
  * external key — only a UUID — so there is nothing else to match on.
  * Matching by NAME is deliberately not an update key: names are not
  * unique, not stable, and merchants rename things.
+ *
+ * `category` (V2 only) is matched by NAME, not id — a CSV has no way to
+ * carry a tenant's internal category uuid, and name is the only handle a
+ * merchant has. A name that doesn't exist yet for this tenant is created
+ * on the fly (applyProductCsv, inside the same transaction as the import);
+ * this is deliberately looser than the manual product editor, where
+ * categoryId must already exist. An empty cell behaves exactly like an
+ * omitted description cell: "leave whatever this product already has
+ * alone," never "clear it" — there is no way to blank a category via CSV.
  */
 
 export const MAX_FIELD_LENGTH = 2000;
@@ -32,6 +41,7 @@ export type ParsedRow = {
   price: number;
   status: 'draft' | 'active';
   description: string | null;
+  category: string | null;
   onHand: number | null;
   inventoryMode: InventoryMode | null;
 };
@@ -57,6 +67,7 @@ const V2_COLUMNS = [
   'price',
   'status',
   'description',
+  'category',
   'on_hand',
   'inventory_mode',
 ] as const;
@@ -208,6 +219,7 @@ function parseV1(dataRows: string[][], hasStatus: boolean): ParsedCsv {
       sku: null, // V1 carries no identifier, so every row can only create.
       ...core,
       description: null,
+      category: null,
       onHand: null,
       inventoryMode: null,
     });
@@ -270,10 +282,17 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
     const priceRaw = at(cols, 'price');
     const statusRaw = at(cols, 'status');
     const description = at(cols, 'description');
+    const category = at(cols, 'category');
     const onHandRaw = at(cols, 'on_hand').trim();
     const modeRaw = at(cols, 'inventory_mode').trim();
 
-    if (pushFieldLengthErrors(rowNumber, { sku, name, price: priceRaw, description }, errors)) {
+    if (
+      pushFieldLengthErrors(
+        rowNumber,
+        { sku, name, price: priceRaw, description, category },
+        errors,
+      )
+    ) {
       return;
     }
 
@@ -343,6 +362,7 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
       sku,
       ...core,
       description: description.trim() === '' ? null : description,
+      category: category.trim() === '' ? null : category.trim(),
       onHand,
       inventoryMode,
     });

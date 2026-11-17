@@ -62,7 +62,9 @@ export async function resolveExistingBySku(
       sku: true,
       price: true,
       productId: true,
-      product: { select: { name: true, status: true, description: true } },
+      product: {
+        select: { name: true, status: true, description: true, category: { select: { name: true } } },
+      },
       inventory: { select: { onHand: true, reserved: true } },
     },
   });
@@ -78,6 +80,7 @@ export async function resolveExistingBySku(
       price: variant.price,
       status: variant.product.status === 'active' ? 'active' : 'draft',
       description: variant.product.description,
+      category: variant.product.category?.name ?? null,
       onHand: stock?.onHand ?? 0,
       reserved: stock?.reserved ?? 0,
     });
@@ -102,6 +105,28 @@ export async function planProductCsv(
 }
 
 class ImportAbort extends Error {}
+
+/**
+ * Finds-or-creates a ProductCategory for every distinct category name the
+ * file mentions, inside the same transaction as the rest of the import —
+ * so a brand-new category and the products that reference it commit (or
+ * roll back) together. Sequential, not parallel: two rows naming the same
+ * new category must not race each other into the unique index.
+ */
+// eslint-disable-next-line @typescript-eslint/no-explicit-any -- tx type is the interactive-transaction client, structurally compatible with productCategory
+async function resolveCategoryIds(tx: any, tenantId: string, names: readonly string[]): Promise<Map<string, string>> {
+  const map = new Map<string, string>();
+  for (const name of new Set(names)) {
+    const existing = await tx.productCategory.findUnique({ where: { tenantId_name: { tenantId, name } } });
+    if (existing) {
+      map.set(name, existing.id);
+      continue;
+    }
+    const created = await tx.productCategory.create({ data: { tenantId, name } });
+    map.set(name, created.id);
+  }
+  return map;
+}
 
 /**
  * Applies a plan in one transaction, re-deriving it from the file text
@@ -145,6 +170,11 @@ export async function applyProductCsv(
           throw new ImportAbort('This store has no default stock location. Nothing was imported.');
         }
 
+        const categoryNames = plan.rows
+          .map((planned) => planned.row?.category)
+          .filter((name): name is string => typeof name === 'string');
+        const categoryIdByName = await resolveCategoryIds(tx, tenantId, categoryNames);
+
         for (const planned of plan.rows) {
           if (planned.action !== 'create' && planned.action !== 'update') continue;
           const row = planned.row;
@@ -157,6 +187,7 @@ export async function applyProductCsv(
                 name: row.name,
                 status: row.status,
                 description: row.description,
+                categoryId: row.category ? categoryIdByName.get(row.category) : null,
               },
             });
             const variant = await tx.productVariant.create({
@@ -197,6 +228,8 @@ export async function applyProductCsv(
               status: row.status,
               // Omitted description leaves existing text alone.
               ...(row.description !== null ? { description: row.description } : {}),
+              // Same rule for category — see product-csv-contract.ts.
+              ...(row.category !== null ? { categoryId: categoryIdByName.get(row.category) } : {}),
             },
           });
           await tx.productVariant.update({

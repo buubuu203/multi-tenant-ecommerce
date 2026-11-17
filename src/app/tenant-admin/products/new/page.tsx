@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
+import { getScopedDb } from "@/lib/db/tenant-db";
 import { CreateProductForm } from "../../CreateProductForm";
 import { AdminPageHeader } from "../../AdminPageHeader";
 import { adminSectionClassName } from "../../styles";
@@ -22,7 +23,12 @@ export const dynamic = "force-dynamic";
 // any read, because a layout's gate does not stop a child page segment
 // from rendering and streaming its own payload.
 export default async function NewProductPage() {
-  await requireTenantAdmin();
+  const { tenantId } = await requireTenantAdmin();
+  const categories = await getScopedDb(tenantId).productCategory.findMany({
+    where: { tenantId },
+    select: { id: true, name: true },
+    orderBy: { name: "asc" },
+  });
 
   return (
     <section className={adminSectionClassName}>
@@ -40,7 +46,7 @@ export default async function NewProductPage() {
       />
 
       <div className="max-w-2xl">
-        <CreateProductForm />
+        <CreateProductForm categories={categories} />
       </div>
     </section>
   );

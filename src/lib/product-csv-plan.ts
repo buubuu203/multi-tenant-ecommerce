@@ -15,6 +15,7 @@ export type ExistingVariant = {
   price: number;
   status: 'draft' | 'active';
   description: string | null;
+  category: string | null;
   onHand: number;
   reserved: number;
 };
@@ -154,6 +155,15 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
         field: 'description',
         from: match.description ?? '(none)',
         to: row.description,
+      });
+    }
+    // Same rule as description: an empty/omitted category cell means
+    // "leave it alone," never "clear it" — see product-csv-contract.ts.
+    if (row.category !== null && match.category !== row.category) {
+      changes.push({
+        field: 'category',
+        from: match.category ?? '(none)',
+        to: row.category,
       });
     }
 

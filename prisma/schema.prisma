@@ -31,22 +31,24 @@ model Tenant {
   createdAt DateTime     @default(now())
   updatedAt DateTime     @updatedAt
 
-  domains         Domain[]
-  branding        Branding?
-  products        Product[]
-  variantOptions  VariantOption[]
-  locations       Location[]
-  orders          Order[]
-  customers       Customer[]
-  payments        Payment[]
-  productMedia    ProductMedia[]
-  paymentMethods  TenantPaymentMethod[]
-  shippingMethods TenantShippingMethod[]
-  banners         Banner[]
-  discounts       Discount[]
-  orderEvents     OrderEvent[]
-  vouchers        Voucher[]
-  voucherUsages   VoucherUsage[]
+  domains           Domain[]
+  branding          Branding?
+  products          Product[]
+  productCategories ProductCategory[]
+  variantOptions    VariantOption[]
+  locations         Location[]
+  orders            Order[]
+  customers         Customer[]
+  payments          Payment[]
+  productMedia      ProductMedia[]
+  paymentMethods    TenantPaymentMethod[]
+  shippingMethods   TenantShippingMethod[]
+  banners           Banner[]
+  discounts         Discount[]
+  orderEvents       OrderEvent[]
+  vouchers          Voucher[]
+  voucherUsages     VoucherUsage[]
+  privacyNotices    PrivacyNoticeVersion[]
 
   @@map("tenants")
 }
@@ -193,19 +195,21 @@ model Product {
   // rich text, rendered as-is. null means "no description set" (never an
   // empty string — see product-mutations.ts's validateDescription()).
   description String?
+  categoryId  String?
   status      ProductStatus @default(draft)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
 
-  tenant   Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  variants ProductVariant[]
-  options  ProductOption[]
+  tenant          Tenant           @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category        ProductCategory? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  variants        ProductVariant[]
+  options         ProductOption[]
   // Step 50: replaces the old single Product.imageUrl field (Step 44) —
   // one product can now have many media items (images and/or videos),
   // ordered by sortOrder. imageUrl is dropped entirely by this migration,
   // not kept alongside media, to avoid two competing sources of truth for
   // "the product's picture."
-  media    ProductMedia[]
+  media           ProductMedia[]
   // Product Discount (V1): at most one discount SLOT per product (see
   // Discount's own doc comment for why this is a real @@unique, not just
   // an application-level convention) — "one active discount per product,"
@@ -215,7 +219,23 @@ model Product {
 
   @@unique([id, tenantId])
   @@index([tenantId])
+  @@index([tenantId, categoryId])
   @@map("products")
+}
+
+model ProductCategory {
+  id        String   @id @default(uuid())
+  tenantId  String
+  name      String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  products Product[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId])
+  @@map("product_categories")
 }
 
 // Product Discount (V1) — the smallest useful scope per this repo's own
@@ -464,16 +484,18 @@ enum OrderStatus {
 // Customer rows across different tenants — this is not a cross-tenant
 // identity, by design.
 model Customer {
-  id        String   @id @default(uuid())
-  tenantId  String
-  email     String
-  name      String
-  phone     String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id           String    @id @default(uuid())
+  tenantId     String
+  email        String
+  name         String
+  phone        String
+  anonymizedAt DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  orders Order[]
+  tenant        Tenant                 @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders        Order[]
+  privacyEvents CustomerPrivacyEvent[]
 
   @@unique([tenantId, email])
   @@unique([id, tenantId])
@@ -487,6 +509,44 @@ model Customer {
   @@index([tenantId, phone])
   @@index([tenantId, name])
   @@map("customers")
+}
+
+model CustomerPrivacyEvent {
+  id                 String   @id @default(uuid())
+  tenantId           String
+  customerId         String
+  actorId            String
+  requestReceivedAt  DateTime
+  completedAt        DateTime @default(now())
+  affectedOrderCount Int
+  createdAt          DateTime @default(now())
+
+  customer Customer @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Cascade)
+
+  @@index([tenantId, requestReceivedAt])
+  @@index([customerId])
+  @@map("customer_privacy_events")
+}
+
+model PrivacyNoticeVersion {
+  id             String   @id @default(uuid())
+  tenantId       String
+  version        Int
+  controllerName String
+  contactEmail   String
+  noticeTextVi   String
+  noticeTextEn   String
+  publishedBy    String
+  isCurrent      Boolean  @default(false)
+  publishedAt    DateTime @default(now())
+
+  tenant Tenant  @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  orders Order[]
+
+  @@unique([tenantId, version])
+  @@unique([id, tenantId])
+  @@index([tenantId, isCurrent])
+  @@map("privacy_notice_versions")
 }
 
 // Step 30: the customer's chosen payment method, captured at
@@ -541,19 +601,24 @@ model Order {
   // live reference to the Voucher row (which may be deleted/changed later).
   // Both null together means "no voucher applied." voucherDiscount is the
   // actual VND amount deducted from the order total.
-  voucherCode     String?
-  voucherDiscount Int           @default(0)
+  voucherCode              String?
+  voucherDiscount          Int       @default(0)
+  privacyNoticeVersionId   String?
+  privacyNoticeAvailableAt DateTime?
+  privacyConsentAt         DateTime?
 
-  tenant       Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
-  customer     Customer       @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
-  items        OrderItem[]
-  events       OrderEvent[]
-  payment      Payment?
-  voucherUsage VoucherUsage?
+  tenant               Tenant                @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  customer             Customer              @relation(fields: [customerId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  privacyNoticeVersion PrivacyNoticeVersion? @relation(fields: [privacyNoticeVersionId, tenantId], references: [id, tenantId], onDelete: Restrict)
+  items                OrderItem[]
+  events               OrderEvent[]
+  payment              Payment?
+  voucherUsage         VoucherUsage?
 
   @@unique([id, tenantId])
   @@index([tenantId])
   @@index([customerId])
+  @@index([privacyNoticeVersionId])
   @@map("orders")
 }
 

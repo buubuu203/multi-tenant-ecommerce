@@ -10,13 +10,19 @@ import {
 import { planProductCsv, applyProductCsv } from '@/lib/product-csv-apply';
 import { redirect } from 'next/navigation';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getDictionary, getLocale } from '@/lib/i18n';
 import {
   updateBranding,
   updateBrandingLogoUrl,
   updateBrandingFaviconUrl,
   updateDesignTokens,
 } from '@/lib/branding-mutations';
-import { createProduct, updateProduct } from '@/lib/product-mutations';
+import { createProduct, updateProduct, deleteProduct, deleteProducts } from '@/lib/product-mutations';
+import {
+  createProductCategory,
+  deleteProductCategory,
+  updateProductCategory,
+} from '@/lib/product-category-mutations';
 import {
   uploadProductMediaFile,
   deleteProductMediaFile,
@@ -41,6 +47,12 @@ import { createProductOption, deleteProductOption } from '@/lib/product-option-m
 import { generateProductVariants, type GenerationResult } from '@/lib/variant-generation';
 import { updateProductVariant } from '@/lib/product-variant-mutations';
 import { updateOrderStatus } from '@/lib/order-mutations';
+import {
+  anonymizeCustomer,
+  parseRequestReceivedDate,
+  publishPrivacyNotice,
+  type PrivacyActionResult,
+} from '@/lib/privacy-mutations';
 import { adjustInventoryOnHand } from '@/lib/inventory-mutations';
 import { updateTenantPaymentMethod } from '@/lib/tenant-payment-mutations';
 import { markManualPaymentReceived } from '@/lib/payments/payment-service';
@@ -50,7 +62,7 @@ import {
   deleteShippingMethod,
 } from '@/lib/shipping-mutations';
 import { createBanner, updateBanner, deleteBanner, type BannerInput } from '@/lib/banner-mutations';
-import { uploadBannerImageFile, deleteBannerImageFile } from '@/lib/blob-storage';
+import { deleteBannerImageFile } from '@/lib/blob-storage';
 import {
   upsertProductDiscount,
   deleteProductDiscount,
@@ -58,6 +70,15 @@ import {
 } from '@/lib/discount-mutations';
 import type { PaymentMethod, PaymentProviderType } from '@/generated/prisma/client';
 import type { ActionResult } from '@/lib/action-result';
+import type { Dictionary } from '@/lib/i18n/dictionaries';
+
+function localizePrivacyResult<T>(
+  result: PrivacyActionResult<T>,
+  messages: Dictionary['privacy']['errors'],
+): ActionResult<T> {
+  if (result.success) return result;
+  return { success: false, error: messages[result.error] };
+}
 
 // Independently re-checks auth + authorization before touching the
 // database — the tenant-admin/layout.tsx gate is not treated as
@@ -84,6 +105,57 @@ export async function updateBrandingAction(
     revalidatePath('/tenant-admin', 'layout');
   }
   return result;
+}
+
+export async function publishPrivacyNoticeAction(
+  _prevState: ActionResult<{ version: number }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ version: number }>> {
+  const { tenantId, userId } = await requireTenantAdmin();
+  const dict = await getDictionary(await getLocale());
+  if (!userId) {
+    return { success: false, error: dict.privacy.errors.adminIdentityInvalid };
+  }
+
+  const result = await publishPrivacyNotice(tenantId, userId, {
+    controllerName: String(formData.get('controllerName') ?? ''),
+    contactEmail: String(formData.get('contactEmail') ?? ''),
+    noticeTextVi: String(formData.get('noticeTextVi') ?? ''),
+    noticeTextEn: String(formData.get('noticeTextEn') ?? ''),
+  });
+  if (result.success) revalidatePath('/tenant-admin', 'layout');
+  return localizePrivacyResult(result, dict.privacy.errors);
+}
+
+export async function anonymizeCustomerAction(
+  _prevState: ActionResult<{ affectedOrderCount: number }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ affectedOrderCount: number }>> {
+  const { tenantId, userId } = await requireTenantAdmin();
+  const dict = await getDictionary(await getLocale());
+  if (!userId) {
+    return { success: false, error: dict.privacy.errors.adminIdentityInvalid };
+  }
+  if (formData.get('confirmPrivacyRequest') !== 'on') {
+    return {
+      success: false,
+      error: dict.privacy.errors.confirmationRequired,
+    };
+  }
+
+  const received = parseRequestReceivedDate(String(formData.get('requestReceivedAt') ?? ''));
+  if (!received.success) {
+    return { success: false, error: dict.privacy.errors[received.error] };
+  }
+
+  const result = await anonymizeCustomer(
+    tenantId,
+    String(formData.get('customerId') ?? ''),
+    userId,
+    received.data,
+  );
+  if (result.success) revalidatePath('/tenant-admin', 'layout');
+  return localizePrivacyResult(result, dict.privacy.errors);
 }
 
 export async function uploadBrandingLogoAction(
@@ -171,6 +243,7 @@ export async function createProductAction(
     price: String(formData.get('price') ?? ''),
     status: String(formData.get('status') ?? ''),
     description: String(formData.get('description') ?? ''),
+    categoryId: String(formData.get('categoryId') ?? ''),
     media,
   });
 
@@ -402,8 +475,77 @@ export async function updateProductAction(
     price: String(formData.get('price') ?? ''),
     status: String(formData.get('status') ?? ''),
     description: String(formData.get('description') ?? ''),
+    categoryId: String(formData.get('categoryId') ?? ''),
   });
 
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+export async function deleteProductAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await deleteProduct(tenantId, String(formData.get('productId') ?? ''));
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+export async function deleteProductsAction(
+  _prevState: ActionResult<{ deleted: number }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ deleted: number }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const productIds = formData.getAll('productIds').map((value) => String(value));
+  const result = await deleteProducts(tenantId, productIds);
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+export async function createProductCategoryAction(
+  _prevState: ActionResult<{ categoryId: string }> | null,
+  formData: FormData,
+): Promise<ActionResult<{ categoryId: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await createProductCategory(tenantId, String(formData.get('name') ?? ''));
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+export async function deleteProductCategoryAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await deleteProductCategory(
+    tenantId,
+    String(formData.get('categoryId') ?? ''),
+  );
+  if (result.success) {
+    revalidatePath('/tenant-admin', 'layout');
+  }
+  return result;
+}
+
+export async function updateProductCategoryAction(
+  _prevState: ActionResult | null,
+  formData: FormData,
+): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const result = await updateProductCategory(
+    tenantId,
+    String(formData.get('categoryId') ?? ''),
+    String(formData.get('name') ?? ''),
+  );
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
   }
@@ -747,36 +889,6 @@ export async function deleteShippingMethodAction(
 // is submitted alongside the other banner fields when the form itself is
 // submitted — this action never receives a raw File for the create/update
 // step, only a URL string.
-
-export async function uploadBannerImageAction(
-  formData: FormData,
-): Promise<ActionResult<{ url: string }>> {
-  const { tenantId } = await requireTenantAdmin();
-  const file = formData.get('file');
-  if (!(file instanceof File)) {
-    return { success: false, error: 'No image file provided.' };
-  }
-  const result = await uploadBannerImageFile(tenantId, file, 'desktop');
-  if ('error' in result) {
-    return { success: false, error: result.error };
-  }
-  return { success: true, data: result };
-}
-
-export async function uploadBannerMobileImageAction(
-  formData: FormData,
-): Promise<ActionResult<{ url: string }>> {
-  const { tenantId } = await requireTenantAdmin();
-  const file = formData.get('file');
-  if (!(file instanceof File)) {
-    return { success: false, error: 'No image file provided.' };
-  }
-  const result = await uploadBannerImageFile(tenantId, file, 'mobile');
-  if ('error' in result) {
-    return { success: false, error: result.error };
-  }
-  return { success: true, data: result };
-}
 
 function bannerInputFromFormData(formData: FormData): BannerInput {
   return {
