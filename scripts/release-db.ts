@@ -56,6 +56,7 @@ const SCRIPT_TO_NPM: Record<string, string> = {
   'order-event-preflight.ts': 'npm run release:preflight:order-events',
   'order-event-verify.ts': 'npm run release:verify:order-events',
   'prune-payment-rejections.ts': 'npm run release:prune:rejections',
+  'wipe-tenant-catalog.ts': 'npm run release:wipe:tenant-catalog',
 };
 
 export function invokedCommand(): string {

@@ -50,8 +50,9 @@ cross-cutting authorization, privacy and UI suites.
 | Variants / inventory  | in catalog                                    | Tenant | Yes       | `inventory-availability`                  | NOT RUN    | One default location per tenant; no warehouse UI          |
 | Product media / WebP  | in catalog                                    | Tenant | Yes       | `image-webp`, `image-crop`                | NOT RUN    | **Existing images are not retroactively converted**       |
 | CSV import / export   | in catalog, `/tenant-admin/exports/[dataset]` | Tenant | Yes       | `csv`, `product-csv-preview`, `exports`   | NOT RUN    | All-or-nothing apply; legacy rows without SKU unupdatable |
-| Customers             | `/tenant-admin/customers`                     | Tenant | No        | `customer-operations`, `customer-sorting` | NOT RUN    | No edit, delete or merge                                  |
-| Customer detail       | `/tenant-admin/customers/[customerId]`        | Tenant | No        | `customer-operations`                     | NOT RUN    | Identity is `(tenantId, email)`                           |
+| Customers             | `/tenant-admin/customers`                     | Tenant | Yes       | `customer-operations`, `customer-sorting` | NOT RUN    | Admin anonymization; order/payment facts remain            |
+| Customer detail       | `/tenant-admin/customers/[customerId]`        | Tenant | Yes       | `customer-operations`, `privacy-controls` | NOT RUN    | Identity is `(tenantId, email)`                           |
+| Privacy notice        | `/tenant-admin/privacy`, `/privacy`           | Tenant / public | Yes     | `privacy-controls`                         | NOT RUN    | Tenant supplies legally reviewed Vietnamese + English text |
 | Fulfillment Workspace | `/tenant-admin/fulfillment`                   | Tenant | No        | `fulfillment-queue`                       | NOT RUN    | **Internal queue only — not a shipment system**           |
 
 ### Payments and shipping
@@ -82,7 +83,9 @@ cross-cutting authorization, privacy and UI suites.
 
 ## 2. Migration status
 
-23 migrations exist and are applied locally. Preview now has all 23
+The verified 23-migration baseline below predates the uncommitted
+category/privacy migrations in the current worktree. This task did not
+apply the privacy migration to a database. Preview now has all 23
 migrations applied, including `add_order_audit_history`,
 `add_order_event_sequence`, and `add_payment_rejections`, with no reported
 migration drift. Production migration status is unverified because it has
@@ -93,6 +96,7 @@ not been contacted.
 | `20261008120000_add_order_audit_history`  | Applied | **Applied** | **Unverified** | Creates `order_events`                           |
 | `20261014160000_add_order_event_sequence` | Applied | **Applied** | **Unverified** | **Full table rewrite under `ACCESS EXCLUSIVE`**  |
 | `20261016120000_add_payment_rejections`   | Applied | **Applied** | **Unverified** | Additive only — one enum, one table, two indexes |
+| `20261119120000_add_privacy_controls`     | Not applied by this task | Unverified | **Unverified** | Additive notice, order-reference and privacy-audit fields |
 
 Applied to Preview on 2026-10-19 via `prisma migrate deploy` (exit 0), in
 timestamp order. Verified afterwards: `release:preflight` reports 23

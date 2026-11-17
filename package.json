@@ -16,6 +16,7 @@
     "release:preflight:order-events": "tsx scripts/order-event-preflight.ts",
     "release:verify:order-events": "tsx scripts/order-event-verify.ts",
     "release:prune:rejections": "tsx scripts/prune-payment-rejections.ts",
+    "release:wipe:tenant-catalog": "tsx scripts/wipe-tenant-catalog.ts",
     "release:preflight": "tsx scripts/release-preflight.ts"
   },
   "dependencies": {
