@@ -5,8 +5,6 @@ import {
   createBannerAction,
   updateBannerAction,
   deleteBannerAction,
-  uploadBannerImageAction,
-  uploadBannerMobileImageAction,
 } from '../actions';
 import { ConfirmActionForm } from '@/components/ConfirmActionForm';
 import { BannerImageUpload } from '../BannerImageUpload';
@@ -62,7 +60,7 @@ export default async function BannersPage() {
         >
           <BannerImageUpload
             fieldName="imageUrl"
-            action={uploadBannerImageAction}
+            variant="desktop"
             aspectRatio={DESKTOP_ASPECT_RATIO}
             outputWidth={DESKTOP_OUTPUT_WIDTH}
             label="Desktop image"
@@ -71,7 +69,7 @@ export default async function BannersPage() {
           />
           <BannerImageUpload
             fieldName="mobileImageUrl"
-            action={uploadBannerMobileImageAction}
+            variant="mobile"
             aspectRatio={MOBILE_ASPECT_RATIO}
             outputWidth={MOBILE_OUTPUT_WIDTH}
             label="Mobile image (optional)"
@@ -145,7 +143,7 @@ export default async function BannersPage() {
                 <div className="grid gap-4 sm:grid-cols-2">
                   <BannerImageUpload
                     fieldName="imageUrl"
-                    action={uploadBannerImageAction}
+                    variant="desktop"
                     aspectRatio={DESKTOP_ASPECT_RATIO}
                     outputWidth={DESKTOP_OUTPUT_WIDTH}
                     initialUrl={banner.imageUrl}
@@ -155,7 +153,7 @@ export default async function BannersPage() {
                   />
                   <BannerImageUpload
                     fieldName="mobileImageUrl"
-                    action={uploadBannerMobileImageAction}
+                    variant="mobile"
                     aspectRatio={MOBILE_ASPECT_RATIO}
                     outputWidth={MOBILE_OUTPUT_WIDTH}
                     initialUrl={banner.mobileImageUrl ?? undefined}

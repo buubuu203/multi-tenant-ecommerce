@@ -371,14 +371,12 @@ test("tenant isolation on delete is unchanged by conversion", () => {
   }
 });
 
-test("every image upload action still authorizes before it processes", () => {
+test("each image upload action authorizes before it processes", () => {
   const actions = readCode("src/app/tenant-admin/actions.ts");
   for (const fn of [
     "uploadProductMediaAction",
     "uploadBrandingLogoAction",
     "uploadBrandingFaviconAction",
-    "uploadBannerImageAction",
-    "uploadBannerMobileImageAction",
   ]) {
     const body = actions.slice(actions.indexOf(`export async function ${fn}`));
     const auth = body.indexOf("requireTenantAdmin()");
@@ -386,6 +384,13 @@ test("every image upload action still authorizes before it processes", () => {
     assert.ok(auth > -1, `${fn} authorizes`);
     assert.ok(auth < read, `${fn} authorizes before it touches the file`);
   }
+
+  const bannerRoute = readCode("src/app/tenant-admin/banners/upload/route.ts");
+  assert.ok(
+    bannerRoute.indexOf("requireTenantAdmin()") < bannerRoute.indexOf("request.body?.getReader()"),
+    "banner uploads authorize before reading the raw request body",
+  );
+  assert.match(bannerRoute, /size > MAX_BANNER_IMAGE_BYTES/, "the raw body is size-capped");
 });
 
 test("no backfill rewrites existing assets, so old PNG/JPG/SVG URLs keep working", () => {

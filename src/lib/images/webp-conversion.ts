@@ -189,8 +189,14 @@ export async function convertImageToWebp(
   }
 
   let output: Buffer;
+  let outputWidth: number;
+  let outputHeight: number;
   try {
-    output = await sharp(input, { limitInputPixels: MAX_PIXELS })
+    // resolveWithObject hands back the OUTPUT's own width/height in `info`
+    // — the actual post-rotation dimensions — so no third sharp()/libvips
+    // round trip is needed just to read them back off a freshly-written
+    // buffer. One conversion call now does both jobs.
+    const { data, info } = await sharp(input, { limitInputPixels: MAX_PIXELS })
       // .rotate() with no argument applies the EXIF orientation tag and
       // then drops it, so the stored pixels are already upright.
       .rotate()
@@ -201,7 +207,10 @@ export async function convertImageToWebp(
       // Metadata is NOT copied forward, which is what strips EXIF and GPS.
       // sharp drops it by default; stated explicitly because it is a
       // privacy property of this pipeline, not an incidental one.
-      .toBuffer();
+      .toBuffer({ resolveWithObject: true });
+    output = data;
+    outputWidth = info.width;
+    outputHeight = info.height;
   } catch {
     return {
       ok: false,
@@ -210,10 +219,6 @@ export async function convertImageToWebp(
     };
   }
 
-  // Dimensions of the ACTUAL output, so a caller never reports the
-  // pre-rotation values.
-  const outMeta = await sharp(output).metadata();
-
   return {
     ok: true,
     file: new File([new Uint8Array(output)], replaceExtension(file.name, 'webp'), {
@@ -221,7 +226,7 @@ export async function convertImageToWebp(
     }),
     converted: true,
     contentType: 'image/webp',
-    width: outMeta.width ?? null,
-    height: outMeta.height ?? null,
+    width: outputWidth,
+    height: outputHeight,
   };
 }

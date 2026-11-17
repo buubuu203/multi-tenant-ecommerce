@@ -30,11 +30,26 @@ export function ImageCropModal({
 }) {
   const viewportHeight = Math.round(VIEWPORT_WIDTH / aspectRatio);
   const imgRef = useRef<HTMLImageElement | null>(null);
-  // Derived synchronously (not via setState-in-effect) — a fresh File
-  // always produces a fresh URL, so this is a pure function of props. The
-  // effect below exists ONLY for the revoke-on-cleanup side effect.
-  const objectUrl = useMemo(() => URL.createObjectURL(file), [file]);
-  useEffect(() => () => URL.revokeObjectURL(objectUrl), [objectUrl]);
+  // Created and revoked in the SAME effect, paired 1:1 — not split across
+  // a useMemo (computing the URL) and a separate useEffect (revoking it).
+  // That split let Strict Mode's dev-only double-invoke create a second
+  // object URL whose own revoke never ran in sync with it, leaking one
+  // blob: URL per crop and surfacing as the stray "Failed to load
+  // resource: net::ERR_FILE_NOT_FOUND" console errors a merchant sees
+  // after cropping. URL.createObjectURL is a side effect (it allocates a
+  // live browser resource), so it belongs in an effect, never in render.
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  useEffect(() => {
+    const url = URL.createObjectURL(file);
+    // This IS "synchronize with an external system": URL.createObjectURL
+    // allocates a live browser resource with no synchronous, render-safe
+    // way to produce it (unlike a pure computation), so it cannot move
+    // into useMemo or a lazy useState initializer without reintroducing
+    // the Strict Mode double-invoke leak this effect exists to avoid.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setObjectUrl(url);
+    return () => URL.revokeObjectURL(url);
+  }, [file]);
 
   const [naturalSize, setNaturalSize] = useState<{ width: number; height: number } | null>(null);
   const [zoom, setZoom] = useState(1);

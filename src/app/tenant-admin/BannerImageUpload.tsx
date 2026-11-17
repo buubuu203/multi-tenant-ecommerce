@@ -1,15 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import type { ActionResult } from "@/lib/action-result";
 import { showToast } from "@/components/Toast";
 import { ImageCropModal } from "./ImageCropModal";
 
 // Client-side-only pre-check, mirroring blob-storage.ts's BANNER_MIME_TYPES
 // / MAX_BANNER_IMAGE_BYTES — an early, friendly rejection before spending
 // effort opening the crop UI. This is NOT the security boundary: the
-// cropped output still goes through uploadBannerImageFile()'s own
-// server-side validation regardless of what happens here.
+// cropped output still goes through the upload route's server-side
+// validation regardless of what happens here.
 const ACCEPTED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 
@@ -17,20 +16,19 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 // pattern as BrandingUploadControls.tsx's logo/favicon uploads — the
 // surrounding ActionForm never sees a raw File, only the resulting Blob
 // URL, submitted alongside the banner's other fields. Reused for both the
-// desktop (required) and mobile (optional) image slots via `action`/
-// `fieldName` — the two slots differ only in which upload action they
-// call, which crop aspect ratio they enforce, and whether an empty result
-// is a valid, submittable state.
+// desktop (required) and mobile (optional) image slots via `variant`/
+// `fieldName` — the two slots differ only in their crop aspect ratio and
+// whether an empty result is a valid, submittable state.
 //
 // Crop-before-upload (V1): selecting a file opens ImageCropModal instead
 // of uploading immediately — only the CROPPED output (a JPEG Blob) is
-// ever sent to uploadBannerImageAction/uploadBannerMobileImageAction.
+// ever sent as a raw request body to the banner upload route.
 // Canceling the crop discards the selected file entirely; nothing is
 // uploaded, matching "do not upload the original before crop
 // confirmation."
 export function BannerImageUpload({
   fieldName,
-  action,
+  variant,
   aspectRatio,
   outputWidth,
   initialUrl,
@@ -40,7 +38,7 @@ export function BannerImageUpload({
   removable = false,
 }: {
   fieldName: string;
-  action: (formData: FormData) => Promise<ActionResult<{ url: string }>>;
+  variant: "desktop" | "mobile";
   aspectRatio: number;
   outputWidth: number;
   initialUrl?: string;
@@ -58,17 +56,27 @@ export function BannerImageUpload({
   async function uploadCroppedBlob(blob: Blob) {
     setError(null);
     setUploading(true);
-    const croppedFile = new File([blob], "crop.jpg", { type: "image/jpeg" });
-    const formData = new FormData();
-    formData.append("file", croppedFile);
-    const result = await action(formData);
-    setUploading(false);
-    if (!result.success) {
-      setError(result.error);
-      return;
+    try {
+      const response = await fetch(`/tenant-admin/banners/upload?variant=${variant}`, {
+        method: "POST",
+        headers: { "Content-Type": blob.type },
+        body: blob,
+      });
+      const result = (await response.json()) as
+        | { success: true; data: { url: string } }
+        | { success: false; error: string };
+      if (!response.ok || !result.success) {
+        setError(result.success ? "Banner upload failed. Please try again." : result.error);
+        return;
+      }
+      setUrl(result.data.url);
+      showToast(`${label} uploaded — click Save to apply.`, "success");
+    } catch (uploadError) {
+      console.error("Banner image upload failed:", uploadError);
+      setError("Banner upload failed. Check your connection and try again.");
+    } finally {
+      setUploading(false);
     }
-    setUrl(result.data.url);
-    showToast(`${label} uploaded — click Save to apply.`, "success");
   }
 
   return (

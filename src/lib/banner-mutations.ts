@@ -68,11 +68,11 @@ function validateBannerInput(
  * Creates a new banner. tenantId must be the trusted value from
  * requireTenantAdmin() — never accepted from form input, same rule as
  * every other Tenant Admin mutation. imageUrl/mobileImageUrl are
- * already-uploaded Vercel Blob URLs (see uploadBannerImageAction /
- * uploadBannerMobileImageAction in tenant-admin/actions.ts, which call
- * uploadBannerImageFile() BEFORE this function ever runs) — this function
- * never touches Blob storage itself, same separation ProductMediaGallery's
- * upload/create split already established. mobileImageUrl is optional:
+ * already-uploaded Vercel Blob URLs (see the tenant-admin banner upload
+ * route, which calls uploadBannerImageFile() BEFORE this function runs).
+ * This function never touches Blob storage itself, same separation
+ * ProductMediaGallery's upload/create split already established.
+ * mobileImageUrl is optional:
  * null means "no separate mobile image", and the storefront falls back to
  * imageUrl on every viewport.
  */
