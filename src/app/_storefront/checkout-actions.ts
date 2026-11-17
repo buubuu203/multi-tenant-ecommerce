@@ -9,7 +9,12 @@ import { createPaymentForOrder } from "@/lib/payments/payment-service";
 import type { PaymentInstructions } from "@/lib/payments/provider";
 import type { PaymentMethod } from "@/generated/prisma/client";
 import type { ActionResult } from "@/lib/action-result";
+import { getDictionary, getLocale } from "@/lib/i18n";
 import { validateVoucher, findBestAutoPromotion, type CartItemForVoucher } from "@/lib/vouchers";
+import {
+  getCurrentPrivacyNotice,
+  isCurrentPrivacyNoticeVersion,
+} from "@/lib/privacy-mutations";
 
 // Only the two identity fields this checkout flow is allowed to trust from
 // the client cart — see cart-context.tsx's own doc comment for why price/
@@ -74,11 +79,29 @@ export async function checkoutAction(
   shippingMethodId: string,
   voucherCode?: string,
   autoPromotionId?: string,
+  privacyNoticeVersionId?: string | null,
+  privacyConsentAccepted?: boolean,
 ): Promise<ActionResult<{ orderId: string; instructions: PaymentInstructions }>> {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
     return { success: false, error: "Store not found." };
+  }
+
+  const currentPrivacyNotice = await getCurrentPrivacyNotice(tenantId);
+  if (
+    !currentPrivacyNotice ||
+    !isCurrentPrivacyNoticeVersion(currentPrivacyNotice.id, privacyNoticeVersionId)
+  ) {
+    const dict = await getDictionary(await getLocale());
+    return {
+      success: false,
+      error: dict.privacy.errors.checkoutNoticeChanged,
+    };
+  }
+  if (!privacyConsentAccepted) {
+    const dict = await getDictionary(await getLocale());
+    return { success: false, error: dict.checkout.privacyConsentRequired };
   }
 
   // Strip down to exactly {productVariantId, quantity} regardless of what
@@ -112,8 +135,18 @@ export async function checkoutAction(
     shippingMethodId,
     voucherCode || undefined,
     autoPromotionId || undefined,
+    currentPrivacyNotice.id,
+    privacyConsentAccepted,
   );
   if (!result.success) {
+    if (result.error === "privacyConsentRequired") {
+      const dict = await getDictionary(await getLocale());
+      return { success: false, error: dict.checkout.privacyConsentRequired };
+    }
+    if (result.error === "privacyNoticeChanged") {
+      const dict = await getDictionary(await getLocale());
+      return { success: false, error: dict.privacy.errors.checkoutNoticeChanged };
+    }
     return result;
   }
 

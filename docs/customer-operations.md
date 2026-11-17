@@ -130,8 +130,18 @@ Absent from every projection: `tenantId`, `customerId`,
 `productVariantId`, `providerMetadata`, `providerOrderId`,
 `providerTransactionId` and any webhook payload.
 
-**There is no retention or deletion policy here.** Customer rows live as
-long as their orders do. This document makes no privacy-compliance claim.
+An authorized tenant admin can anonymize a customer after verifying the
+request and reviewing transaction-retention requirements. The action
+replaces customer contact fields, redacts order delivery details and
+payment webhook payloads/metadata, and records the acting admin, request
+date, completion time and affected order count. Orders, amounts, items and
+payment status remain linked for legitimate transaction-record needs.
+Anonymized customers are omitted from the customer list and export.
+
+This is not a retention schedule or a guarantee that every copy is erased:
+the action does not remove data from backups or external processors. The
+tenant remains responsible for handling requests within applicable
+deadlines and documenting any lawful retention.
 
 ## CSV export
 
@@ -154,7 +164,8 @@ the file is saved.
 
 ## Limitations
 
-- **No merge, edit or delete**, by design.
+- No merge or direct edit. Anonymization is a separate, audited action;
+  it does not delete order or payment records.
 - **No filtering** by order value, count or date range — only sorting.
 - **No ascending sort.** Every mode is descending; the useful question is
   always "who most", not "who least".

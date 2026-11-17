@@ -110,6 +110,7 @@ export function CartWidget({
   availabilityByVariant,
   enabledPaymentMethods,
   enabledShippingMethods,
+  privacyNoticeVersionId,
 }: {
   availabilityByVariant: Record<string, number>;
   // Step 51: server-resolved from TenantPaymentMethod (see
@@ -123,6 +124,7 @@ export function CartWidget({
   // is disabled/deleted, it simply won't appear here, so no entry has
   // isDefault: true — see the fallback selection logic below.
   enabledShippingMethods: ShippingMethodOption[];
+  privacyNoticeVersionId: string | null;
 }) {
   const { items, itemCount, updateQuantity, removeItem, clearCart, replacePrices } = useCart();
   const dict = useDictionary();
@@ -135,6 +137,7 @@ export function CartWidget({
   // records that the customer has not yet re-confirmed the new prices.
   const [priceNotice, setPriceNotice] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<FieldErrors>({});
+  const [consentedPrivacyNoticeVersionId, setConsentedPrivacyNoticeVersionId] = useState<string | null>(null);
   const [paymentMethod, setPaymentMethod] = useState<string>(enabledPaymentMethods[0] ?? "cod");
   // Default to the enabled method flagged isDefault; if none is (see doc
   // comment above), fall back to the first enabled method — this IS the
@@ -168,6 +171,9 @@ export function CartWidget({
 
   // Auto-promotion: evaluated when the cart changes and no manual voucher is applied
   const [autoPromo, setAutoPromo] = useState<AutoPromotionResult>(null);
+  const privacyConsentAccepted =
+    Boolean(privacyNoticeVersionId) &&
+    consentedPrivacyNoticeVersionId === privacyNoticeVersionId;
 
   async function handleApplyVoucher() {
     if (!voucherInput.trim()) return;
@@ -284,6 +290,7 @@ export function CartWidget({
   // customer can never reach Payment with an invalid address/contact,
   // without duplicating the validation rules.
   function handleContinueToPayment() {
+    if (!privacyNoticeVersionId || !privacyConsentAccepted) return;
     const errors = validate();
     setFieldErrors(errors);
     if (Object.keys(errors).length > 0) return;
@@ -303,6 +310,20 @@ export function CartWidget({
     // landing here twice while the first call is still in flight is
     // blocked by state already having left "idle".
     if (checkout.status === "validating" || checkout.status === "submitting") {
+      return;
+    }
+    if (!privacyNoticeVersionId) {
+      setCheckout({
+        status: "error",
+        message: dict.checkout.privacyNoticeUnavailable,
+      });
+      return;
+    }
+    if (!privacyConsentAccepted) {
+      setCheckout({
+        status: "error",
+        message: dict.checkout.privacyConsentRequired,
+      });
       return;
     }
     setCheckout({ status: "validating" });
@@ -357,6 +378,8 @@ export function CartWidget({
       shippingMethodId,
       voucherApplied?.code ?? undefined,
       !voucherApplied && autoPromo ? autoPromo.voucherId : undefined,
+      privacyNoticeVersionId,
+      privacyConsentAccepted,
     );
     if (result.success) {
       // Only clear the cart on genuine success — a failed checkout must
@@ -679,8 +702,42 @@ export function CartWidget({
                   </>
                   )}
 
-                  {step === "shipping" && (
+                  {step === "shipping" && !privacyNoticeVersionId && (
+                    <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                      {dict.checkout.privacyNoticeUnavailable}{' '}
+                      <a href="/privacy" target="_blank" rel="noreferrer" className="underline">
+                        {dict.privacy.title}
+                      </a>
+                    </p>
+                  )}
+                  {step === "shipping" && privacyNoticeVersionId && (
                   <>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input
+                      type="checkbox"
+                      checked={privacyConsentAccepted}
+                      required
+                      onChange={(event) =>
+                        setConsentedPrivacyNoticeVersionId(
+                          event.target.checked ? privacyNoticeVersionId : null,
+                        )
+                      }
+                      className="mt-1"
+                    />
+                    <span>
+                      {dict.checkout.privacyConsentBeforeLink}
+                      <a
+                        href="/privacy"
+                        target="_blank"
+                        rel="noreferrer"
+                        aria-label={dict.checkout.privacyNoticeLink}
+                        className="underline"
+                      >
+                        {dict.checkout.privacyConsentLink}
+                      </a>
+                      {dict.checkout.privacyConsentAfterLink}
+                    </span>
+                  </label>
                   <fieldset className="flex flex-col gap-3">
                     <legend className="mb-1 text-sm font-medium">{dict.checkout.contactInfo}</legend>
                     <label className="flex flex-col gap-1 text-xs">
@@ -950,6 +1007,11 @@ export function CartWidget({
                   <span className="text-muted-foreground">{dict.cart.total}</span>
                   <span className="money text-base font-semibold">{formatVnd(total)}</span>
                 </div>
+                {step === "shipping" && enabledPaymentMethods.length === 0 && (
+                  <p className="mb-3 text-xs text-red-600" role="status">
+                    {dict.checkout.noPaymentMethod}
+                  </p>
+                )}
                 <div className="flex gap-2">
                   {step !== "cart" && (
                     <button
@@ -974,7 +1036,12 @@ export function CartWidget({
                     <button
                       type="button"
                       onClick={handleContinueToPayment}
-                      disabled={enabledPaymentMethods.length === 0 || enabledShippingMethods.length === 0}
+                      disabled={
+                        !privacyNoticeVersionId ||
+                        !privacyConsentAccepted ||
+                        enabledPaymentMethods.length === 0 ||
+                        enabledShippingMethods.length === 0
+                      }
                       className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
                     >
                       {dict.cart.continueToPayment}
@@ -987,6 +1054,8 @@ export function CartWidget({
                       disabled={
                         checkout.status === "submitting" ||
                         checkout.status === "validating" ||
+                        !privacyNoticeVersionId ||
+                        !privacyConsentAccepted ||
                         enabledPaymentMethods.length === 0 ||
                         enabledShippingMethods.length === 0
                       }

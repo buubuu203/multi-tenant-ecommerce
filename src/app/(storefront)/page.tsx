@@ -12,6 +12,7 @@ import { CartProvider } from '../_storefront/cart-context';
 import { CartWidget } from '../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
+import { getCurrentPrivacyNotice } from '@/lib/privacy-mutations';
 import { TenantTheme } from '@/components/TenantTheme';
 import { getLocale, getDictionary } from '@/lib/i18n';
 
@@ -60,6 +61,7 @@ export default async function StorefrontHomePage() {
   );
   const enabledPaymentMethods = await getEnabledPaymentMethods(tenant.id);
   const enabledShippingMethods = await getEnabledShippingMethods(tenant.id);
+  const privacyNotice = await getCurrentPrivacyNotice(tenant.id);
   // Storefront Carousel/Banner (V1): tenant-curated banners replace the
   // generic StorefrontHero when at least one exists — a "coming soon"
   // store never shows banners regardless (it has nothing to promote yet).
@@ -83,6 +85,7 @@ export default async function StorefrontHomePage() {
                   availabilityByVariant={availabilityByVariant}
                   enabledPaymentMethods={enabledPaymentMethods}
                   enabledShippingMethods={enabledShippingMethods}
+                  privacyNoticeVersionId={privacyNotice?.id ?? null}
                 />
               </>
             }

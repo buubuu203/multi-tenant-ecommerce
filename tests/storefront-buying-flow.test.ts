@@ -86,6 +86,23 @@ test('the detail page still owns add to cart and variant selection', () => {
   assert.ok(detail.includes('optionsBlock'), 'the PDP must keep variant selection');
 });
 
+test('the product page does not duplicate the locale switcher in its shared header', () => {
+  const page = code('src/app/products/[productId]/page.tsx');
+  assert.equal((page.match(/<LocaleSwitcher \/>/g) ?? []).length, 1);
+});
+
+test('checkout explains when no payment method blocks the next step', () => {
+  const cart = code(CART);
+  assert.match(cart, /step === "shipping" && enabledPaymentMethods\.length === 0/);
+  assert.match(cart, /dict\.checkout\.noPaymentMethod/);
+});
+
+test('cart storage is not overwritten before client hydration finishes', () => {
+  const cart = code('src/app/_storefront/cart-context.tsx');
+  assert.match(cart, /const \[hydrated, setHydrated\] = useState\(false\)/);
+  assert.match(cart, /if \(!hydrated\) return;/);
+});
+
 test('add to cart is still gated on a resolved, in-stock variant', () => {
   // Moving the button must not have loosened what it refuses to add.
   const src = code(LIST);

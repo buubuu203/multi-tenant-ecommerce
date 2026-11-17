@@ -10,6 +10,7 @@ import { CartProvider } from '../../_storefront/cart-context';
 import { CartWidget } from '../../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
+import { getCurrentPrivacyNotice } from '@/lib/privacy-mutations';
 import { TenantTheme } from '@/components/TenantTheme';
 import type { Metadata } from 'next';
 import { getLocale, getDictionary } from '@/lib/i18n';
@@ -147,6 +148,7 @@ export default async function ProductDetailPage({
   const tenantId = headerList.get('x-tenant-id') ?? '';
   const enabledPaymentMethods = tenantId ? await getEnabledPaymentMethods(tenantId) : [];
   const enabledShippingMethods = tenantId ? await getEnabledShippingMethods(tenantId) : [];
+  const privacyNotice = tenantId ? await getCurrentPrivacyNotice(tenantId) : null;
   // Same branded header as the homepage (see StorefrontHeader's doc
   // comment) — previously this page showed no store name/logo at all, so
   // a customer arriving here directly (a shared product link, a search
@@ -195,7 +197,6 @@ export default async function ProductDetailPage({
               backLabel={dict.common.back}
               rightSlot={
                 <>
-                  <LocaleSwitcher />
                   <Link
                     href="/orders"
                     className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
@@ -206,6 +207,7 @@ export default async function ProductDetailPage({
                     availabilityByVariant={availabilityByVariant}
                     enabledPaymentMethods={enabledPaymentMethods}
                     enabledShippingMethods={enabledShippingMethods}
+                    privacyNoticeVersionId={privacyNotice?.id ?? null}
                   />
                 </>
               }
@@ -230,6 +232,7 @@ export default async function ProductDetailPage({
                   availabilityByVariant={availabilityByVariant}
                   enabledPaymentMethods={enabledPaymentMethods}
                   enabledShippingMethods={enabledShippingMethods}
+                  privacyNoticeVersionId={privacyNotice?.id ?? null}
                 />
               </div>
             </div>

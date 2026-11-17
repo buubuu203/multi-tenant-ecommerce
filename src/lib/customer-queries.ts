@@ -34,7 +34,7 @@ import { ANALYTICS_UTC_OFFSET_HOURS } from './analytics/date-range';
 
 export const CUSTOMER_PAGE_SIZE = 25;
 export type CustomerSignupStats = {
-  /** Every customer row in this store, as of now. */
+  /** Non-anonymized customer rows in this store, as of now. */
   total: number;
   /** Customers whose row was first stored in the last 7 local days. */
   last7Days: number;
@@ -64,10 +64,14 @@ export async function getCustomerSignupStats(tenantId: string): Promise<Customer
   };
 
   const [total, last7Days, last30Days, withOrders] = await Promise.all([
-    prisma.customer.count({ where: { tenantId } }),
-    prisma.customer.count({ where: { tenantId, createdAt: { gte: startOfLocalDay(6) } } }),
-    prisma.customer.count({ where: { tenantId, createdAt: { gte: startOfLocalDay(29) } } }),
-    prisma.customer.count({ where: { tenantId, orders: { some: {} } } }),
+    prisma.customer.count({ where: { tenantId, anonymizedAt: null } }),
+    prisma.customer.count({
+      where: { tenantId, anonymizedAt: null, createdAt: { gte: startOfLocalDay(6) } },
+    }),
+    prisma.customer.count({
+      where: { tenantId, anonymizedAt: null, createdAt: { gte: startOfLocalDay(29) } },
+    }),
+    prisma.customer.count({ where: { tenantId, anonymizedAt: null, orders: { some: {} } } }),
   ]);
 
   return { total, last7Days, last30Days, withOrders };
@@ -256,7 +260,7 @@ async function orderedCustomerIds(
     SELECT c.id
     FROM customers c
     LEFT JOIN agg ON agg."customerId" = c.id
-    WHERE c."tenantId" = $1 ${searchClause}
+    WHERE c."tenantId" = $1 AND c."anonymizedAt" IS NULL ${searchClause}
     ORDER BY ${ORDER_BY[sort]}
     LIMIT ${limitParam} OFFSET ${offsetParam}
   `;
@@ -289,7 +293,7 @@ export async function listCustomers(
   // depend on its caller having checked: an unvalidated value would make
   // ORDER_BY[sort] undefined and splice "undefined" into the SQL.
   const sort = isCustomerSort(filters.sort) ? filters.sort : DEFAULT_CUSTOMER_SORT;
-  const where = { tenantId, ...(search ? searchWhere(search) : {}) };
+  const where = { tenantId, anonymizedAt: null, ...(search ? searchWhere(search) : {}) };
 
   // The ordering and the page are decided in the database, so sorting by
   // an order metric never means loading the tenant's whole customer list.
@@ -302,7 +306,7 @@ export async function listCustomers(
   if (customerIds.length === 0) return { rows: [], totalCount };
 
   const unordered = await db.customer.findMany({
-    where: { tenantId, id: { in: customerIds } },
+    where: { tenantId, anonymizedAt: null, id: { in: customerIds } },
     select: { id: true, name: true, phone: true, email: true },
   });
   // findMany does not preserve the `in` order, so restore the order the
@@ -351,7 +355,11 @@ export async function listCustomers(
   // normalisation search uses. Scoped to this tenant, and a flag only.
   const phoneCounts = await db.customer.groupBy({
     by: ['phone'],
-    where: { tenantId, phone: { in: customers.map((customer) => customer.phone) } },
+    where: {
+      tenantId,
+      anonymizedAt: null,
+      phone: { in: customers.map((customer) => customer.phone) },
+    },
     _count: { _all: true },
   });
   const duplicatePhones = new Set(
@@ -374,11 +382,20 @@ export type CustomerOrderSummary = {
   paymentMethod: string;
   paymentStatus: string | null;
   shippingMethodName: string | null;
+  privacyConsentAt: Date | null;
+  privacyNoticeVersion: number | null;
   total: number;
   cancelled: boolean;
 };
 
 export type CustomerDetail = CustomerListRow & {
+  anonymizedAt: Date | null;
+  privacyEvents: {
+    actorId: string;
+    requestReceivedAt: Date;
+    completedAt: Date;
+    affectedOrderCount: number;
+  }[];
   orders: CustomerOrderSummary[];
 };
 
@@ -397,24 +414,39 @@ export async function getCustomerDetail(
   const db = getScopedDb(tenantId);
   const customer = await db.customer.findFirst({
     where: { id: customerId, tenantId },
-    select: { id: true, name: true, phone: true, email: true },
+    select: { id: true, name: true, phone: true, email: true, anonymizedAt: true },
   });
   if (!customer) return null;
 
-  const orders = await db.order.findMany({
-    where: { tenantId, customerId: customer.id },
-    orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
-    select: {
-      id: true,
-      status: true,
-      paymentMethod: true,
-      shippingAmount: true,
-      shippingMethodName: true,
-      createdAt: true,
-      payment: { select: { status: true } },
-      items: { select: { price: true, quantity: true } },
-    },
-  });
+  const [orders, privacyEvents] = await Promise.all([
+    db.order.findMany({
+      where: { tenantId, customerId: customer.id },
+      orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+      select: {
+        id: true,
+        status: true,
+        paymentMethod: true,
+        shippingAmount: true,
+        shippingMethodName: true,
+        privacyConsentAt: true,
+        privacyNoticeVersion: { select: { version: true } },
+        createdAt: true,
+        payment: { select: { status: true } },
+        items: { select: { price: true, quantity: true } },
+      },
+    }),
+    db.customerPrivacyEvent.findMany({
+      where: { tenantId, customerId: customer.id },
+      orderBy: { createdAt: 'desc' },
+      take: 10,
+      select: {
+        actorId: true,
+        requestReceivedAt: true,
+        completedAt: true,
+        affectedOrderCount: true,
+      },
+    }),
+  ]);
 
   let orderValue = 0;
   let cancelledCount = 0;
@@ -431,14 +463,18 @@ export async function getCustomerDetail(
       paymentMethod: order.paymentMethod,
       paymentStatus: order.payment?.status ?? null,
       shippingMethodName: order.shippingMethodName,
+      privacyConsentAt: order.privacyConsentAt,
+      privacyNoticeVersion: order.privacyNoticeVersion?.version ?? null,
       total,
       cancelled,
     };
   });
 
-  const duplicates = await db.customer.count({
-    where: { tenantId, phone: customer.phone },
-  });
+  const duplicates = customer.anonymizedAt
+    ? 0
+    : await db.customer.count({
+        where: { tenantId, anonymizedAt: null, phone: customer.phone },
+      });
 
   return {
     ...customer,
@@ -450,6 +486,7 @@ export async function getCustomerDetail(
     latestOrderStatus: orders.length > 0 ? orders[0].status : null,
     latestPaymentStatus: orders.length > 0 ? (orders[0].payment?.status ?? null) : null,
     possibleDuplicatePhone: duplicates > 1,
+    privacyEvents,
     orders: history,
   };
 }

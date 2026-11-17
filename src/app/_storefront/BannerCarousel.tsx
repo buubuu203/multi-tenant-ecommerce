@@ -53,7 +53,7 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
         // sm+) so every banner — whatever the merchant's source photo
         // dimensions — fills the frame via object-cover rather than
         // stretching or being cropped unpredictably by content height.
-        className="relative aspect-[4/3] w-full overflow-hidden bg-surface-muted sm:aspect-[21/9]"
+        className="relative mx-auto aspect-[4/3] w-full max-w-4xl overflow-hidden bg-surface-muted sm:aspect-[21/9]"
         aria-live="polite"
       >
         <picture>

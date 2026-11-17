@@ -213,7 +213,16 @@ export async function createOrder(
   shippingMethodId: string,
   voucherCode?: string,
   autoPromotionId?: string,
+  privacyNoticeVersionId?: string,
+  privacyConsentAccepted?: boolean,
 ): Promise<ActionResult<{ orderId: string; items: CreatedOrderItem[]; shippingAmount: number; voucherDiscount: number }>> {
+  if (privacyNoticeVersionId && !privacyConsentAccepted) {
+    return { success: false, error: "privacyConsentRequired" };
+  }
+  if (privacyConsentAccepted && !privacyNoticeVersionId) {
+    return { success: false, error: "privacyNoticeChanged" };
+  }
+
   const inputError = validateItemsInput(items);
   if (inputError) {
     return { success: false, error: inputError.error };
@@ -288,6 +297,16 @@ export async function createOrder(
 
   try {
     const result = await db.$transaction(async (tx) => {
+      if (privacyNoticeVersionId) {
+        const currentNotice = await tx.privacyNoticeVersion.findFirst({
+          where: { id: privacyNoticeVersionId, tenantId, isCurrent: true },
+          select: { id: true },
+        });
+        if (!currentNotice) {
+          throw new InventoryError("privacyNoticeChanged");
+        }
+      }
+
       // Customer identity is (tenantId, email) — explicit tenantId in
       // both the where and data below, the same manual-scoping pattern
       // already used throughout this function for productVariant/order/
@@ -314,6 +333,9 @@ export async function createOrder(
           shippingAmount: resolvedShipping.amount,
           shippingMethodName: resolvedShipping.name,
           voucherCode: preflightVoucher?.valid ? preflightVoucher.voucher.code : null,
+          privacyNoticeVersionId: privacyNoticeVersionId ?? null,
+          privacyNoticeAvailableAt: privacyNoticeVersionId ? new Date() : null,
+          privacyConsentAt: privacyConsentAccepted ? new Date() : null,
         },
       });
 

@@ -47,6 +47,7 @@ export function ActionForm<T>({
   action,
   children,
   submitLabel,
+  pendingLabel = 'Working…',
   successMessage,
   className,
   disabled = false,
@@ -56,6 +57,7 @@ export function ActionForm<T>({
   action: (prevState: ActionResult<T> | null, formData: FormData) => Promise<ActionResult<T>>;
   children: React.ReactNode;
   submitLabel: string;
+  pendingLabel?: string;
   successMessage?: string;
   className?: string;
   // Step 50: lets a caller block submission for a reason ActionForm itself
@@ -108,7 +110,7 @@ export function ActionForm<T>({
             : 'rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground'
         }
       >
-        {pending ? 'Working…' : submitLabel}
+        {pending ? pendingLabel : submitLabel}
       </button>
       {state && !state.success && (
         <p role="alert" className="text-sm text-red-600">

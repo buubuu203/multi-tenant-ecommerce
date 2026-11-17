@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useState } from "react";
 
 // Cart items are keyed by ProductVariant.id — the purchasable unit — never
 // by productId, name, SKU, or combinationKey. A simple product's single
@@ -134,7 +134,7 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
   // localStorage access during render). Actual stored items are loaded in
   // an effect, after mount, client-only.
   const [items, setItems] = useState<CartItem[]>([]);
-  const hydrated = useRef(false);
+  const [hydrated, setHydrated] = useState(false);
 
   useEffect(() => {
     // One-time hydration read from localStorage, an external system this
@@ -144,22 +144,21 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
     // doesn't apply to this one-shot read-on-mount case.
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time SSR-safe localStorage hydration, not a synchronization loop
     setItems(loadFromStorage());
-    hydrated.current = true;
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- marks the completed one-time storage hydration
+    setHydrated(true);
   }, []);
 
   useEffect(() => {
-    // Skip the write that would otherwise fire from the initial empty
-    // state, before the hydration effect above has had a chance to read
-    // whatever was already stored — avoids clobbering existing data with
-    // "[]" on first render.
-    if (!hydrated.current) return;
+    // Strict Mode replays mount effects in development; don't let the
+    // initial empty render overwrite the cart before the storage read lands.
+    if (!hydrated) return;
     try {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(items));
     } catch {
       // Storage can be unavailable (private browsing, quota) — the cart
       // still works in-memory for the current page load either way.
     }
-  }, [items]);
+  }, [items, hydrated]);
 
   const addItem: CartContextValue["addItem"] = (item, quantity = 1) => {
     setItems((prev) => addItemToList(prev, item, quantity));

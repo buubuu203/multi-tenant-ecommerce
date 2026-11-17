@@ -36,6 +36,7 @@ const NAV_ITEMS: readonly { group: NavGroupKey; href: string; key: keyof typeof 
   { group: "commerce", href: "/tenant-admin/analytics", key: "analytics" },
   { group: "storefront", href: "/tenant-admin/branding", key: "branding" },
   { group: "storefront", href: "/tenant-admin/banners", key: "banners" },
+  { group: "storefront", href: "/tenant-admin/privacy", key: "privacy" },
   { group: "checkout", href: "/tenant-admin/payments", key: "payments" },
   { group: "checkout", href: "/tenant-admin/payment-operations", key: "paymentOperations" },
   { group: "checkout", href: "/tenant-admin/bank-transfer", key: "bankTransfer" },
@@ -52,6 +53,7 @@ const ADMIN_LABEL_KEYS = {
   analytics: "analytics",
   branding: "branding",
   banners: "banners",
+  privacy: "privacy",
   payments: "payments",
   paymentOperations: "paymentOperations",
   bankTransfer: "bankTransfer",
@@ -86,6 +88,7 @@ const ICON_PATHS: Record<string, string> = {
   "/tenant-admin/branding":
     "M12 3a9 9 0 1 0 0 18c1.1 0 2-.9 2-2 0-.5-.2-1-.6-1.4-.3-.4-.4-.8-.4-1.1 0-.8.7-1.5 1.5-1.5H17a4 4 0 0 0 4-4c0-4.4-4-8-9-8Z",
   "/tenant-admin/banners": "M3 6h18v9H3V6Zm4 13h10",
+  "/tenant-admin/privacy": "M12 3 5 6v5c0 4.5 2.9 8.3 7 10 4.1-1.7 7-5.5 7-10V6l-7-3Zm-3 9 2 2 4-4",
   "/tenant-admin/payments": "M3 7h18v10H3V7Zm0 4h18",
   "/tenant-admin/payment-operations":
     "M12 3v18M7 7.5h7.5a2.5 2.5 0 0 1 0 5h-5a2.5 2.5 0 0 0 0 5H17",
