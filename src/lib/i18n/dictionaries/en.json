@@ -359,7 +359,7 @@
     "banners": "Banners",
     "bannerDesktopHelp": "JPG, PNG, or WebP, up to 8 MB. Recommended 2520×1080 (21:9), minimum 1680×720. Keep the main content within the middle ~80% of the width. Images are optimized and stored as WebP.",
     "bannerMobileHelp": "A separate crop for smaller screens, also 21:9. If empty, the desktop image is used. Images are optimized and stored as WebP.",
-    "bannerExistingImageNote": "Previously uploaded images are not recropped automatically; replace an image to use the new 16:9 frame.",
+    "bannerExistingImageNote": "Previously uploaded images are not recropped automatically; replace an image to use the new 21:9 frame.",
     "payments": "Payments",
     "paymentOperations": "Payment operations",
     "bankTransfer": "Bank transfer",

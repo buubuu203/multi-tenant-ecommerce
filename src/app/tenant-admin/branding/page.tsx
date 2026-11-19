@@ -47,6 +47,15 @@ export default async function BrandingPage() {
               className={adminInputClassName}
             />
           </label>
+          <label className={adminLabelClassName}>
+            Tagline (optional)
+            <input
+              name="tagline"
+              defaultValue={branding?.tagline ?? ''}
+              placeholder="A short line shown under your store name in the footer"
+              className={adminInputClassName}
+            />
+          </label>
         </section>
         <section aria-labelledby="brand-assets" className={adminPanelClassName}>
           <h3 id="brand-assets" className={adminPanelTitleClassName}>
@@ -92,7 +101,16 @@ export default async function BrandingPage() {
             <input name="facebookUrl" defaultValue={branding?.facebookUrl ?? ''} className={adminInputClassName} />
           </label>
           <label className={adminLabelClassName}>
-            TikTok URL
+            Instagram URL
+            <input
+              name="instagramUrl"
+              placeholder="https://www.instagram.com/..."
+              defaultValue={branding?.instagramUrl ?? ''}
+              className={adminInputClassName}
+            />
+          </label>
+          <label className={adminLabelClassName}>
+            TikTok Shop URL
             <input name="tiktokUrl" defaultValue={branding?.tiktokUrl ?? ''} className={adminInputClassName} />
           </label>
           <label className={adminLabelClassName}>

@@ -18,7 +18,8 @@ export function SiteFooter({
   const socials = contact
     ? [
         contact.facebookUrl && { href: contact.facebookUrl, label: "Facebook" },
-        contact.tiktokUrl && { href: contact.tiktokUrl, label: "TikTok" },
+        contact.instagramUrl && { href: contact.instagramUrl, label: "Instagram" },
+        contact.tiktokUrl && { href: contact.tiktokUrl, label: "TikTok Shop" },
         contact.zaloUrl && { href: contact.zaloUrl, label: "Zalo" },
       ].filter((s): s is { href: string; label: string } => Boolean(s))
     : [];
@@ -36,9 +37,12 @@ export function SiteFooter({
         </span>
         {/* Each line/button below renders only when its own field has
             data — never a placeholder, never an empty gap where a line
-            would be. "Câu giới thiệu" (a short tagline) is out of scope
-            here: Branding has no such field yet (flagged separately,
-            pending a decision on whether to add it). */}
+            would be. */}
+        {contact?.tagline && (
+          <span className="small" style={{ color: "var(--ink-2)" }}>
+            {contact.tagline}
+          </span>
+        )}
         {contact?.address && (
           <span className="small flex items-start gap-2" style={{ color: "var(--ink-2)" }}>
             <Icon name="pin" size={15} style={{ marginTop: "2px", flexShrink: 0 }} />

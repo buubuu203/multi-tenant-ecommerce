@@ -97,6 +97,7 @@ export async function updateBrandingAction(
 
   const result = await updateBranding(tenantId, {
     storeName: String(formData.get('storeName') ?? ''),
+    tagline: String(formData.get('tagline') ?? ''),
     logoUrl: String(formData.get('logoUrl') ?? ''),
     faviconUrl: String(formData.get('faviconUrl') ?? ''),
     address: String(formData.get('address') ?? ''),
@@ -106,6 +107,7 @@ export async function updateBrandingAction(
     facebookUrl: String(formData.get('facebookUrl') ?? ''),
     tiktokUrl: String(formData.get('tiktokUrl') ?? ''),
     zaloUrl: String(formData.get('zaloUrl') ?? ''),
+    instagramUrl: String(formData.get('instagramUrl') ?? ''),
   });
 
   if (result.success) {

@@ -28,6 +28,8 @@ export type FooterContact = {
   facebookUrl: string | null;
   tiktokUrl: string | null;
   zaloUrl: string | null;
+  instagramUrl: string | null;
+  tagline: string | null;
 };
 
 export function resolveBranding(
@@ -59,5 +61,7 @@ export function resolveFooterContact(branding: Branding | null): FooterContact {
     facebookUrl: branding?.facebookUrl || null,
     tiktokUrl: branding?.tiktokUrl || null,
     zaloUrl: branding?.zaloUrl || null,
+    instagramUrl: branding?.instagramUrl || null,
+    tagline: branding?.tagline || null,
   };
 }

@@ -28,6 +28,10 @@ export type BrandingInput = {
   facebookUrl?: string;
   tiktokUrl?: string;
   zaloUrl?: string;
+  instagramUrl?: string;
+  // Short line shown under the store name in the footer — plain text,
+  // same "trim to null" posture as storeName.
+  tagline?: string;
 };
 
 /**
@@ -44,6 +48,14 @@ function validateUrlField(raw: string, label: string): { value: string | null; e
   const value = trimToNull(raw);
   if (value !== null && !URL_PATTERN.test(value)) {
     return { value, error: `${label} must start with http:// or https://, or be left empty.` };
+  }
+  return { value };
+}
+
+function validateHttpsUrlField(raw: string, label: string): { value: string | null; error?: string } {
+  const value = trimToNull(raw);
+  if (value !== null && !HTTPS_URL_PATTERN.test(value)) {
+    return { value, error: `${label} must start with https://, or be left empty.` };
   }
   return { value };
 }
@@ -82,9 +94,13 @@ export async function updateBranding(
     input.secondaryColor === undefined
       ? { value: undefined, error: undefined }
       : validateColorField(input.secondaryColor, 'Secondary color');
+  const instagramUrl =
+    input.instagramUrl === undefined
+      ? { value: undefined, error: undefined }
+      : validateHttpsUrlField(input.instagramUrl, 'Instagram URL');
 
   const firstError =
-    logoUrl.error ?? faviconUrl.error ?? primaryColor.error ?? secondaryColor.error;
+    logoUrl.error ?? faviconUrl.error ?? primaryColor.error ?? secondaryColor.error ?? instagramUrl.error;
   if (firstError) {
     return { success: false, error: firstError };
   }
@@ -109,6 +125,8 @@ export async function updateBranding(
     ...(input.facebookUrl !== undefined ? { facebookUrl: trimToNull(input.facebookUrl) } : {}),
     ...(input.tiktokUrl !== undefined ? { tiktokUrl: trimToNull(input.tiktokUrl) } : {}),
     ...(input.zaloUrl !== undefined ? { zaloUrl: trimToNull(input.zaloUrl) } : {}),
+    ...(instagramUrl.value !== undefined ? { instagramUrl: instagramUrl.value } : {}),
+    ...(input.tagline !== undefined ? { tagline: trimToNull(input.tagline) } : {}),
   };
 
   try {
