@@ -99,6 +99,13 @@ export async function updateBrandingAction(
     storeName: String(formData.get('storeName') ?? ''),
     logoUrl: String(formData.get('logoUrl') ?? ''),
     faviconUrl: String(formData.get('faviconUrl') ?? ''),
+    address: String(formData.get('address') ?? ''),
+    phone: String(formData.get('phone') ?? ''),
+    contactEmail: String(formData.get('contactEmail') ?? ''),
+    businessId: String(formData.get('businessId') ?? ''),
+    facebookUrl: String(formData.get('facebookUrl') ?? ''),
+    tiktokUrl: String(formData.get('tiktokUrl') ?? ''),
+    zaloUrl: String(formData.get('zaloUrl') ?? ''),
   });
 
   if (result.success) {

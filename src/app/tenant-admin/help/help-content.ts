@@ -457,7 +457,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       {
         term: 'Ảnh máy tính và ảnh điện thoại',
         meaning:
-          'Ảnh máy tính cắt theo tỉ lệ 21:9. Ảnh điện thoại cắt theo 4:3. Nếu không đặt ảnh điện thoại thì hệ thống dùng ảnh máy tính.',
+          'Ảnh máy tính và ảnh điện thoại đều cắt theo tỉ lệ 16:9. Nếu không đặt ảnh điện thoại thì hệ thống dùng ảnh máy tính.',
       },
       {
         term: 'Thứ tự hiển thị',

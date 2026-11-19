@@ -14,25 +14,26 @@ export function StorefrontHero({
 }) {
   return (
     <section
-      className={`flex flex-col items-center justify-center gap-4 px-6 py-20 text-center text-white sm:py-28 ${
+      className={`glass flex flex-col items-center justify-center gap-4 px-6 py-16 text-center sm:py-20 ${
         fillViewport ? "flex-1" : ""
       }`}
-      style={{ backgroundColor: branding.primaryColor }}
+      style={{
+        borderRadius: "var(--radius-card)",
+        background: `linear-gradient(145deg, ${branding.primaryColor}, ${branding.secondaryColor})`,
+        color: "#fff",
+      }}
     >
-      <h1 className="text-3xl font-semibold tracking-tight sm:text-4xl">
+      <span className="kicker" style={{ color: "rgba(255,255,255,0.85)" }}>
+        {comingSoon ? dict.storefront.comingSoon : dict.storefront.nowOpen}
+      </span>
+      <h1 className="display-section" style={{ fontSize: "clamp(28px, 5vw, 44px)", margin: 0 }}>
         {comingSoon
           ? dict.storefront.comingSoonHeading.replace("{storeName}", branding.storeName)
           : dict.storefront.welcomeHeading.replace("{storeName}", branding.storeName)}
       </h1>
-      <p className="max-w-md text-sm text-white/85 sm:text-base">
+      <p className="max-w-md text-sm sm:text-base" style={{ color: "rgba(255,255,255,0.88)" }}>
         {comingSoon ? dict.storefront.comingSoonBody : dict.storefront.welcomeBody}
       </p>
-      <span
-        className="mt-2 rounded-full px-4 py-1.5 text-xs font-medium tracking-wide text-white uppercase"
-        style={{ backgroundColor: branding.secondaryColor }}
-      >
-        {comingSoon ? dict.storefront.comingSoon : dict.storefront.nowOpen}
-      </span>
     </section>
   );
 }

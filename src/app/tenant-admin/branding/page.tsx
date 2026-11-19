@@ -58,6 +58,48 @@ export default async function BrandingPage() {
             hasTokens={Boolean(branding?.designTokens)}
           />
         </section>
+        {/* Storefront footer (UI/UX revamp, Board 5): every field here is
+            optional — the storefront footer shows each line only when
+            it's filled in, never a placeholder, so leaving any of these
+            blank is a normal, supported state, not a draft. */}
+        <section aria-labelledby="brand-footer" className={adminPanelClassName}>
+          <h3 id="brand-footer" className={adminPanelTitleClassName}>
+            Footer contact info
+          </h3>
+          <label className={adminLabelClassName}>
+            Address
+            <input name="address" defaultValue={branding?.address ?? ''} className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            Phone
+            <input name="phone" defaultValue={branding?.phone ?? ''} className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            Contact email
+            <input
+              name="contactEmail"
+              type="email"
+              defaultValue={branding?.contactEmail ?? ''}
+              className={adminInputClassName}
+            />
+          </label>
+          <label className={adminLabelClassName}>
+            Business registration ID
+            <input name="businessId" defaultValue={branding?.businessId ?? ''} className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            Facebook URL
+            <input name="facebookUrl" defaultValue={branding?.facebookUrl ?? ''} className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            TikTok URL
+            <input name="tiktokUrl" defaultValue={branding?.tiktokUrl ?? ''} className={adminInputClassName} />
+          </label>
+          <label className={adminLabelClassName}>
+            Zalo URL
+            <input name="zaloUrl" defaultValue={branding?.zaloUrl ?? ''} className={adminInputClassName} />
+          </label>
+        </section>
       </ActionForm>
     </div>
   );

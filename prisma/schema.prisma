@@ -142,6 +142,24 @@ model Branding {
   bankName          String?
   bankAccountNumber String?
   bankAccountHolder String?
+  // Storefront footer contact/legal block (UI/UX revamp, Board 5). All
+  // nullable, same posture as the fields above — a tenant that hasn't
+  // configured these simply doesn't show that part of the footer, rather
+  // than rendering empty/placeholder text. No format validation beyond
+  // what the admin form itself enforces; these are display-only strings.
+  address           String?
+  phone             String?
+  contactEmail      String?
+  businessId        String?
+  facebookUrl       String?
+  tiktokUrl         String?
+  zaloUrl           String?
+  instagramUrl      String?
+  // Short tagline shown under the store name in the footer — added on
+  // explicit request, with the real copy supplied at the same time
+  // (answers the "does Branding have a short-description field yet"
+  // question raised when the footer was first built).
+  tagline           String?
   updatedAt         DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

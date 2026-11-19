@@ -1,20 +1,21 @@
 import Link from 'next/link';
-import { getCurrentTenant } from '../_storefront/get-current-tenant';
-import { getTenantProducts } from '../_storefront/get-tenant-products';
-import { resolveBranding } from '../_storefront/resolve-branding';
-import { StorefrontHeader } from '../_storefront/StorefrontHeader';
-import { StorefrontHero } from '../_storefront/StorefrontHero';
-import { BannerCarousel } from '../_storefront/BannerCarousel';
-import { getActiveBanners } from '../_storefront/get-active-banners';
-import { ProductList } from '../_storefront/ProductList';
-import { PlatformMessage } from '../_storefront/PlatformMessage';
-import { CartProvider } from '../_storefront/cart-context';
-import { CartWidget } from '../_storefront/CartWidget';
+import { getCurrentTenant } from '../../_storefront/get-current-tenant';
+import { getTenantProducts } from '../../_storefront/get-tenant-products';
+import { resolveBranding } from '../../_storefront/resolve-branding';
+import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
+import { StorefrontHero } from '../../_storefront/StorefrontHero';
+import { BannerCarousel } from '../../_storefront/BannerCarousel';
+import { getActiveBanners } from '../../_storefront/get-active-banners';
+import { ProductList } from '../../_storefront/ProductList';
+import { PlatformMessage } from '../../_storefront/PlatformMessage';
+import { CartProvider } from '../../_storefront/cart-context';
+import { CartWidget } from '../../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { getCurrentPrivacyNotice } from '@/lib/privacy-mutations';
-import { TenantTheme } from '@/components/TenantTheme';
 import { getLocale, getDictionary } from '@/lib/i18n';
+import { Icon } from '../../_storefront/Icon';
+import { TrustStrip } from '../../_storefront/TrustStrip';
 
 // This page's content depends on the request's hostname (resolved by
 // src/proxy.ts into the x-tenant-id header). Force dynamic rendering so
@@ -68,48 +69,41 @@ export default async function StorefrontHomePage() {
   const banners = comingSoon ? [] : await getActiveBanners();
 
   return (
-    <TenantTheme branding={branding} className="flex flex-1 flex-col">
-      <CartProvider>
-        <div className="flex flex-1 flex-col">
-          <StorefrontHeader
-            branding={branding}
-            rightSlot={
-              <>
-                <Link
-                  href="/orders"
-                  className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
-                >
-                  {dict.common.myOrders}
-                </Link>
-                <CartWidget
-                  availabilityByVariant={availabilityByVariant}
-                  enabledPaymentMethods={enabledPaymentMethods}
-                  enabledShippingMethods={enabledShippingMethods}
-                  privacyNoticeVersionId={privacyNotice?.id ?? null}
-                />
-              </>
-            }
-          />
-          {banners.length > 0 ? (
-            <BannerCarousel banners={banners} />
-          ) : (
-            <StorefrontHero
+    <CartProvider>
+      <StorefrontHeader
+        branding={branding}
+        searchPlaceholder={dict.products.searchPlaceholder}
+        rightSlot={
+          <>
+            <Link href="/orders" className="btn-ghost">
+              <Icon name="box" size={18} />
+              {dict.common.myOrders}
+            </Link>
+            <CartWidget
               branding={branding}
-              comingSoon={comingSoon}
-              dict={dict}
-              // The hero is the whole page only when there is no
-              // catalogue under it; ProductList renders nothing for an
-              // empty product list.
-              fillViewport={comingSoon || products.length === 0}
+              availabilityByVariant={availabilityByVariant}
+              enabledPaymentMethods={enabledPaymentMethods}
+              enabledShippingMethods={enabledShippingMethods}
+              privacyNoticeVersionId={privacyNotice?.id ?? null}
             />
-          )}
-          {!comingSoon && (
-            <div className="mx-auto w-full max-w-6xl">
-              <ProductList products={products} />
-            </div>
-          )}
-        </div>
-      </CartProvider>
-    </TenantTheme>
+          </>
+        }
+      />
+      {banners.length > 0 ? (
+        <BannerCarousel banners={banners} />
+      ) : (
+        <StorefrontHero
+          branding={branding}
+          comingSoon={comingSoon}
+          dict={dict}
+          // The hero is the whole page only when there is no
+          // catalogue under it; ProductList renders nothing for an
+          // empty product list.
+          fillViewport={comingSoon || products.length === 0}
+        />
+      )}
+      {!comingSoon && <ProductList products={products} />}
+      {!comingSoon && products.length > 0 && <TrustStrip />}
+    </CartProvider>
   );
 }

@@ -1,6 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { tenantAccentStyle } from "@/components/TenantTheme";
+import { Icon } from "./Icon";
+import type { ResolvedBranding } from "./resolve-branding";
 import { useCart } from "./cart-context";
 import { checkoutAction, getCurrentCartPrices, validateVoucherAction, findAutoPromotionAction } from "./checkout-actions";
 import type { AutoPromotionResult } from "./checkout-actions";
@@ -26,12 +30,10 @@ const PAYMENT_LABEL_KEYS: Record<string, [string, string]> = {
   bank_transfer: ["bankTransfer", "bankTransferHint"],
 };
 
-const inputClassName =
-  "rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20";
-const errorInputClassName =
-  "rounded-md border border-red-400 bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-red-400/40";
-const selectClassName = `${inputClassName} appearance-none bg-none`;
-const errorSelectClassName = `${errorInputClassName} appearance-none bg-none`;
+const inputClassName = "field-glass";
+const errorInputClassName = "field-glass field-glass-error";
+const selectClassName = "field-glass appearance-none bg-transparent";
+const errorSelectClassName = "field-glass field-glass-error appearance-none bg-transparent";
 
 type FieldErrors = Partial<Record<"name" | "email" | "phone" | "address" | "ward" | "city" | "shippingMethod", string>>;
 
@@ -80,7 +82,8 @@ function CopyButton({ value, label, copiedLabel = "Copied!" }: { value: string; 
           setTimeout(() => setCopied(false), 1500);
         });
       }}
-      className="rounded-md border border-border px-2 py-1 text-[11px] font-medium text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+      className="btn-ghost text-[11px]"
+      style={{ minHeight: "28px", padding: "4px 10px" }}
     >
       {copied ? copiedLabel : label}
     </button>
@@ -107,11 +110,18 @@ function CopyButton({ value, label, copiedLabel = "Copied!" }: { value: string; 
 // stale absence here must never be more restrictive than the real
 // checkout-time check.
 export function CartWidget({
+  branding,
   availabilityByVariant,
   enabledPaymentMethods,
   enabledShippingMethods,
   privacyNoticeVersionId,
 }: {
+  // Only consumed to restate --accent/--accent-2/--accent-on at the cart
+  // drawer's portal root (see the createPortal() call below) — the portal
+  // escapes the DOM tree the page's TenantTheme wrapper set those on, so
+  // this is the one place in the drawer that needs the tenant's own brand
+  // colors passed in explicitly rather than inheriting them.
+  branding: ResolvedBranding;
   availabilityByVariant: Record<string, number>;
   // Step 51: server-resolved from TenantPaymentMethod (see
   // payment-service.ts's getEnabledPaymentMethods) — UX only, so a
@@ -126,12 +136,26 @@ export function CartWidget({
   enabledShippingMethods: ShippingMethodOption[];
   privacyNoticeVersionId: string | null;
 }) {
-  const { items, itemCount, updateQuantity, removeItem, clearCart, replacePrices } = useCart();
+  const { items, itemCount, updateQuantity, removeItem, clearCart, replacePrices, requestCheckoutOpen } = useCart();
   const dict = useDictionary();
   const paymentDict = dict.payment as Record<string, string>;
   const [open, setOpen] = useState(false);
   const [checkout, setCheckout] = useState<CheckoutState>({ status: "idle" });
   const [step, setStep] = useState<CheckoutStep>("cart");
+
+  // "Mua ngay" (Board 6): the PDP already called addItem() itself before
+  // requestCheckout(), so by the time this fires the item is already in
+  // `items` — this effect's only job is opening the modal straight to
+  // the shipping step, not adding anything.
+  useEffect(() => {
+    if (!requestCheckoutOpen) return;
+    // Subscribing to an external signal (cart-context's requestCheckout
+    // token) and syncing local state from it — the exact case this lint
+    // rule's own description carves out.
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- syncing from an external signal, not a synchronization loop
+    setOpen(true);
+    setStep("shipping");
+  }, [requestCheckoutOpen]);
   // Cart Price Reconciliation: set when the pre-submit price check found
   // a line whose price had moved. Its presence both shows the notice and
   // records that the customer has not yet re-confirmed the new prices.
@@ -252,6 +276,11 @@ export function CartWidget({
       ? { label: autoPromo.label, amount: autoPromo.discountAmount, isAuto: true }
       : null;
   const total = Math.max(0, subtotal + selectedShippingAmount - (activeDiscount?.amount ?? 0));
+  // Board 8: only steps with an actual form (shipping/payment) split into
+  // 2 columns against the order-summary footer — the cart step's own
+  // content IS the thing the summary is summarizing, so stacking them
+  // (not splitting) is still correct there.
+  const checkoutSplit = step !== "cart" && checkout.status !== "success" && items.length > 0;
 
   // Escape-to-close, and lock page scroll while the drawer is open — a
   // full-height overlay behind a still-scrollable page reads as broken.
@@ -415,43 +444,75 @@ export function CartWidget({
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+        className="btn-primary"
         aria-expanded={open}
+        style={{ minHeight: "44px" }}
       >
-        {dict.cart.cartButton.replace("{count}", String(itemCount))}
+        <Icon name="cart" size={18} />
+        {dict.cart.cartButton}
+        {itemCount > 0 && <span className="cartn">{itemCount}</span>}
       </button>
 
-      {open && (
-        <div className="fixed inset-0 z-50 flex justify-end">
+      {open &&
+        createPortal(
+          // storefront-glass re-applied here: a portal escapes the DOM tree
+          // (not just the React tree), so the .storefront-glass CSS scope
+          // from the page root does not reach anything rendered into
+          // document.body — it has to be restated at the portal's own root.
+          <div
+            className="storefront-glass fixed inset-0 z-50 flex items-center justify-center p-3 sm:p-6"
+            style={tenantAccentStyle(branding)}
+          >
           {/* Backdrop */}
           <button
             type="button"
             aria-label={dict.cart.closeCart}
             onClick={() => setOpen(false)}
-            className="absolute inset-0 bg-black/30"
+            className="modal-backdrop absolute inset-0"
           />
 
-          {/* Drawer */}
-          <div className="relative z-10 flex h-full min-w-0 w-full max-w-md flex-col bg-surface shadow-xl sm:my-3 sm:mr-3 sm:h-[calc(100%-1.5rem)] sm:rounded-2xl sm:border sm:border-border">
-            <div className="flex items-center justify-between border-b border-border px-5 py-4 sm:px-6">
-              <div>
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">{dict.cart.checkout}</p>
-                <h2 className="mt-1 text-base font-semibold">
-                {checkout.status === "success" ? dict.cart.orderConfirmed : dict.cart.yourCart}
-                </h2>
-              </div>
+          {/* Modal — width varies by step (Board 7/8): a compact 600px
+              review panel for the cart itself, widening to a 2-column
+              min(1000px, 100vw-48px) layout once there's a form AND an
+              order-summary column to show side by side. */}
+          <div
+            className="modal-panel relative z-10 flex max-h-full w-full min-w-0 flex-col"
+            style={{
+              borderRadius: "var(--radius-card)",
+              maxWidth: step === "cart" ? "600px" : "min(1000px, calc(100vw - 48px))",
+            }}
+          >
+            <div className="flex items-center gap-3 px-5 py-4 sm:px-6" style={{ borderBottom: "1px solid var(--divider)" }}>
+              {step !== "cart" && checkout.status !== "success" && (
+                <button
+                  type="button"
+                  onClick={handleBack}
+                  disabled={checkout.status === "submitting"}
+                  className="btn-ghost disabled:opacity-40"
+                  style={{ minHeight: "36px", padding: "6px 12px" }}
+                >
+                  <Icon name="chevron" size={16} style={{ transform: "rotate(180deg)" }} />
+                  {dict.common.back}
+                </button>
+              )}
+              <h2 className="title-card flex-1" style={{ margin: 0, fontSize: "18px" }}>
+                {checkout.status === "success"
+                  ? dict.cart.orderConfirmed
+                  : dict.cart[STEP_LABEL_KEYS[step]]}
+              </h2>
               <button
                 type="button"
                 onClick={() => setOpen(false)}
                 aria-label={dict.cart.closeCart}
-                className="flex h-8 w-8 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-surface-muted hover:text-foreground"
+                className="btn-ghost"
+                style={{ width: "36px", height: "36px", padding: 0 }}
               >
-                ✕
+                <Icon name="x" size={16} />
               </button>
             </div>
 
             {checkout.status !== "success" && items.length > 0 && (
-              <div className="flex items-center gap-2 overflow-x-auto border-b border-border px-5 py-3 sm:px-6">
+              <div className="flex items-center gap-2 overflow-x-auto px-5 py-3 sm:px-6" style={{ borderBottom: "1px solid var(--divider)" }}>
                 {STEP_ORDER.map((s, index) => {
                   const currentIndex = STEP_ORDER.indexOf(step);
                   const isActive = s === step;
@@ -460,24 +521,29 @@ export function CartWidget({
                     <div key={s} className="flex flex-1 items-center gap-2">
                       <div className="flex items-center gap-1.5">
                         <span
-                          className={`flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium ${
-                            isActive
-                              ? "bg-foreground text-background"
-                              : isDone
-                                ? "bg-foreground/80 text-background"
-                                : "bg-surface-muted text-muted-foreground"
-                          }`}
+                          className="flex h-5 w-5 flex-shrink-0 items-center justify-center rounded-full text-[10px] font-medium"
+                          style={
+                            isActive || isDone
+                              ? { background: "var(--accent, var(--ink))", color: "var(--accent-on, var(--on-ink))" }
+                              : { background: "var(--track)", color: "var(--ink-2)" }
+                          }
                         >
                           {isDone ? "✓" : index + 1}
                         </span>
                         <span
-                          className={`text-xs whitespace-nowrap ${isActive ? "font-medium text-foreground" : "text-muted-foreground"}`}
+                          className="text-xs whitespace-nowrap"
+                          style={{ fontWeight: isActive ? 600 : 400, color: isActive ? "var(--ink)" : "var(--ink-2)" }}
                         >
                           {dict.cart[STEP_LABEL_KEYS[s]]}
                         </span>
                       </div>
                       {index < STEP_ORDER.length - 1 && (
-                        <span className="h-px flex-1 bg-border" aria-hidden="true" />
+                        // Bold/opaque once the step it leads FROM is done, faint otherwise.
+                        <span
+                          className="h-px flex-1"
+                          style={{ background: isDone ? "var(--ink)" : "var(--divider)", opacity: isDone ? 0.4 : 1 }}
+                          aria-hidden="true"
+                        />
                       )}
                     </div>
                   );
@@ -485,17 +551,29 @@ export function CartWidget({
               </div>
             )}
 
+            {/* Board 8: steps 2/3 split into a form column (left, ~60%)
+                and an "Đơn của bạn" summary column (right, ~40%, divider
+                between) at ≥1024px, stacking to one column below that —
+                the summary (subtotal/shipping/voucher/total/CTA) is the
+                existing footer div just below; `checkout-split` only
+                changes how these two siblings lay out, nothing moved
+                between them. The "cart" step has no separate form to
+                split against, so it keeps the original stacked layout. */}
+            <div className={checkoutSplit ? "checkout-split" : undefined}>
             <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
               {checkout.status === "success" ? (
                 <div className="flex flex-col gap-4">
-                  <div className="flex items-start gap-3 rounded-lg border border-green-200 bg-green-50 p-4">
-                    <span className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-green-600 text-base text-white">
+                  <div className="flex items-start gap-3 p-4" style={{ borderRadius: "var(--radius-list)", background: "var(--ok-bg, #14803c1c)" }}>
+                    <span
+                      className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full text-base"
+                      style={{ background: "var(--ok, #14803c)", color: "#fff" }}
+                    >
                       ✓
                     </span>
                     <div className="min-w-0">
-                      <p className="font-medium text-green-900">{dict.payment.orderPlaced}</p>
+                      <p className="ui-text" style={{ margin: 0 }}>{dict.payment.orderPlaced}</p>
                       <div className="mt-1 flex items-center gap-1.5">
-                        <p className="truncate font-mono text-xs text-green-800">{checkout.orderId}</p>
+                        <p className="truncate font-mono text-xs" style={{ color: "var(--ink-2)" }}>{checkout.orderId}</p>
                         <CopyButton value={checkout.orderId} label={dict.common.copy} copiedLabel={dict.common.copied} />
                       </div>
                     </div>
@@ -508,17 +586,14 @@ export function CartWidget({
                       supplementary detail on the same action, not a separate
                       rail), "none" covers cod and any not-yet-actionable case. */}
                   {checkout.instructions.type === "redirect" && (
-                    <a
-                      href={checkout.instructions.redirectUrl}
-                      className="rounded-md bg-foreground px-4 py-2.5 text-center text-sm font-medium text-background transition-opacity hover:opacity-90"
-                    >
+                    <a href={checkout.instructions.redirectUrl} className="btn-primary cta w-full">
                       {checkout.instructions.nextAction}
                     </a>
                   )}
 
                   {checkout.instructions.type === "bank_transfer" && (
-                    <div className="rounded-lg border border-border bg-surface-muted p-4">
-                      <p className="text-sm font-medium">{checkout.instructions.title}</p>
+                    <div className="glass p-4" style={{ borderRadius: "var(--radius-list)" }}>
+                      <p className="ui-text" style={{ margin: 0 }}>{checkout.instructions.title}</p>
 
                       {checkout.instructions.qrCodeUrl && (
                         <div className="mt-3 flex justify-center">
@@ -526,7 +601,8 @@ export function CartWidget({
                           <img
                             src={checkout.instructions.qrCodeUrl}
                             alt={dict.payment.paymentQrCode}
-                            className="h-48 w-48 rounded-md border border-border bg-white p-2"
+                            className="h-48 w-48 rounded-md bg-white p-2"
+                            style={{ border: "1px solid var(--divider)" }}
                           />
                         </div>
                       )}
@@ -534,13 +610,13 @@ export function CartWidget({
                       <div className="mt-3 flex flex-col gap-1.5 text-sm">
                         {checkout.instructions.bankName && (
                           <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">{dict.payment.bank}</span>
+                            <span style={{ color: "var(--ink-2)" }}>{dict.payment.bank}</span>
                             <span className="font-medium">{checkout.instructions.bankName}</span>
                           </div>
                         )}
                         {(checkout.instructions.accountNumber || checkout.instructions.virtualAccountNumber) && (
                           <div className="flex items-center justify-between gap-2">
-                            <span className="text-muted-foreground">
+                            <span style={{ color: "var(--ink-2)" }}>
                               {checkout.instructions.virtualAccountNumber ? dict.payment.virtualAccount : dict.payment.accountNumber}
                             </span>
                             <div className="flex items-center gap-1.5">
@@ -556,18 +632,18 @@ export function CartWidget({
                         )}
                         {checkout.instructions.accountHolder && (
                           <div className="flex items-center justify-between">
-                            <span className="text-muted-foreground">{dict.payment.accountHolder}</span>
+                            <span style={{ color: "var(--ink-2)" }}>{dict.payment.accountHolder}</span>
                             <span className="font-medium">{checkout.instructions.accountHolder}</span>
                           </div>
                         )}
-                        <div className="mt-1 flex items-center justify-between border-t border-border pt-1.5">
-                          <span className="text-muted-foreground">{dict.payment.amount}</span>
+                        <div className="mt-1 flex items-center justify-between pt-1.5" style={{ borderTop: "1px solid var(--divider)" }}>
+                          <span style={{ color: "var(--ink-2)" }}>{dict.payment.amount}</span>
                           <span className="money text-base font-semibold">
                             {formatVnd(checkout.instructions.amount)}
                           </span>
                         </div>
                         {checkout.instructions.expiresAt && (
-                          <p className="text-xs text-muted-foreground">
+                          <p className="text-xs" style={{ color: "var(--ink-2)" }}>
                             {dict.payment.expires}{" "}
                             {new Date(checkout.instructions.expiresAt).toLocaleString("en-US", {
                               dateStyle: "medium",
@@ -577,23 +653,24 @@ export function CartWidget({
                         )}
                       </div>
 
-                      <p className="mt-3 text-xs text-muted-foreground">{checkout.instructions.nextAction}</p>
+                      <p className="mt-3 text-xs" style={{ color: "var(--ink-2)" }}>{checkout.instructions.nextAction}</p>
                     </div>
                   )}
 
                   {checkout.instructions.type === "none" && (
-                    <p className="rounded-lg border border-border bg-surface-muted p-4 text-sm text-muted-foreground">
+                    <p className="glass p-4 text-sm" style={{ borderRadius: "var(--radius-list)", color: "var(--ink-2)" }}>
                       {checkout.instructions.nextAction}
                     </p>
                   )}
                 </div>
               ) : items.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
-                  <p className="text-sm text-muted-foreground">{dict.cart.cartEmpty}</p>
+                  <p className="text-sm" style={{ color: "var(--ink-2)" }}>{dict.cart.cartEmpty}</p>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
-                    className="text-xs text-foreground underline underline-offset-2"
+                    className="text-xs underline underline-offset-2"
+                    style={{ color: "var(--ink)" }}
                   >
                     {dict.common.continueShopping}
                   </button>
@@ -610,7 +687,8 @@ export function CartWidget({
                   {priceNotice && (
                     <p
                       role="status"
-                      className="rounded-md border border-border bg-surface-muted px-3 py-2 text-sm text-foreground"
+                      className="px-3 py-2 text-sm"
+                      style={{ borderRadius: "var(--radius-field)", background: "var(--field-fill)" }}
                     >
                       {priceNotice}
                     </p>
@@ -629,7 +707,8 @@ export function CartWidget({
                               <img
                                 src={item.imageUrl}
                                 alt={item.productName}
-                                className="h-14 w-14 rounded-md object-cover"
+                                className="object-cover"
+                                style={{ width: "76px", height: "76px", borderRadius: "var(--radius-field)" }}
                               />
                             ) : (
                               // A CSV-imported product can have no media. Without
@@ -638,7 +717,8 @@ export function CartWidget({
                               // of alignment with the rest.
                               <span
                                 aria-hidden="true"
-                                className="flex h-14 w-14 shrink-0 items-center justify-center rounded-md bg-surface-muted text-[10px] text-muted-foreground"
+                                className="flex shrink-0 items-center justify-center text-[10px]"
+                                style={{ width: "76px", height: "76px", borderRadius: "var(--radius-field)", background: "var(--field-fill)", color: "var(--ink-3)" }}
                               >
                                 {dict.products.noImage}
                               </span>
@@ -646,23 +726,28 @@ export function CartWidget({
                             <div className="min-w-0 flex-1">
                               <span className="block break-words text-sm">{item.productName}</span>
                               {item.variantLabel && (
-                                <span className="block break-words text-xs text-muted-foreground">{item.variantLabel}</span>
+                                <span className="block break-words text-xs" style={{ color: "var(--ink-2)" }}>{item.variantLabel}</span>
                               )}
                               <span className="mt-0.5 flex flex-wrap items-baseline gap-1.5">
                                 {item.originalPrice != null && (
-                                  <span className="money text-[11px] text-muted-foreground line-through">
+                                  <span className="money text-[11px] line-through" style={{ color: "var(--ink-3)" }}>
                                     {formatVnd(item.originalPrice)}
                                   </span>
                                 )}
                                 <span className="money text-xs">{formatVnd(item.price)}</span>
                                 {(item.discountPercent != null || (item.discountAmount != null && item.discountAmount > 0)) && (
-                                  <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[9px] font-medium text-white">
+                                  <span className="off-pill">
                                     {item.discountPercent != null
                                       ? `−${item.discountPercent}%`
                                       : `−${formatVnd(item.discountAmount!)}`}
                                   </span>
                                 )}
                               </span>
+                              {typeof available === "number" && available <= 5 && (
+                                <span className="chip mt-1" style={{ minHeight: 0, padding: "2px 8px", fontSize: "11px" }}>
+                                  {available <= 0 ? dict.products.outOfStock : dict.products.onlyNLeft.replace("{count}", String(available))}
+                                </span>
+                              )}
                             </div>
                           </div>
                           <div className="flex shrink-0 flex-col items-end gap-1.5">
@@ -670,7 +755,8 @@ export function CartWidget({
                               <button
                                 type="button"
                                 onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity - 1))}
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted"
+                                className="btn-ghost"
+                                style={{ width: "28px", height: "28px", padding: 0, minHeight: "28px" }}
                                 aria-label={dict.cart.decreaseQuantity.replace("{name}", item.productName)}
                               >
                                 −
@@ -680,7 +766,8 @@ export function CartWidget({
                                 type="button"
                                 onClick={handleCartAction(() => updateQuantity(item.productVariantId, item.quantity + 1))}
                                 disabled={atAvailableLimit}
-                                className="flex h-7 w-7 items-center justify-center rounded-md border border-border transition-colors hover:bg-surface-muted disabled:opacity-40"
+                                className="btn-ghost disabled:opacity-40"
+                                style={{ width: "28px", height: "28px", padding: 0, minHeight: "28px" }}
                                 aria-label={dict.cart.increaseQuantity.replace("{name}", item.productName)}
                               >
                                 +
@@ -689,7 +776,8 @@ export function CartWidget({
                             <button
                               type="button"
                               onClick={handleCartAction(() => removeItem(item.productVariantId))}
-                              className="text-xs text-red-600 hover:underline"
+                              className="text-xs hover:underline"
+                              style={{ color: "var(--danger)" }}
                             >
                               {dict.cart.remove}
                             </button>
@@ -703,7 +791,7 @@ export function CartWidget({
                   )}
 
                   {step === "shipping" && !privacyNoticeVersionId && (
-                    <p role="alert" className="rounded-md border border-amber-300 bg-amber-50 p-3 text-sm text-amber-900">
+                    <p role="alert" className="p-3 text-sm" style={{ borderRadius: "var(--radius-field)", background: "var(--warn-bg, #f59e0b26)", color: "var(--ink)" }}>
                       {dict.checkout.privacyNoticeUnavailable}{' '}
                       <a href="/privacy" target="_blank" rel="noreferrer" className="underline">
                         {dict.privacy.title}
@@ -712,7 +800,7 @@ export function CartWidget({
                   )}
                   {step === "shipping" && privacyNoticeVersionId && (
                   <>
-                  <label className="flex items-start gap-2 text-sm">
+                  <label className="consent-box text-sm">
                     <input
                       type="checkbox"
                       checked={privacyConsentAccepted}
@@ -722,7 +810,7 @@ export function CartWidget({
                           event.target.checked ? privacyNoticeVersionId : null,
                         )
                       }
-                      className="mt-1"
+                      className="mt-0.5"
                     />
                     <span>
                       {dict.checkout.privacyConsentBeforeLink}
@@ -738,45 +826,66 @@ export function CartWidget({
                       {dict.checkout.privacyConsentAfterLink}
                     </span>
                   </label>
-                  <fieldset className="flex flex-col gap-3">
-                    <legend className="mb-1 text-sm font-medium">{dict.checkout.contactInfo}</legend>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {dict.checkout.fullName}
+                  <fieldset className="form-fields-gap">
+                    <legend className="section-heading mb-1">
+                      <Icon name="person" size={16} />
+                      {dict.checkout.contactInfo}
+                    </legend>
+                    <label className="form-field">
+                      <span className="field-label">{dict.checkout.fullName}</span>
                       <input
                         type="text"
                         value={name}
                         onChange={(e) => setName(e.target.value)}
                         placeholder={dict.checkout.namePlaceholder}
-                        className={fieldErrors.name ? errorInputClassName : inputClassName}
+                        className={`field-glass-lg ${fieldErrors.name ? errorInputClassName : inputClassName}`}
                       />
-                      {fieldErrors.name && <span className="text-red-600">{fieldErrors.name}</span>}
+                      {fieldErrors.name && (
+                        <span className="field-error-text mt-1.5">
+                          <Icon name="alert" size={13} />
+                          {fieldErrors.name}
+                        </span>
+                      )}
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {dict.checkout.email}
+                    <label className="form-field">
+                      <span className="field-label">{dict.checkout.email}</span>
                       <input
                         type="email"
                         value={email}
                         onChange={(e) => setEmail(e.target.value)}
                         placeholder={dict.checkout.emailPlaceholder}
-                        className={fieldErrors.email ? errorInputClassName : inputClassName}
+                        className={`field-glass-lg ${fieldErrors.email ? errorInputClassName : inputClassName}`}
                       />
-                      {fieldErrors.email && <span className="text-red-600">{fieldErrors.email}</span>}
+                      {fieldErrors.email && (
+                        <span className="field-error-text mt-1.5">
+                          <Icon name="alert" size={13} />
+                          {fieldErrors.email}
+                        </span>
+                      )}
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {dict.checkout.phone}
+                    <label className="form-field">
+                      <span className="field-label">{dict.checkout.phone}</span>
                       <input
                         type="tel"
                         value={phone}
                         onChange={(e) => setPhone(e.target.value)}
                         placeholder={dict.checkout.phonePlaceholder}
-                        className={fieldErrors.phone ? errorInputClassName : inputClassName}
+                        className={`field-glass-lg ${fieldErrors.phone ? errorInputClassName : inputClassName}`}
                       />
-                      {fieldErrors.phone && <span className="text-red-600">{fieldErrors.phone}</span>}
+                      {fieldErrors.phone && (
+                        <span className="field-error-text mt-1.5">
+                          <Icon name="alert" size={13} />
+                          {fieldErrors.phone}
+                        </span>
+                      )}
                     </label>
                   </fieldset>
 
-                  <fieldset className="flex flex-col gap-3">
-                    <legend className="mb-1 text-sm font-medium">{dict.checkout.shippingAddress}</legend>
+                  <fieldset className="form-fields-gap">
+                    <legend className="section-heading mb-1">
+                      <Icon name="pin" size={16} />
+                      {dict.checkout.shippingAddress}
+                    </legend>
                     {/* Province -> ward, per Vietnam's current (post-July-
                         2025) 2-tier administrative structure — see
                         public/vn-address.json and the VnProvince comment
@@ -784,15 +893,15 @@ export function CartWidget({
                         chosen, and resets if the province changes, since a
                         ward name only makes sense within its own province. */}
                     <div className="grid grid-cols-2 gap-2">
-                      <label className="flex flex-col gap-1 text-xs">
-                        {dict.checkout.provinceCity}
+                      <label className="form-field">
+                        <span className="field-label">{dict.checkout.provinceCity}</span>
                         <select
                           value={city}
                           onChange={(e) => {
                             setCity(e.target.value);
                             setWard("");
                           }}
-                          className={fieldErrors.city ? errorSelectClassName : selectClassName}
+                          className={`field-glass-lg ${fieldErrors.city ? errorSelectClassName : selectClassName}`}
                         >
                           <option value="">{dict.checkout.selectProvince}</option>
                           {provinces.map((p) => (
@@ -801,15 +910,20 @@ export function CartWidget({
                             </option>
                           ))}
                         </select>
-                        {fieldErrors.city && <span className="text-red-600">{fieldErrors.city}</span>}
+                        {fieldErrors.city && (
+                          <span className="field-error-text mt-1.5">
+                            <Icon name="alert" size={13} />
+                            {fieldErrors.city}
+                          </span>
+                        )}
                       </label>
-                      <label className="flex flex-col gap-1 text-xs">
-                        {dict.checkout.ward}
+                      <label className="form-field">
+                        <span className="field-label">{dict.checkout.ward}</span>
                         <select
                           value={ward}
                           onChange={(e) => setWard(e.target.value)}
                           disabled={!selectedProvince}
-                          className={`${fieldErrors.ward ? errorSelectClassName : selectClassName} disabled:opacity-50`}
+                          className={`field-glass-lg ${fieldErrors.ward ? errorSelectClassName : selectClassName} disabled:opacity-50`}
                         >
                           <option value="">{selectedProvince ? dict.checkout.selectWard : dict.checkout.selectProvinceFirst}</option>
                           {selectedProvince?.wards.map((w) => (
@@ -818,45 +932,54 @@ export function CartWidget({
                             </option>
                           ))}
                         </select>
-                        {fieldErrors.ward && <span className="text-red-600">{fieldErrors.ward}</span>}
+                        {fieldErrors.ward && (
+                          <span className="field-error-text mt-1.5">
+                            <Icon name="alert" size={13} />
+                            {fieldErrors.ward}
+                          </span>
+                        )}
                       </label>
                     </div>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {dict.checkout.streetAddress}
+                    <label className="form-field">
+                      <span className="field-label">{dict.checkout.streetAddress}</span>
                       <input
                         type="text"
                         value={address}
                         onChange={(e) => setAddress(e.target.value)}
                         placeholder={dict.checkout.addressPlaceholder}
-                        className={fieldErrors.address ? errorInputClassName : inputClassName}
+                        className={`field-glass-lg ${fieldErrors.address ? errorInputClassName : inputClassName}`}
                       />
-                      {fieldErrors.address && <span className="text-red-600">{fieldErrors.address}</span>}
+                      {fieldErrors.address && (
+                        <span className="field-error-text mt-1.5">
+                          <Icon name="alert" size={13} />
+                          {fieldErrors.address}
+                        </span>
+                      )}
                     </label>
-                    <label className="flex flex-col gap-1 text-xs">
-                      {dict.checkout.deliveryNote}
+                    <label className="form-field">
+                      <span className="field-label">{dict.checkout.deliveryNote}</span>
                       <input
                         type="text"
                         value={note}
                         onChange={(e) => setNote(e.target.value)}
                         placeholder={dict.checkout.deliveryNotePlaceholder}
-                        className={inputClassName}
+                        className={`field-glass-lg ${inputClassName}`}
                       />
                     </label>
                   </fieldset>
 
                   <fieldset className="flex flex-col gap-2">
-                    <legend className="mb-1 text-sm font-medium">{dict.checkout.shippingMethod}</legend>
+                    <legend className="section-heading mb-1">
+                      <Icon name="truck" size={16} />
+                      {dict.checkout.shippingMethod}
+                    </legend>
                     {enabledShippingMethods.length === 0 ? (
-                      <p className="text-xs text-red-600">{dict.checkout.noShippingMethod}</p>
+                      <p className="text-xs" style={{ color: "var(--danger)" }}>{dict.checkout.noShippingMethod}</p>
                     ) : (
                       enabledShippingMethods.map((method) => (
                         <label
                           key={method.id}
-                          className={`flex cursor-pointer items-center justify-between gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                            shippingMethodId === method.id
-                              ? "border-foreground bg-surface-muted"
-                              : "border-border hover:bg-surface-muted"
-                          }`}
+                          className={`option-row${shippingMethodId === method.id ? " selected" : ""}`}
                         >
                           <span className="flex items-center gap-3">
                             <input
@@ -873,7 +996,12 @@ export function CartWidget({
                         </label>
                       ))
                     )}
-                    {fieldErrors.shippingMethod && <span className="text-xs text-red-600">{fieldErrors.shippingMethod}</span>}
+                    {fieldErrors.shippingMethod && (
+                      <span className="field-error-text">
+                        <Icon name="alert" size={13} />
+                        {fieldErrors.shippingMethod}
+                      </span>
+                    )}
                   </fieldset>
                   </>
                   )}
@@ -881,18 +1009,17 @@ export function CartWidget({
                   {step === "payment" && (
                   <>
                   <fieldset className="flex flex-col gap-2">
-                    <legend className="mb-1 text-sm font-medium">{dict.checkout.paymentMethod}</legend>
+                    <legend className="section-heading mb-1">
+                      <Icon name="wallet" size={16} />
+                      {dict.checkout.paymentMethod}
+                    </legend>
                     {enabledPaymentMethods.length === 0 ? (
-                      <p className="text-xs text-red-600">{dict.checkout.noPaymentMethod}</p>
+                      <p className="text-xs" style={{ color: "var(--danger)" }}>{dict.checkout.noPaymentMethod}</p>
                     ) : (
                       enabledPaymentMethods.map((method) => (
                         <label
                           key={method}
-                          className={`flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 text-sm transition-colors ${
-                            paymentMethod === method
-                              ? "border-foreground bg-surface-muted"
-                              : "border-border hover:bg-surface-muted"
-                          }`}
+                          className={`pay-card${paymentMethod === method ? " selected" : ""}`}
                         >
                           <input
                             type="radio"
@@ -900,21 +1027,30 @@ export function CartWidget({
                             value={method}
                             checked={paymentMethod === method}
                             onChange={() => setPaymentMethod(method)}
-                            className="flex-shrink-0"
+                            className="sr-only"
                           />
-                          <div className="flex flex-col">
+                          <span className="pay-icon">
+                            <Icon name={method === "bank_transfer" ? "qrcode" : "wallet"} size={18} />
+                          </span>
+                          <div className="flex flex-1 flex-col">
                             <span className="font-medium">{PAYMENT_LABEL_KEYS[method] ? paymentDict[PAYMENT_LABEL_KEYS[method][0]] : method}</span>
                             {PAYMENT_LABEL_KEYS[method] && (
-                              <span className="text-xs text-muted-foreground">{paymentDict[PAYMENT_LABEL_KEYS[method][1]]}</span>
+                              <span className="text-xs" style={{ color: "var(--ink-2)" }}>{paymentDict[PAYMENT_LABEL_KEYS[method][1]]}</span>
                             )}
                           </div>
+                          <span className="money text-xs" style={{ color: "var(--ink-2)" }}>{dict.common.free}</span>
                         </label>
                       ))
                     )}
                   </fieldset>
 
+                  <div className="policy-note">
+                    <Icon name="info" size={16} style={{ flexShrink: 0, marginTop: "1px" }} />
+                    <span>{dict.checkout.noReturnPolicy}</span>
+                  </div>
+
                   {checkout.status === "error" && (
-                    <p className="rounded-md border border-red-200 bg-red-50 p-3 text-xs text-red-700">
+                    <p className="text-xs p-3" style={{ borderRadius: "var(--radius-field)", background: "var(--danger-bg)", color: "var(--danger)" }}>
                       {checkout.message}
                     </p>
                   )}
@@ -925,12 +1061,12 @@ export function CartWidget({
             </div>
 
             {checkout.status !== "success" && items.length > 0 && (
-              <div className="border-t border-border px-5 py-4">
-                <div className="mb-1 flex items-center justify-between text-xs text-muted-foreground">
+              <div className="px-5 py-4" style={{ borderTop: "1px solid var(--divider)" }}>
+                <div className="mb-1 flex items-center justify-between text-xs" style={{ color: "var(--ink-2)" }}>
                   <span>{dict.cart.subtotal}</span>
                   <span className="money">{formatVnd(subtotal)}</span>
                 </div>
-                <div className="mb-3 flex items-center justify-between text-xs text-muted-foreground">
+                <div className="mb-3 flex items-center justify-between text-xs" style={{ color: "var(--ink-2)" }}>
                   <span>{dict.cart.shipping}</span>
                   {/* Only a chosen method can be "Free". With none chosen
                       — including a store that has enabled none at all,
@@ -954,11 +1090,14 @@ export function CartWidget({
                 </div>
                 {/* Auto-promotion banner */}
                 {autoPromo && !voucherApplied && (
-                  <div className="mb-2 flex items-center justify-between rounded-md border border-green-200 bg-green-50 px-2.5 py-1.5 text-xs dark:border-green-800 dark:bg-green-950">
-                    <span className="font-medium text-green-700 dark:text-green-400">
+                  <div
+                    className="mb-2 flex items-center justify-between px-2.5 py-1.5 text-xs"
+                    style={{ borderRadius: "var(--radius-field)", background: "var(--ok-bg, #14803c1c)" }}
+                  >
+                    <span className="font-medium" style={{ color: "var(--ok, #14803c)" }}>
                       {autoPromo.label}
                     </span>
-                    <span className="money font-medium text-green-700 dark:text-green-400">
+                    <span className="money font-medium" style={{ color: "var(--ok, #14803c)" }}>
                       −{formatVnd(autoPromo.discountAmount)}
                     </span>
                   </div>
@@ -967,67 +1106,73 @@ export function CartWidget({
                 {!voucherApplied ? (
                   <div className="mb-2">
                     <div className="flex gap-1.5">
-                      <input
-                        type="text"
-                        value={voucherInput}
-                        onChange={(e) => { setVoucherInput(e.target.value); setVoucherError(null); }}
-                        placeholder={(dict.voucher as Record<string, string>).enterCode}
-                        className="min-w-0 flex-1 rounded-md border border-border bg-background px-2.5 py-1.5 text-xs uppercase placeholder:normal-case focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-                        onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleApplyVoucher(); } }}
-                      />
+                      <div className="relative min-w-0 flex-1">
+                        <span
+                          className="pointer-events-none absolute"
+                          style={{ left: "10px", top: "50%", transform: "translateY(-50%)", color: "var(--ink-3)" }}
+                        >
+                          <Icon name="ticket" size={14} />
+                        </span>
+                        <input
+                          type="text"
+                          value={voucherInput}
+                          onChange={(e) => { setVoucherInput(e.target.value); setVoucherError(null); }}
+                          placeholder={(dict.voucher as Record<string, string>).enterCode}
+                          className="field-glass w-full text-xs uppercase placeholder:normal-case"
+                          style={{ padding: "8px 12px 8px 30px", minHeight: "36px" }}
+                          onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); handleApplyVoucher(); } }}
+                        />
+                      </div>
                       <button
                         type="button"
                         onClick={handleApplyVoucher}
                         disabled={voucherLoading || !voucherInput.trim()}
-                        className="rounded-md border border-border px-3 py-1.5 text-xs font-medium transition-colors hover:bg-surface-muted disabled:opacity-40"
+                        className="btn-ghost disabled:opacity-40"
+                        style={{ minHeight: "36px", padding: "8px 14px" }}
                       >
                         {voucherLoading ? (dict.voucher as Record<string, string>).applying : (dict.voucher as Record<string, string>).apply}
                       </button>
                     </div>
-                    {voucherError && <p className="mt-1 text-xs text-red-600">{voucherError}</p>}
+                    {voucherError && <p className="field-error-text mt-1">{voucherError}</p>}
                   </div>
                 ) : (
                   <div className="mb-2 flex items-center justify-between text-xs">
-                    <span className="font-medium text-green-700">
+                    <span className="font-medium" style={{ color: "var(--ok, #14803c)" }}>
                       {(dict.voucher as Record<string, string>).applied.replace("{code}", voucherApplied.code)}
                     </span>
                     <div className="flex items-center gap-2">
-                      <span className="money text-green-700">−{formatVnd(voucherApplied.discountAmount)}</span>
+                      <span className="money" style={{ color: "var(--ok, #14803c)" }}>−{formatVnd(voucherApplied.discountAmount)}</span>
                       <button
                         type="button"
                         onClick={handleRemoveVoucher}
-                        className="text-muted-foreground underline hover:text-foreground"
+                        className="underline"
+                        style={{ color: "var(--ink-2)" }}
                       >
                         {(dict.voucher as Record<string, string>).remove}
                       </button>
                     </div>
                   </div>
                 )}
-                <div className="mb-3 flex items-center justify-between border-t border-border pt-2 text-sm">
-                  <span className="text-muted-foreground">{dict.cart.total}</span>
-                  <span className="money text-base font-semibold">{formatVnd(total)}</span>
+                {activeDiscount && (
+                  <div className="mb-2 flex justify-end">
+                    <span className="savings-pill">{dict.checkout.savings.replace("{amount}", formatVnd(activeDiscount.amount))}</span>
+                  </div>
+                )}
+                <div className="mb-3 flex items-center justify-between pt-2" style={{ borderTop: "1px solid var(--divider)" }}>
+                  <span className="text-sm" style={{ color: "var(--ink-2)" }}>{dict.cart.total}</span>
+                  <span className="money font-semibold" style={{ fontSize: "28px" }}>{formatVnd(total)}</span>
                 </div>
                 {step === "shipping" && enabledPaymentMethods.length === 0 && (
-                  <p className="mb-3 text-xs text-red-600" role="status">
+                  <p className="mb-3 text-xs" role="status" style={{ color: "var(--danger)" }}>
                     {dict.checkout.noPaymentMethod}
                   </p>
                 )}
                 <div className="flex gap-2">
-                  {step !== "cart" && (
-                    <button
-                      type="button"
-                      onClick={handleBack}
-                      disabled={checkout.status === "submitting"}
-                      className="rounded-md border border-border px-4 py-3 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-40"
-                    >
-                      {dict.common.back}
-                    </button>
-                  )}
                   {step === "cart" && (
                     <button
                       type="button"
                       onClick={() => setStep("shipping")}
-                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                      className="btn-primary cta flex-1"
                     >
                       {dict.cart.continueToShipping}
                     </button>
@@ -1042,7 +1187,7 @@ export function CartWidget({
                         enabledPaymentMethods.length === 0 ||
                         enabledShippingMethods.length === 0
                       }
-                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+                      className="btn-primary cta flex-1"
                     >
                       {dict.cart.continueToPayment}
                     </button>
@@ -1059,26 +1204,38 @@ export function CartWidget({
                         enabledPaymentMethods.length === 0 ||
                         enabledShippingMethods.length === 0
                       }
-                      className="flex-1 rounded-md bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40"
+                      className="btn-primary cta flex-1"
                     >
-                      {checkout.status === "submitting" ? dict.cart.placingOrder : dict.cart.placeOrder}
+                      {checkout.status === "submitting" ? dict.cart.placingOrder : dict.checkout.placeOrderWithAmount.replace("{amount}", formatVnd(total))}
                     </button>
                   )}
                 </div>
+                {step === "shipping" && (
+                  <p className="mt-2 text-center text-xs" style={{ color: "var(--ink-2)" }}>
+                    {dict.checkout.continueToPaymentWithHelper}
+                  </p>
+                )}
+                {step === "payment" && (
+                  <p className="mt-2 text-center text-xs" style={{ color: "var(--ink-2)" }}>
+                    {dict.checkout.placeOrderHelper}
+                  </p>
+                )}
                 {step === "cart" && (
                   <button
                     type="button"
                     onClick={handleCartAction(clearCart)}
-                    className="mt-2 w-full text-center text-xs text-muted-foreground underline hover:text-foreground"
+                    className="mt-2 w-full text-center text-xs underline"
+                    style={{ color: "var(--ink-2)" }}
                   >
                     {dict.cart.clearCart}
                   </button>
                 )}
               </div>
             )}
+            </div>
 
             {checkout.status === "success" && (
-              <div className="border-t border-border px-5 py-4">
+              <div className="px-5 py-4" style={{ borderTop: "1px solid var(--divider)" }}>
                 <div className="flex gap-2">
                   <a
                     // Phase 5 (post-purchase friction): the email is only
@@ -1089,7 +1246,7 @@ export function CartWidget({
                     // they entered seconds ago, in their own browser tab,
                     // right after submitting it themselves.
                     href={`/orders/${checkout.orderId}?email=${encodeURIComponent(email)}`}
-                    className="flex-1 rounded-md border border-border px-4 py-2.5 text-center text-sm font-medium transition-colors hover:bg-surface-muted"
+                    className="btn-ghost flex-1 text-center"
                   >
                     {dict.cart.viewYourOrder}
                   </a>
@@ -1100,7 +1257,7 @@ export function CartWidget({
                       setStep("cart");
                       setOpen(false);
                     }}
-                    className="flex-1 rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90"
+                    className="btn-primary cta flex-1"
                   >
                     {dict.common.continueShopping}
                   </button>
@@ -1108,8 +1265,9 @@ export function CartWidget({
               </div>
             )}
           </div>
-        </div>
-      )}
+          </div>,
+          document.body,
+        )}
     </>
   );
 }

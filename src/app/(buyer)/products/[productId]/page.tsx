@@ -1,21 +1,21 @@
 import Link from 'next/link';
 import { headers } from 'next/headers';
 import { notFound } from 'next/navigation';
-import { getTenantProduct, getTenantProducts } from '../../_storefront/get-tenant-products';
-import { getCurrentTenant } from '../../_storefront/get-current-tenant';
-import { resolveBranding } from '../../_storefront/resolve-branding';
-import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
-import { ProductRow } from '../../_storefront/ProductList';
-import { CartProvider } from '../../_storefront/cart-context';
-import { CartWidget } from '../../_storefront/CartWidget';
+import { getTenantProduct, getTenantProducts } from '../../../_storefront/get-tenant-products';
+import { getCurrentTenant } from '../../../_storefront/get-current-tenant';
+import { resolveBranding } from '../../../_storefront/resolve-branding';
+import { StorefrontHeader } from '../../../_storefront/StorefrontHeader';
+import { ProductRow } from '../../../_storefront/ProductList';
+import { CartProvider } from '../../../_storefront/cart-context';
+import { CartWidget } from '../../../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { getCurrentPrivacyNotice } from '@/lib/privacy-mutations';
-import { TenantTheme } from '@/components/TenantTheme';
+import type { ResolvedBranding } from '../../../_storefront/resolve-branding';
 import type { Metadata } from 'next';
 import { getLocale, getDictionary } from '@/lib/i18n';
-import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { getRequestOrigin } from '@/lib/seo/request-origin';
+import { Icon } from '../../../_storefront/Icon';
 import {
   buildMetaDescription,
   buildProductJsonLd,
@@ -112,6 +112,18 @@ export async function generateMetadata({
   };
 }
 
+// Used when getCurrentTenant() finds no tenant at all (unknown hostname) —
+// shared between TenantTheme's own branding prop and CartWidget's, so the
+// drawer's accent vars and the page's fall back to the exact same neutral
+// values rather than two separately-maintained copies drifting apart.
+const DEFAULT_BRANDING: ResolvedBranding = {
+  storeName: 'Store',
+  logoUrl: null,
+  primaryColor: '#3b3b3b',
+  secondaryColor: '#8a8a8a',
+  designTokens: null,
+};
+
 export default async function ProductDetailPage({
   params,
 }: {
@@ -154,7 +166,7 @@ export default async function ProductDetailPage({
   // a customer arriving here directly (a shared product link, a search
   // result) had no way to tell which store they were on.
   const tenant = await getCurrentTenant();
-  const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
+  const branding = tenant ? resolveBranding(tenant, tenant.branding) : DEFAULT_BRANDING;
   const locale = await getLocale();
   const dict = await getDictionary(locale);
 
@@ -165,99 +177,72 @@ export default async function ProductDetailPage({
   const jsonLd = seo ? buildProductJsonLd(seo) : null;
 
   return (
-    <TenantTheme
-      branding={
-        branding ?? {
-          storeName: 'Store',
-          logoUrl: null,
-          primaryColor: '#3b3b3b',
-          secondaryColor: '#8a8a8a',
-          designTokens: null,
-        }
-      }
-      className="flex flex-1 flex-col"
-    >
-      <CartProvider>
-        {/* schema.org Product markup. Next.js's own guidance is to render
-            JSON-LD as a script tag in the component; JSON.stringify of a
-            server-built object cannot inject markup, and every value here
-            comes from this tenant's own already-sanitized product data.
-            Null when the product has no price — see buildProductJsonLd. */}
-        {jsonLd && (
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
-          />
-        )}
-        <div className="flex flex-1 flex-col">
-          {branding ? (
-            <StorefrontHeader
+    <CartProvider>
+      {/* schema.org Product markup. Next.js's own guidance is to render
+          JSON-LD as a script tag in the component; JSON.stringify of a
+          server-built object cannot inject markup, and every value here
+          comes from this tenant's own already-sanitized product data.
+          Null when the product has no price — see buildProductJsonLd. */}
+      {jsonLd && (
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
+        />
+      )}
+      <StorefrontHeader
+        branding={branding}
+        searchPlaceholder={dict.products.searchPlaceholder}
+        rightSlot={
+          <>
+            <Link href="/orders" className="btn-ghost">
+              <Icon name="box" size={18} />
+              {dict.common.myOrders}
+            </Link>
+            <CartWidget
               branding={branding}
-              backHref="/"
-              backLabel={dict.common.back}
-              rightSlot={
-                <>
-                  <Link
-                    href="/orders"
-                    className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
-                  >
-                    {dict.common.myOrders}
-                  </Link>
-                  <CartWidget
-                    availabilityByVariant={availabilityByVariant}
-                    enabledPaymentMethods={enabledPaymentMethods}
-                    enabledShippingMethods={enabledShippingMethods}
-                    privacyNoticeVersionId={privacyNotice?.id ?? null}
-                  />
-                </>
-              }
+              availabilityByVariant={availabilityByVariant}
+              enabledPaymentMethods={enabledPaymentMethods}
+              enabledShippingMethods={enabledShippingMethods}
+              privacyNoticeVersionId={privacyNotice?.id ?? null}
             />
-          ) : (
-            <div className="sticky top-0 z-10 flex items-center justify-between gap-2 border-b border-border bg-background/80 px-6 py-3">
-              <Link
-                href="/"
-                className="text-sm text-muted-foreground transition-colors hover:text-foreground"
-              >
-                {dict.common.backToStore}
-              </Link>
-              <div className="flex items-center gap-2">
-                <LocaleSwitcher />
-                <Link
-                  href="/orders"
-                  className="rounded-md border border-border px-3 py-1.5 text-sm transition-colors hover:bg-surface-muted"
-                >
-                  {dict.common.myOrders}
-                </Link>
-                <CartWidget
-                  availabilityByVariant={availabilityByVariant}
-                  enabledPaymentMethods={enabledPaymentMethods}
-                  enabledShippingMethods={enabledShippingMethods}
-                  privacyNoticeVersionId={privacyNotice?.id ?? null}
-                />
-              </div>
-            </div>
-          )}
-          <main className="px-4 py-10 sm:px-6 sm:py-14">
-            <ul className="mx-auto max-w-5xl">
-              <ProductRow product={product} linkToDetail={false} />
-            </ul>
+          </>
+        }
+      />
+      {/* Board 6: breadcrumb is its own row below the header, not a
+          header back-button — the header's backHref/backLabel are gone
+          from this page entirely (the breadcrumb's own "Quay lại" covers
+          that job, and showing the same action twice is noise). */}
+      <div className="flex items-center gap-2 text-sm">
+        <Link href="/" className="btn-ghost" style={{ minHeight: '36px', padding: '6px 12px' }}>
+          <Icon name="chevron" size={14} style={{ transform: 'rotate(180deg)' }} />
+          {dict.common.back}
+        </Link>
+        <span style={{ color: 'var(--ink-2)' }}>
+          <Link href="/" className="hover:underline">{dict.common.home}</Link>
+          {product.category && <> › {product.category}</>} › {product.name}
+        </span>
+      </div>
+      <main className="flex flex-col gap-10">
+        <ul>
+          <ProductRow product={product} linkToDetail={false} />
+        </ul>
 
-            {relatedProducts.length > 0 && (
-              <section className="mx-auto mt-16 max-w-5xl border-t border-border pt-10">
-                <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-                  {dict.products.keepBrowsing}
-                </p>
-                <h2 className="mt-1 text-xl font-semibold tracking-tight">{dict.products.youMightAlsoLike}</h2>
-                <ul className="mt-5 grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-5">
-                  {relatedProducts.map((related) => (
-                    <ProductRow key={related.id} product={related} />
-                  ))}
-                </ul>
-              </section>
-            )}
-          </main>
-        </div>
-      </CartProvider>
-    </TenantTheme>
+        {relatedProducts.length > 0 && (
+          <section className="flex flex-col gap-5 border-t pt-8" style={{ borderColor: 'var(--divider)' }}>
+            <div className="flex flex-col gap-1">
+              <span className="eyebrow">{dict.products.keepBrowsing}</span>
+              <h2 className="title-card" style={{ fontSize: '26px', margin: 0 }}>
+                {dict.products.youMightAlsoLike}
+              </h2>
+            </div>
+            <ul className="grid grid-cols-2 gap-3 sm:grid-cols-4 sm:gap-5">
+              {relatedProducts.map((related) => (
+                <ProductRow key={related.id} product={related} />
+              ))}
+            </ul>
+          </section>
+        )}
+      </main>
+    </CartProvider>
   );
 }

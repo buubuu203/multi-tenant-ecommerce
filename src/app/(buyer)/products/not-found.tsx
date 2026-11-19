@@ -1,4 +1,4 @@
-import { PlatformMessage } from "../_storefront/PlatformMessage";
+import { PlatformMessage } from "../../_storefront/PlatformMessage";
 
 // Reached via notFound() in [productId]/page.tsx for any of: nonexistent
 // id, a product belonging to another tenant, or a draft product — all

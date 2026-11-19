@@ -1,9 +1,8 @@
 import { OrderLookupForm } from '../OrderLookupForm';
 import Link from 'next/link';
-import { getCurrentTenant } from '../../_storefront/get-current-tenant';
-import { resolveBranding } from '../../_storefront/resolve-branding';
-import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
-import { TenantTheme } from '@/components/TenantTheme';
+import { getCurrentTenant } from '../../../_storefront/get-current-tenant';
+import { resolveBranding } from '../../../_storefront/resolve-branding';
+import { StorefrontHeader } from '../../../_storefront/StorefrontHeader';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { getLocale, getDictionary } from '@/lib/i18n';
 
@@ -31,49 +30,50 @@ export default async function OrderConfirmationPage({
   const locale = await getLocale();
   const dict = await getDictionary(locale);
 
-  const content = (
-    <div className="flex min-h-full flex-1 flex-col">
+  return (
+    <>
       {branding && (
         <StorefrontHeader
           branding={branding}
           backHref="/"
           backLabel={dict.common.back}
+          searchPlaceholder={dict.products.searchPlaceholder}
           rightSlot={
             <>
               <LocaleSwitcher />
-              <Link
-                href="/orders"
-                className="rounded-full border border-border px-3 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
-              >
+              <Link href="/orders" className="btn-ghost">
                 {dict.orders.trackAnotherOrder}
               </Link>
             </>
           }
         />
       )}
-      <main className="mx-auto flex w-full max-w-2xl flex-1 flex-col justify-center px-4 py-10 sm:px-6 sm:py-16">
-        <div className="rounded-2xl border border-border bg-surface p-5 shadow-sm sm:p-8">
+      <main className="flex w-full flex-1 flex-col items-center justify-center py-6">
+        <div
+          className="glass w-full max-w-2xl p-5 sm:p-8"
+          style={{ borderRadius: 'var(--radius-card)' }}
+        >
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium tracking-[0.18em] text-muted-foreground uppercase">
-              {dict.orders.orderAccess}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{dict.orders.viewYourOrder}</h1>
-            <p className="text-sm leading-6 text-muted-foreground">
+            <span className="eyebrow">{dict.orders.orderAccess}</span>
+            <h1 className="display-section" style={{ fontSize: 'clamp(24px, 4vw, 32px)', margin: 0 }}>
+              {dict.orders.viewYourOrder}
+            </h1>
+            <p className="text-sm leading-6" style={{ color: 'var(--ink-2)' }}>
               {dict.orders.viewOrderDescription}
             </p>
             <p
-              className="mt-1 truncate rounded-md bg-surface-muted px-3 py-2 font-mono text-xs text-muted-foreground"
+              className="mt-1 truncate px-3 py-2 font-mono text-xs"
+              style={{ borderRadius: 'var(--radius-field)', background: 'var(--field-fill)', color: 'var(--ink-2)' }}
               title={orderId}
             >
               {dict.orders.order} {orderId}
             </p>
           </div>
-          <div className="mt-7 border-t border-border pt-6">
+          <div className="mt-7 pt-6" style={{ borderTop: '1px solid var(--divider)' }}>
             <OrderLookupForm fixedOrderId={orderId} defaultEmail={prefillEmail} />
           </div>
         </div>
       </main>
-    </div>
+    </>
   );
-  return branding ? <TenantTheme branding={branding}>{content}</TenantTheme> : content;
 }

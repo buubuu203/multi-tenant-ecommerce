@@ -19,20 +19,28 @@ import {
 } from '../styles';
 import { StatusBadge } from '../StatusBadge';
 import { AdminPageHeader } from '../AdminPageHeader';
+import { getDictionary, getLocale } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
 
-// Matches BannerCarousel.tsx's rendered aspect ratios exactly, so what an
-// admin crops is exactly what a customer sees — never a mismatched ratio
-// that gets silently re-cropped again by the storefront's object-cover.
-const DESKTOP_ASPECT_RATIO = 21 / 9;
-const MOBILE_ASPECT_RATIO = 4 / 3;
-const DESKTOP_OUTPUT_WIDTH = 1400;
-const MOBILE_OUTPUT_WIDTH = 900;
+// Matches BannerCarousel.tsx's desktop (≥1024px) rendered aspect ratio
+// exactly — ImageCropModal renders to a canvas at exactly this ratio
+// (canvas.height = outputWidth / aspectRatio), so the uploaded output can
+// never deviate from 21:9 by construction. That's why there's no
+// separate ">10% off 21:9" warning check anywhere in this flow: the crop
+// step makes that case unreachable, which is a stronger guarantee than a
+// warning would be. (The storefront's <768px frame is a different ratio,
+// 16:10, but still fills via object-cover regardless of the source
+// image's exact ratio — no mismatch results from keeping one upload
+// ratio for both slots.)
+const BANNER_ASPECT_RATIO = 21 / 9;
+const DESKTOP_OUTPUT_WIDTH = 2520;
+const MOBILE_OUTPUT_WIDTH = 1260;
 
 export default async function BannersPage() {
   const { tenantId } = await requireTenantAdmin();
-  const banners = await listBanners(tenantId);
+  const [banners, locale] = await Promise.all([listBanners(tenantId), getLocale()]);
+  const dict = await getDictionary(locale);
 
   return (
     <div className={adminPageClassName}>
@@ -40,6 +48,7 @@ export default async function BannersPage() {
         title="Storefront banners"
         description="Shown as a carousel at the top of your storefront, in place of the default welcome banner. Only enabled banners appear, ordered by sort order (lowest first). The image is the whole banner — no text is overlaid, so use a photo that speaks for itself."
       />
+      <p className="text-sm text-muted-foreground">{dict.admin.bannerExistingImageNote}</p>
 
       {/* The one creating action on the page, kept collapsed so the
           banners a merchant already has stay the first thing read. */}
@@ -61,19 +70,19 @@ export default async function BannersPage() {
           <BannerImageUpload
             fieldName="imageUrl"
             variant="desktop"
-            aspectRatio={DESKTOP_ASPECT_RATIO}
+            aspectRatio={BANNER_ASPECT_RATIO}
             outputWidth={DESKTOP_OUTPUT_WIDTH}
             label="Desktop image"
-            helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger. Raster images are optimized and stored as WebP."
+            helpText={dict.admin.bannerDesktopHelp}
             required
           />
           <BannerImageUpload
             fieldName="mobileImageUrl"
             variant="mobile"
-            aspectRatio={MOBILE_ASPECT_RATIO}
+            aspectRatio={BANNER_ASPECT_RATIO}
             outputWidth={MOBILE_OUTPUT_WIDTH}
             label="Mobile image (optional)"
-            helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set. Raster images are optimized and stored as WebP."
+            helpText={dict.admin.bannerMobileHelp}
             removable
           />
           <label className={adminLabelClassName}>
@@ -144,21 +153,21 @@ export default async function BannersPage() {
                   <BannerImageUpload
                     fieldName="imageUrl"
                     variant="desktop"
-                    aspectRatio={DESKTOP_ASPECT_RATIO}
+                    aspectRatio={BANNER_ASPECT_RATIO}
                     outputWidth={DESKTOP_OUTPUT_WIDTH}
                     initialUrl={banner.imageUrl}
                     label="Desktop image"
-                    helpText="JPG, PNG, or WebP — max 8MB. Crops to 21:9. Shown on tablet and larger. Raster images are optimized and stored as WebP."
+                    helpText={dict.admin.bannerDesktopHelp}
                     required
                   />
                   <BannerImageUpload
                     fieldName="mobileImageUrl"
                     variant="mobile"
-                    aspectRatio={MOBILE_ASPECT_RATIO}
+                    aspectRatio={BANNER_ASPECT_RATIO}
                     outputWidth={MOBILE_OUTPUT_WIDTH}
                     initialUrl={banner.mobileImageUrl ?? undefined}
                     label="Mobile image (optional)"
-                    helpText="A separate crop for small screens (4:3). Falls back to the desktop image if not set. Raster images are optimized and stored as WebP."
+                    helpText={dict.admin.bannerMobileHelp}
                     removable
                   />
                 </div>

@@ -11,7 +11,7 @@ import { baseScaleFor, clampOffset, computeCropRect } from '@/lib/image-crop';
 // enough that a dependency would cost more in bundle size and long-term
 // maintenance than it saves — see the PR description for the full
 // bundle-size/security/maintenance comparison against react-easy-crop.
-const VIEWPORT_WIDTH = 480;
+const MAX_VIEWPORT_WIDTH = 480;
 
 export function ImageCropModal({
   file,
@@ -21,15 +21,20 @@ export function ImageCropModal({
   onConfirm,
 }: {
   file: File;
-  // width / height, e.g. 21/9 for desktop, 4/3 for mobile.
+  // Width / height, e.g. 16/9 for banners.
   aspectRatio: number;
   // Output canvas width in pixels; height is derived from aspectRatio.
   outputWidth: number;
   onCancel: () => void;
   onConfirm: (blob: Blob) => void;
 }) {
-  const viewportHeight = Math.round(VIEWPORT_WIDTH / aspectRatio);
+  const [viewportWidth, setViewportWidth] = useState(MAX_VIEWPORT_WIDTH);
+  const viewportHeight = viewportWidth / aspectRatio;
+  const viewportRef = useRef<HTMLDivElement | null>(null);
   const imgRef = useRef<HTMLImageElement | null>(null);
+  const naturalSizeRef = useRef<{ width: number; height: number } | null>(null);
+  const zoomRef = useRef(1);
+  const hasInteractedRef = useRef(false);
   // Created and revoked in the SAME effect, paired 1:1 — not split across
   // a useMemo (computing the URL) and a separate useEffect (revoking it).
   // That split let Strict Mode's dev-only double-invoke create a second
@@ -62,8 +67,46 @@ export function ImageCropModal({
   } | null>(null);
   const [confirming, setConfirming] = useState(false);
 
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (!viewport) return;
+
+    const observer = new ResizeObserver(([entry]) => {
+      if (!entry) return;
+      const width = Math.min(MAX_VIEWPORT_WIDTH, entry.contentRect.width);
+      setViewportWidth((current) => (current === width ? current : width));
+
+      const naturalSize = naturalSizeRef.current;
+      if (!naturalSize) return;
+      const height = width / aspectRatio;
+      const baseScale = baseScaleFor(width, height, naturalSize.width, naturalSize.height);
+      if (!hasInteractedRef.current) {
+        setZoom(1);
+        zoomRef.current = 1;
+        setOffset({
+          x: (width - naturalSize.width * baseScale) / 2,
+          y: (height - naturalSize.height * baseScale) / 2,
+        });
+      } else {
+        setOffset((previous) =>
+          clampOffset(
+            previous,
+            width,
+            height,
+            naturalSize.width,
+            naturalSize.height,
+            baseScale * zoomRef.current,
+          ),
+        );
+      }
+    });
+
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, [aspectRatio]);
+
   const baseScale = naturalSize
-    ? baseScaleFor(VIEWPORT_WIDTH, viewportHeight, naturalSize.width, naturalSize.height)
+    ? baseScaleFor(viewportWidth, viewportHeight, naturalSize.width, naturalSize.height)
     : 1;
   const scale = baseScale * zoom;
 
@@ -72,11 +115,12 @@ export function ImageCropModal({
     if (!img) return;
     const width = img.naturalWidth;
     const height = img.naturalHeight;
+    naturalSizeRef.current = { width, height };
     setNaturalSize({ width, height });
     // Center the image in the frame at the initial "cover" zoom.
-    const initialScale = baseScaleFor(VIEWPORT_WIDTH, viewportHeight, width, height);
+    const initialScale = baseScaleFor(viewportWidth, viewportHeight, width, height);
     setOffset({
-      x: (VIEWPORT_WIDTH - width * initialScale) / 2,
+      x: (viewportWidth - width * initialScale) / 2,
       y: (viewportHeight - height * initialScale) / 2,
     });
   }
@@ -85,7 +129,7 @@ export function ImageCropModal({
     if (!naturalSize) return next;
     return clampOffset(
       next,
-      VIEWPORT_WIDTH,
+      viewportWidth,
       viewportHeight,
       naturalSize.width,
       naturalSize.height,
@@ -94,6 +138,7 @@ export function ImageCropModal({
   }
 
   function handlePointerDown(e: React.PointerEvent) {
+    hasInteractedRef.current = true;
     (e.target as Element).setPointerCapture(e.pointerId);
     setDragging({ startX: e.clientX, startY: e.clientY, originX: offset.x, originY: offset.y });
   }
@@ -112,6 +157,8 @@ export function ImageCropModal({
   }
 
   function handleZoomChange(nextZoom: number) {
+    hasInteractedRef.current = true;
+    zoomRef.current = nextZoom;
     setZoom(nextZoom);
     setOffset((prev) => clamp(prev, baseScale * nextZoom));
   }
@@ -127,7 +174,7 @@ export function ImageCropModal({
     setConfirming(true);
     try {
       const rect = computeCropRect({
-        viewportWidth: VIEWPORT_WIDTH,
+        viewportWidth,
         viewportHeight,
         naturalWidth: naturalSize.width,
         naturalHeight: naturalSize.height,
@@ -174,7 +221,8 @@ export function ImageCropModal({
       <div className="flex w-full max-w-lg flex-col gap-4 rounded-lg bg-surface p-4">
         <div
           className="relative mx-auto touch-none overflow-hidden rounded-md bg-surface-muted"
-          style={{ width: VIEWPORT_WIDTH, height: viewportHeight, maxWidth: '100%' }}
+          style={{ width: '100%', maxWidth: MAX_VIEWPORT_WIDTH, aspectRatio }}
+          ref={viewportRef}
           onPointerDown={handlePointerDown}
           onPointerMove={handlePointerMove}
           onPointerUp={handlePointerUp}

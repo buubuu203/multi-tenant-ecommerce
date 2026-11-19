@@ -4,6 +4,7 @@ import { useLocale } from "@/lib/i18n/locale-context";
 import { setLocaleAction } from "@/lib/i18n/set-locale-action";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
+import { Icon } from "@/app/_storefront/Icon";
 
 export function LocaleSwitcher({ className }: { className?: string }) {
   const locale = useLocale();
@@ -22,10 +23,12 @@ export function LocaleSwitcher({ className }: { className?: string }) {
     <button
       onClick={toggle}
       disabled={pending}
-      className={`rounded-md border border-border px-2 py-1 text-xs font-medium transition-colors hover:bg-accent ${className ?? ""}`}
+      className={`btn-ghost ${className ?? ""}`}
+      style={{ minHeight: "44px" }}
       aria-label={locale === "vi" ? "Switch to English" : "Chuyển sang Tiếng Việt"}
     >
-      {pending ? "…" : locale === "vi" ? "EN" : "VI"}
+      <Icon name="globe" size={18} />
+      {pending ? "…" : locale === "vi" ? "VI" : "EN"}
     </button>
   );
 }

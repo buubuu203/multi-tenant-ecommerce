@@ -57,7 +57,35 @@ export default async function RootLayout({ children }: LayoutProps<'/'>) {
 
   return (
     <ClerkProvider signInUrl="/sign-in">
-      <html lang={locale} className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}>
+      <html
+        lang={locale}
+        className={`${beVietnamPro.variable} ${geistMono.variable} h-full antialiased`}
+        // The inline theme script below sets data-theme on this element
+        // directly, before hydration — by design, so a returning visitor
+        // never sees a one-frame flash of the wrong theme. That means
+        // this element's attributes legitimately differ between what the
+        // server rendered and what's in the DOM by the time React
+        // hydrates; suppressHydrationWarning (React's own documented
+        // escape hatch for exactly this pattern) tells React that's
+        // expected here, without silencing mismatches anywhere else.
+        suppressHydrationWarning
+      >
+        <head>
+          {/* Sets data-theme on <html> BEFORE hydration/paint, so a
+              returning visitor's saved light/dark/system choice never
+              flashes the wrong theme for one frame. Reads the same
+              localStorage key ThemeToggle.tsx writes; "system" (or
+              nothing saved yet) resolves via matchMedia and leaves
+              data-theme unset, so the existing
+              @media(prefers-color-scheme) CSS blocks (shared by
+              .admin-chrome and .storefront-glass) keep doing the work —
+              this script's only job is the explicit light/dark override. */}
+          <script
+            dangerouslySetInnerHTML={{
+              __html: `(function(){try{var m=localStorage.getItem('buyer-theme-mode');if(m==='light'||m==='dark'){document.documentElement.setAttribute('data-theme',m);}}catch(e){}})();`,
+            }}
+          />
+        </head>
         <body className="min-h-full flex flex-col">
           <LocaleProvider locale={locale}>
             <DictionaryProvider dictionary={dictionary}>

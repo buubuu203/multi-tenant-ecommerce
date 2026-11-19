@@ -1,18 +1,17 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useSearchParams } from 'next/navigation';
 import type { TenantProduct, TenantProductVariant } from './get-tenant-products';
 import { useCart } from './cart-context';
 import { ProductMediaCarousel } from './ProductMediaCarousel';
 import { compareByStartingPrice } from '@/lib/product-sort';
-import {
-  filterCatalogProducts,
-  paginateCatalogProducts,
-  STOREFRONT_PAGE_SIZE,
-} from '@/lib/product-catalog';
+import { filterCatalogProducts, STOREFRONT_PAGE_SIZE } from '@/lib/product-catalog';
 import { isLowStock } from '@/lib/inventory-availability';
 import { useDictionary } from '@/lib/i18n/use-dictionary';
+import { Icon } from './Icon';
+import { iconForCategory } from './category-icon';
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString('vi-VN')} ₫`;
@@ -202,7 +201,10 @@ export function ProductRow({
   const optionIds = useMemo(() => options.map((o) => o.variantOptionId), [options]);
   const [selection, setSelection] = useState<Record<string, string>>({});
   const [showAddedFeedback, setShowAddedFeedback] = useState(false);
-  const { items, addItem } = useCart();
+  // Board 6: a 1–99 quantity stepper on the PDP only — the grid card has
+  // no equivalent (it adds exactly 1, same as before).
+  const [pdpQuantity, setPdpQuantity] = useState(1);
+  const { items, addItem, requestCheckout } = useCart();
   const dict = useDictionary();
 
   useEffect(() => {
@@ -227,6 +229,11 @@ export function ProductRow({
     ? (items.find((i) => i.productVariantId === resolvedVariant.id)?.quantity ?? 0)
     : 0;
   const outOfStock = resolvedVariant ? resolvedVariant.available <= 0 : false;
+  // Card-level (grid) "Hết hàng" badge: unlike `outOfStock` above (which
+  // only knows about the currently-selected variant), the grid card has
+  // no selection at all — so this asks the stronger question "is every
+  // variant unavailable," using the exact same real availability data.
+  const productOutOfStock = product.variants.every((v) => v.available <= 0);
   const atAvailableLimit = resolvedVariant ? cartQuantity >= resolvedVariant.available : false;
 
   // Step 40: a third, separate concept from combination-existence (Step 25)
@@ -270,7 +277,7 @@ export function ProductRow({
     addToCartLabel = dict.products.selectOptions;
   }
 
-  function handleAddToCart() {
+  function handleAddToCart(options?: { quantity?: number; buyNow?: boolean }) {
     if (!resolvedVariant || outOfStock || atAvailableLimit) {
       // incomplete selection, unavailable combination, out of stock, or
       // already holding as much of this variant as is available — nothing
@@ -289,22 +296,32 @@ export function ProductRow({
           .map((o) => `${o.optionName}: ${o.valueLabel}`)
           .join(' / ')
       : '';
-    addItem({
-      productVariantId: resolvedVariant.id,
-      productId: product.id,
-      productName: product.name,
-      variantLabel,
-      price: resolvedVariant.price,
-      ...(resolvedVariant.originalPrice != null
-        ? {
-            originalPrice: resolvedVariant.originalPrice,
-            discountPercent: resolvedVariant.discountPercent ?? undefined,
-            discountAmount: resolvedVariant.discountAmount || undefined,
-          }
-        : {}),
-      imageUrl: primaryMedia?.url,
-    });
-    setShowAddedFeedback(true);
+    addItem(
+      {
+        productVariantId: resolvedVariant.id,
+        productId: product.id,
+        productName: product.name,
+        variantLabel,
+        price: resolvedVariant.price,
+        ...(resolvedVariant.originalPrice != null
+          ? {
+              originalPrice: resolvedVariant.originalPrice,
+              discountPercent: resolvedVariant.discountPercent ?? undefined,
+              discountAmount: resolvedVariant.discountAmount || undefined,
+            }
+          : {}),
+        imageUrl: primaryMedia?.url,
+      },
+      options?.quantity ?? 1,
+    );
+    if (options?.buyNow) {
+      // "Mua ngay" (Board 6): the item is already in the cart by the time
+      // this fires — requestCheckout() only tells CartWidget to open
+      // itself at the shipping step, it never adds anything itself.
+      requestCheckout();
+    } else {
+      setShowAddedFeedback(true);
+    }
   }
 
   // Step 50 (revised): variant options get their own labeled block on the
@@ -323,20 +340,14 @@ export function ProductRow({
         return (
           <label key={option.variantOptionId} className="flex flex-col gap-1">
             <span
-              className={
-                linkToDetail
-                  ? 'text-muted-foreground'
-                  : 'text-xs font-medium tracking-wide text-muted-foreground uppercase'
-              }
+              className={linkToDetail ? 'kicker' : 'kicker'}
+              style={linkToDetail ? { fontSize: '11px', textTransform: 'none' } : undefined}
             >
               {option.optionName}
             </span>
             <select
-              className={
-                linkToDetail
-                  ? 'rounded-md border border-border bg-background px-2 py-1 focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
-                  : 'w-full max-w-xs rounded-md border border-border bg-background px-3 py-2 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20'
-              }
+              className={linkToDetail ? 'field-glass' : 'field-glass w-full max-w-xs'}
+              style={linkToDetail ? { padding: '6px 10px', fontSize: '13px', minHeight: '32px' } : undefined}
               value={selection[option.variantOptionId] ?? ''}
               onChange={(e) =>
                 setSelection((prev) =>
@@ -362,20 +373,6 @@ export function ProductRow({
     </div>
   );
 
-  const addToCartButton = (
-    <button
-      type="button"
-      onClick={handleAddToCart}
-      disabled={!resolvedVariant || outOfStock || atAvailableLimit}
-      className={
-        linkToDetail
-          ? 'w-full rounded-md bg-foreground px-3 py-2 text-xs font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
-          : 'w-full max-w-xs rounded-md bg-foreground px-4 py-2.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40'
-      }
-    >
-      {showAddedFeedback ? dict.products.addedToCart : addToCartLabel}
-    </button>
-  );
 
   if (!linkToDetail) {
     // Step 50 (revised): a real two-column product detail layout — media
@@ -396,37 +393,37 @@ export function ProductRow({
           // ~1px line beside a squeezed text column — a product without
           // images looked broken rather than simply image-less.
           hasMedia
-            ? 'grid gap-8 sm:grid-cols-[minmax(0,1.05fr)_minmax(0,0.95fr)] sm:items-start lg:gap-12'
+            ? 'grid gap-8 sm:grid-cols-[minmax(0,1fr)_minmax(0,1.05fr)] sm:items-start lg:gap-12'
             : 'grid gap-8'
         }
       >
-        {hasMedia && (
-          <div className="overflow-hidden rounded-2xl border border-border bg-surface-muted shadow-sm">
-            <ProductMediaCarousel media={product.media} productName={product.name} />
-          </div>
-        )}
+        {hasMedia && <ProductMediaCarousel media={product.media} productName={product.name} />}
         <div className="flex min-w-0 flex-col gap-6">
           <div className="flex flex-col gap-2">
-            <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-              {dict.products.productDetails}
-            </p>
-            <h1 className="text-2xl font-semibold tracking-tight sm:text-3xl">{product.name}</h1>
+            {product.category && <span className="kicker">{product.category}</span>}
+            <h1 className="title-card" style={{ fontSize: '38px', margin: 0 }}>
+              {product.name}
+            </h1>
             <div className="flex flex-wrap items-baseline gap-2">
               {showDiscount && originalPriceDisplay && (
-                <span className="money text-sm text-muted-foreground line-through">
+                <span className="money text-sm line-through" style={{ color: 'var(--ink-2)' }}>
                   {originalPriceDisplay}
                 </span>
               )}
-              <span className="money text-xl font-semibold">{priceDisplay}</span>
+              <span className="money" style={{ fontSize: '20px', fontWeight: 700 }}>
+                {priceDisplay}
+              </span>
               {showDiscount && resolvedVariant && (
-                <span className="rounded-full bg-red-600 px-2 py-0.5 text-xs font-medium text-white">
+                <span className="off-pill">
                   {resolvedVariant.discountPercent != null
                     ? `−${resolvedVariant.discountPercent}%`
                     : `−${formatVnd(resolvedVariant.discountAmount)}`}
                 </span>
               )}
               {lowStockHint && (
-                <span className="text-xs text-muted-foreground">{lowStockHint}</span>
+                <span className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                  {lowStockHint}
+                </span>
               )}
             </div>
           </div>
@@ -439,27 +436,193 @@ export function ProductRow({
               the raw Product.description Markdown/any other string. */}
           {product.descriptionHtml && (
             <div
-              // Body copy stays on `foreground` (at 85%) rather than
-              // `muted-foreground`: muted computes to ~4.5:1 on the
-              // default surface, i.e. exactly the AA floor for normal
-              // text, and a tenant can override that token to anything.
-              // The product description is the main thing a buyer reads,
-              // so it should not sit on the threshold.
-              className="max-w-prose text-sm leading-7 text-foreground/85 [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
+              style={{ fontSize: '15px', lineHeight: 1.45, color: 'var(--ink-2)' }}
+              className="max-w-prose [&_a]:font-medium [&_a]:text-foreground [&_a]:underline [&_h1]:text-lg [&_h1]:font-semibold [&_h2]:text-base [&_h2]:font-semibold [&_h3]:text-sm [&_h3]:font-semibold [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3 [&_blockquote]:italic"
               dangerouslySetInnerHTML={{ __html: product.descriptionHtml }}
             />
           )}
 
           {optionsBlock}
 
-          <div className="pt-1">{addToCartButton}</div>
+          {/* SKU (Board 6 decision): only when the product actually has
+              ≥2 variants to tell apart — a single-variant product's SKU
+              (if it even set one) is never shown, since there's no
+              "which one" question for it to answer. Real field
+              (ProductVariant.sku), never invented. */}
+          {product.variants.length > 1 && resolvedVariant?.sku && (
+            <p className="text-xs" style={{ color: 'var(--ink-2)' }}>
+              SKU: {resolvedVariant.sku}
+            </p>
+          )}
+
+          <div className="flex flex-col gap-3 pt-1">
+            <div className="flex items-center gap-4">
+              <span className="field-label" style={{ margin: 0 }}>{dict.products.quantity}</span>
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setPdpQuantity((q) => Math.max(1, q - 1))}
+                  disabled={pdpQuantity <= 1}
+                  className="btn-ghost disabled:opacity-40"
+                  style={{ width: '44px', height: '44px', padding: 0, minHeight: '44px' }}
+                  aria-label="−"
+                >
+                  −
+                </button>
+                <span className="w-8 text-center text-sm">{pdpQuantity}</span>
+                <button
+                  type="button"
+                  onClick={() => setPdpQuantity((q) => Math.min(99, q + 1))}
+                  disabled={pdpQuantity >= 99 || (typeof resolvedVariant?.available === 'number' && pdpQuantity >= resolvedVariant.available)}
+                  className="btn-ghost disabled:opacity-40"
+                  style={{ width: '44px', height: '44px', padding: 0, minHeight: '44px' }}
+                  aria-label="+"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => handleAddToCart({ quantity: pdpQuantity })}
+                disabled={!resolvedVariant || outOfStock || atAvailableLimit}
+                className="btn-ghost"
+                style={{ minHeight: '52px', padding: '12px 20px', flex: 1 }}
+              >
+                <Icon name={showAddedFeedback ? 'check' : 'cart'} size={16} />
+                {showAddedFeedback ? dict.products.addedToCart : addToCartLabel}
+              </button>
+              <button
+                type="button"
+                onClick={() => handleAddToCart({ quantity: pdpQuantity, buyNow: true })}
+                disabled={!resolvedVariant || outOfStock || atAvailableLimit}
+                className="justify-center"
+                style={{
+                  flex: 1.2,
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: '6px',
+                  minHeight: '52px',
+                  borderRadius: 'var(--radius-pill)',
+                  // The single bold CTA on this page: same light-surface/
+                  // dark-text tokens as the grid card's "+ Giỏ" button —
+                  // --ink/--on-ink flip correctly in dark mode (ink
+                  // becomes the light color there), unlike the tenant
+                  // --accent token this used before, which could render
+                  // as a flat grey.
+                  background: 'var(--ink)',
+                  color: 'var(--on-ink)',
+                  fontWeight: 600,
+                  border: 0,
+                  cursor: 'pointer',
+                  opacity: !resolvedVariant || outOfStock || atAvailableLimit ? 0.4 : 1,
+                }}
+              >
+                {resolvedVariant
+                  ? dict.products.buyNowWithAmount.replace('{amount}', formatVnd(resolvedVariant.price * pdpQuantity))
+                  : addToCartLabel}
+              </button>
+            </div>
+          </div>
+
+          {/* Board 6: trust block lives IN the info column, right under
+              the buy row — not a full-width section under the gallery
+              (that left the right column ~400px of empty space below the
+              buttons). One glass block, 3 rows stacked, divider between
+              each, small 20px icon box on the left of each row. */}
+          <div className="glass flex flex-col" style={{ borderRadius: '28px' }}>
+            <div className="flex items-center gap-3" style={{ padding: '6px 18px' }}>
+              <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
+                <Icon name="truck" size={12} />
+              </span>
+              <div>
+                <b className="block text-[15px]">{dict.pdpTrust.shippingTitle}</b>
+                <div className="text-xs" style={{ color: 'var(--ink-2)' }}>{dict.pdpTrust.shippingHint}</div>
+              </div>
+            </div>
+            <div className="flex items-center gap-3" style={{ padding: '6px 18px', borderTop: '1px solid var(--divider)' }}>
+              <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
+                <Icon name="info" size={12} />
+              </span>
+              <div>
+                <b className="block text-[15px]">{dict.pdpTrust.policyTitle}</b>
+                <Link href="/policy" className="text-xs underline" style={{ color: 'var(--ink-2)' }}>
+                  {dict.pdpTrust.policyLink}
+                </Link>
+              </div>
+            </div>
+            <div className="flex items-center gap-3" style={{ padding: '6px 18px', borderTop: '1px solid var(--divider)' }}>
+              <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
+                <Icon name="wallet" size={12} />
+              </span>
+              <div>
+                <b className="block text-[15px]">{dict.pdpTrust.paymentTitle}</b>
+                <div className="text-xs" style={{ color: 'var(--ink-2)' }}>{dict.pdpTrust.paymentHint}</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Board 6 / Buyer-Mobile: sticky bottom buy bar, <768px only —
+            the full quantity/add-to-cart/trust block above still renders
+            in the normal flow on mobile too; this is purely an always-
+            reachable shortcut to "Mua ngay" while scrolling, same price
+            logic, no separate state. safe-area-inset-bottom so it never
+            sits under a phone's home-indicator gesture area. */}
+        <div
+          // display lives in the className (hidden/flex), never inline —
+          // an inline `style.display` would out-specificity `sm:hidden`
+          // and this bar would show at every width regardless (that
+          // exact bug, caught in the 1710px screenshot, is why this
+          // comment exists).
+          className="hidden items-center gap-3 glass max-sm:flex"
+          style={{
+            position: 'fixed',
+            left: 0,
+            right: 0,
+            bottom: 0,
+            zIndex: 30,
+            borderRadius: '24px 24px 0 0',
+            padding: '12px 16px calc(12px + env(safe-area-inset-bottom))',
+          }}
+        >
+          <span className="money font-semibold" style={{ fontSize: '18px' }}>
+            {resolvedVariant ? formatVnd(resolvedVariant.price * pdpQuantity) : priceDisplay}
+          </span>
+          <button
+            type="button"
+            onClick={() => handleAddToCart({ quantity: pdpQuantity, buyNow: true })}
+            disabled={!resolvedVariant || outOfStock || atAvailableLimit}
+            className="justify-center"
+            style={{
+              flex: 1,
+              display: 'inline-flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '6px',
+              minHeight: '48px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--ink)',
+              color: 'var(--on-ink)',
+              fontWeight: 600,
+              border: 0,
+              cursor: 'pointer',
+              opacity: !resolvedVariant || outOfStock || atAvailableLimit ? 0.4 : 1,
+            }}
+          >
+            {dict.products.buyNow}
+          </button>
         </div>
       </li>
     );
   }
 
   return (
-    <li className="group flex flex-col gap-3 rounded-2xl border border-border bg-surface p-3 text-sm shadow-sm transition-shadow hover:shadow-md">
+    <li
+      className="glass group flex flex-col gap-3 p-3 text-sm"
+      style={{ borderRadius: 'var(--radius-tile)' }}
+    >
       {/* Step 50: on the product list card show only the primary (first)
           media item as a thumbnail, linked to the detail page — the full
           carousel belongs on the detail page itself, where every media
@@ -471,28 +634,51 @@ export function ProductRow({
           different height and shape from their neighbours — the grid
           looked broken rather than the product looking image-less. The
           placeholder says which it is. */}
-      <Link
-        href={`/products/${product.id}`}
-        className="block overflow-hidden rounded-xl bg-surface-muted"
-      >
-        {primaryMedia ? (
-          <MediaThumbnail media={primaryMedia} alt={product.name} />
-        ) : (
-          <div className="flex aspect-square w-full items-center justify-center rounded-md text-xs text-muted-foreground">
-            {dict.products.noImage}
-          </div>
-        )}
-      </Link>
+      <div className="relative" style={{ opacity: productOutOfStock ? 0.55 : 1 }}>
+        <Link
+          href={`/products/${product.id}`}
+          className="block overflow-hidden"
+          style={{ borderRadius: 'var(--radius-list)' }}
+        >
+          {primaryMedia ? (
+            <MediaThumbnail media={primaryMedia} alt={product.name} />
+          ) : (
+            <div
+              className="flex aspect-square w-full flex-col items-center justify-center gap-1 text-center text-xs"
+              style={{
+                color: 'var(--ink-3)',
+                background: 'repeating-linear-gradient(135deg, var(--chip-fill) 0 10px, var(--field-fill) 10px 20px)',
+                border: '1.5px dashed var(--chip-border)',
+                borderRadius: 'var(--radius-list)',
+              }}
+            >
+              <span>{dict.products.noImage}</span>
+              {product.category && <span>{product.category}</span>}
+            </div>
+          )}
+        </Link>
+        {productOutOfStock ? (
+          <span className="badge-corner out">{dict.products.outOfStock}</span>
+        ) : showDiscount && resolvedVariant ? (
+          <span className="badge-corner sale">
+            {resolvedVariant.discountPercent != null
+              ? `-${resolvedVariant.discountPercent}%`
+              : `-${formatVnd(resolvedVariant.discountAmount)}`}
+          </span>
+        ) : null}
+      </div>
 
       <div className="flex flex-col gap-1">
         {product.category && (
-          <span className="w-fit rounded-full bg-surface-muted px-2 py-0.5 text-[10px] text-muted-foreground">
+          <span className="kicker flex items-center gap-1">
+            <Icon name={iconForCategory(product.category)} size={13} />
             {product.category}
           </span>
         )}
         <Link
           href={`/products/${product.id}`}
-          className="line-clamp-2 font-medium transition-colors group-hover:text-muted-foreground hover:underline"
+          className="title-card line-clamp-2 transition-opacity group-hover:opacity-70"
+          style={{ fontSize: '16px', minHeight: '44px' }}
         >
           {product.name}
         </Link>
@@ -504,56 +690,122 @@ export function ProductRow({
               currency symbol. */}
           <div className="flex min-w-0 flex-wrap items-baseline gap-x-1.5 gap-y-1">
             {showDiscount && originalPriceDisplay && (
-              <span className="money text-xs whitespace-nowrap text-muted-foreground line-through">
+              <span
+                className="money text-xs whitespace-nowrap line-through"
+                style={{ color: 'var(--ink-2)' }}
+              >
                 {originalPriceDisplay}
               </span>
             )}
-            <span className="money text-base font-semibold whitespace-nowrap">{priceDisplay}</span>
+            <span className="money ui-text whitespace-nowrap">{priceDisplay}</span>
             {showDiscount && resolvedVariant && (
-              <span className="rounded-full bg-red-600 px-1.5 py-0.5 text-[10px] font-medium text-white">
+              <span className="off-pill">
                 {resolvedVariant.discountPercent != null
                   ? `−${resolvedVariant.discountPercent}%`
                   : `−${formatVnd(resolvedVariant.discountAmount)}`}
               </span>
             )}
           </div>
-          {lowStockHint && <span className="text-xs text-muted-foreground">{lowStockHint}</span>}
+          {lowStockHint && (
+            <span className="text-xs" style={{ color: 'var(--ink-2)' }}>
+              {lowStockHint}
+            </span>
+          )}
         </div>
       </div>
 
-      {/* Card teaser: plain-text excerpt (tags stripped from the already-
-          sanitized HTML) — a line-clamped card has no room for real
-          Markdown formatting, so this is deliberately not the same
-          dangerouslySetInnerHTML block as the PDP's full description. */}
-      {product.descriptionExcerpt && (
-        <p className="line-clamp-2 text-xs text-muted-foreground">{product.descriptionExcerpt}</p>
-      )}
-
-      {/* The card is for BROWSING, not buying. Choosing a variant and
-          adding to the cart happen on the detail page, where the shopper
-          can see every image, the full description and which options are
-          actually available. Letting them buy from here meant committing
-          before any of that was on screen — and on a multi-variant
-          product it meant picking a variant from a cramped select with
-          no picture of what they were picking. */}
-      <Link
-        href={`/products/${product.id}`}
-        className="mt-1 w-full rounded-md bg-foreground px-3 py-2 text-center text-xs font-medium text-background transition-opacity hover:opacity-90"
-      >
-        {dict.products.viewDetails}
-      </Link>
+      {/* Board 5 card redesign: just category/name/price + one CTA, no
+          description and no separate "Xem chi tiết" — the image and name
+          above are the way into the PDP now. A single-variant product
+          adds straight to cart (tick feedback via showAddedFeedback,
+          same as the PDP's own button); a multi-variant product has
+          nothing to add yet, so this is a plain link to the PDP to pick
+          one — never a disabled dead-end button. Solid ink, not the
+          tenant accent — a deliberate board decision for this control. */}
+      <div className="mt-1 flex justify-end">
+        {simpleVariant ? (
+          <button
+            type="button"
+            onClick={() => handleAddToCart()}
+            disabled={outOfStock || atAvailableLimit}
+            aria-label={dict.products.addToCart}
+            className="justify-center"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              minHeight: '40px',
+              padding: '8px 14px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--ink)',
+              color: 'var(--on-ink)',
+              fontSize: '13px',
+              fontWeight: 600,
+              border: 0,
+              cursor: 'pointer',
+              opacity: outOfStock || atAvailableLimit ? 0.4 : 1,
+            }}
+          >
+            <Icon name={showAddedFeedback ? 'check' : 'plus'} size={16} />
+            {dict.products.addToCartShort}
+          </button>
+        ) : (
+          <Link
+            href={`/products/${product.id}`}
+            className="justify-center"
+            style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              minHeight: '40px',
+              padding: '8px 14px',
+              borderRadius: 'var(--radius-pill)',
+              background: 'var(--ink)',
+              color: 'var(--on-ink)',
+              fontSize: '13px',
+              fontWeight: 600,
+            }}
+          >
+            <Icon name="plus" size={16} />
+            {dict.products.addToCartShort}
+          </Link>
+        )}
+      </div>
     </li>
   );
 }
 
 type SortOption = 'featured' | 'price_asc' | 'price_desc';
 
-export function ProductList({ products }: { products: TenantProduct[] }) {
+// useSearchParams() (reading the header's ?q= search) requires a Suspense
+// boundary somewhere above it in the App Router — this wrapper is that
+// boundary, not a loading-state design choice; the fallback is null
+// because every caller already renders this inside a page that's
+// force-dynamic, so there's no meaningfully different "loading" look.
+export function ProductList(props: { products: TenantProduct[] }) {
+  return (
+    <Suspense fallback={null}>
+      <ProductListInner {...props} />
+    </Suspense>
+  );
+}
+
+function ProductListInner({ products }: { products: TenantProduct[] }) {
   const [sort, setSort] = useState<SortOption>('featured');
-  const [query, setQuery] = useState('');
   const [category, setCategory] = useState('');
-  const [page, setPage] = useState(1);
+  // Board 5: "Xem thêm N sản phẩm" / "Đang xem X trong Y" — a load-more
+  // pattern, not classic prev/next pagination. visibleCount accumulates;
+  // it never shrinks except when the filtered set itself changes (a new
+  // search/category/search-term query is a new result set, not "more of
+  // the old one").
+  const [visibleState, setVisibleState] = useState({ resultsKey: '', count: STOREFRONT_PAGE_SIZE });
+  const [sortOpen, setSortOpen] = useState(false);
   const dict = useDictionary();
+  // Board 5: search now lives in the header (SearchBox.tsx), driving the
+  // `?q=` URL param — this reads it rather than owning its own input, so
+  // there's exactly one search box on the page, not two.
+  const searchParams = useSearchParams();
+  const query = searchParams.get('q') ?? '';
   const sortLabels: Record<SortOption, string> = {
     featured: dict.products.sortFeatured,
     price_asc: dict.products.sortPriceLowHigh,
@@ -578,117 +830,134 @@ export function ProductList({ products }: { products: TenantProduct[] }) {
     const withDirection: 1 | -1 = sort === 'price_asc' ? 1 : -1;
     return [...filteredProducts].sort((a, b) => compareByStartingPrice(a, b, withDirection));
   }, [filteredProducts, sort]);
-  const paginated = paginateCatalogProducts(sortedProducts, page, STOREFRONT_PAGE_SIZE);
+
+  // A new result set (different query/category/sort) always starts back
+  // at the first page's worth — otherwise switching category chips could
+  // leave visibleCount at, say, 60 and dump 60 cards of a totally
+  // different filtered set on screen at once. Reset-during-render (the
+  // resultsKey mismatch below), not an effect: this is "adjusting state
+  // when a prop changes," which React's own docs single out as the one
+  // case that belongs in render, not in an effect.
+  const resultsKey = `${query}\u0000${category}\u0000${sort}`;
+  const visibleCount = visibleState.resultsKey === resultsKey ? visibleState.count : STOREFRONT_PAGE_SIZE;
+  if (visibleState.resultsKey !== resultsKey) {
+    setVisibleState({ resultsKey, count: STOREFRONT_PAGE_SIZE });
+  }
+
+  const visibleProducts = sortedProducts.slice(0, visibleCount);
+  const hasMore = visibleCount < sortedProducts.length;
 
   if (products.length === 0) {
     return null;
   }
 
   return (
-    <section className="flex flex-col gap-5 px-4 py-10 sm:px-6 sm:py-16">
-      <div className="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-muted-foreground">
-            {dict.products.shopTheCollection}
-          </p>
-          <h2 className="mt-1 text-xl font-semibold tracking-tight">{dict.products.products}</h2>
+    <section className="flex flex-col gap-5 py-4">
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div className="flex flex-col gap-1">
+          <span className="eyebrow">{dict.products.shopTheCollection}</span>
+          <h2 className="display-section" style={{ fontSize: 'clamp(26px, 4vw, 36px)', margin: 0 }}>
+            {dict.products.products}
+          </h2>
         </div>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          {dict.products.sortBy}
-          <select
-            value={sort}
-            onChange={(e) => setSort(e.target.value as SortOption)}
-            aria-label={dict.products.sortBy}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-          >
-            {(Object.entries(sortLabels) as [SortOption, string][]).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
+        <div className="flex items-center gap-2.5">
+          <span className="hint text-sm" style={{ color: 'var(--ink-2)' }}>
+            {dict.products.productCount.replace('{count}', String(sortedProducts.length))}
+          </span>
+          <div className="relative">
+            <button
+              type="button"
+              className="btn-ghost"
+              onClick={() => setSortOpen((v) => !v)}
+              aria-haspopup="listbox"
+              aria-expanded={sortOpen}
+            >
+              <Icon name="sort" size={16} />
+              {dict.products.sortBy}: {sortLabels[sort]}
+            </button>
+            {sortOpen && (
+              <ul
+                role="listbox"
+                className="glass absolute right-0 z-10 mt-1 flex flex-col gap-1 p-1.5"
+                style={{ borderRadius: 'var(--radius-field)', minWidth: '200px' }}
+              >
+                {(Object.entries(sortLabels) as [SortOption, string][]).map(([value, label]) => (
+                  <li key={value} role="option" aria-selected={sort === value}>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSort(value);
+                        setSortOpen(false);
+                      }}
+                      className="option-row w-full text-left"
+                      style={{ border: 0, background: sort === value ? 'var(--field-fill-focus)' : 'transparent' }}
+                    >
+                      {label}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        </div>
       </div>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-        <label className="flex min-w-0 flex-1 flex-col gap-1 text-xs text-muted-foreground">
-          {dict.products.searchProducts}
-          <input
-            type="search"
-            value={query}
-            onChange={(event) => {
-              setQuery(event.target.value);
-              setPage(1);
-            }}
-            placeholder={dict.products.searchPlaceholder}
-            aria-label={dict.products.searchProducts}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
-          />
-        </label>
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          {dict.products.filterByCategory}
-          <select
-            value={category}
-            onChange={(event) => {
-              setCategory(event.target.value);
-              setPage(1);
-            }}
-            aria-label={dict.products.filterByCategory}
-            className="rounded-lg border border-border bg-background px-3 py-2 text-sm text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
+
+      <div
+        className="glass flex flex-col gap-3 p-4"
+        style={{ borderRadius: 'var(--radius-card)' }}
+      >
+        <div className="flex flex-wrap items-center gap-2" role="group" aria-label={dict.products.filterByCategory}>
+          <button
+            type="button"
+            onClick={() => setCategory('')}
+            className={category === '' ? 'chip chip-solid' : 'chip'}
+            style={{ minHeight: '44px' }}
           >
-            <option value="">{dict.products.allCategories}</option>
-            {categories.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
-            ))}
-          </select>
-        </label>
+            <Icon name="tag" size={15} />
+            {dict.products.allCategories}
+          </button>
+          {categories.map((option) => (
+            <button
+              key={option}
+              type="button"
+              onClick={() => setCategory(option)}
+              className={category === option ? 'chip chip-solid' : 'chip'}
+              style={{ minHeight: '44px' }}
+            >
+              <Icon name={iconForCategory(option)} size={15} />
+              {option}
+            </button>
+          ))}
+        </div>
       </div>
-      {paginated.totalCount === 0 ? (
-        <p className="py-8 text-center text-sm text-muted-foreground">
+
+      {sortedProducts.length === 0 ? (
+        <p className="py-8 text-center text-sm" style={{ color: 'var(--ink-2)' }}>
           {dict.products.noMatchingProducts}
         </p>
       ) : (
         <>
-          <p className="text-xs text-muted-foreground" role="status">
-            {dict.products.showingProducts
-              .replace('{start}', String(paginated.start))
-              .replace('{end}', String(paginated.end))
-              .replace('{total}', String(paginated.totalCount))}
-          </p>
           <ul className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-5 lg:grid-cols-4">
-            {paginated.items.map((product) => (
+            {visibleProducts.map((product) => (
               <ProductRow key={product.id} product={product} />
             ))}
           </ul>
-          {paginated.totalPages > 1 && (
-            <nav
-              aria-label={dict.products.pagination}
-              className="flex items-center justify-between gap-3 text-xs text-muted-foreground"
-            >
-              <span>
-                {dict.products.pageIndicator
-                  .replace('{current}', String(paginated.page))
-                  .replace('{total}', String(paginated.totalPages))}
+          {hasMore && (
+            <nav aria-label={dict.products.pagination} className="flex flex-col items-center gap-2 py-2">
+              <button
+                type="button"
+                className="btn-ghost"
+                style={{ padding: '12px 28px' }}
+                onClick={() => setVisibleState({ resultsKey, count: visibleCount + STOREFRONT_PAGE_SIZE })}
+              >
+                {dict.products.showMore.replace('{count}', String(sortedProducts.length - visibleCount))}
+              </button>
+              <span className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                {dict.products.showingProducts
+                  .replace('{start}', '1')
+                  .replace('{end}', String(visibleProducts.length))
+                  .replace('{total}', String(sortedProducts.length))}
               </span>
-              <div className="flex gap-2">
-                <button
-                  type="button"
-                  disabled={paginated.page <= 1}
-                  onClick={() => setPage(paginated.page - 1)}
-                  className="rounded-md border border-border px-3 py-1.5 transition-colors enabled:hover:bg-surface-muted disabled:opacity-40"
-                >
-                  {dict.products.previousPage}
-                </button>
-                <button
-                  type="button"
-                  disabled={paginated.page >= paginated.totalPages}
-                  onClick={() => setPage(paginated.page + 1)}
-                  className="rounded-md border border-border px-3 py-1.5 transition-colors enabled:hover:bg-surface-muted disabled:opacity-40"
-                >
-                  {dict.products.nextPage}
-                </button>
-              </div>
             </nav>
           )}
         </>

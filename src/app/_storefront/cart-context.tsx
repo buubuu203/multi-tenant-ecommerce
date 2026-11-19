@@ -84,6 +84,17 @@ type CartContextValue = {
    * for the charge regardless (createOrder() re-reads price itself).
    */
   replacePrices: (items: CartItem[]) => void;
+  /**
+   * "Mua ngay" (Board 6): a product page adds its item then calls this to
+   * tell CartWidget to open itself already on the "shipping" step, rather
+   * than CartWidget polling cart state for "did something just get added
+   * with intent to buy now." `token` only ever increments — CartWidget
+   * watches IT (not a boolean) so two consecutive "Mua ngay" clicks each
+   * re-open/re-focus the modal, even though the step they request is the
+   * same both times.
+   */
+  requestCheckoutOpen: { token: number } | null;
+  requestCheckout: () => void;
 };
 
 const CartContext = createContext<CartContextValue | null>(null);
@@ -195,8 +206,23 @@ export function CartProvider({ children }: { children: React.ReactNode }) {
 
   const itemCount = items.reduce((sum, i) => sum + i.quantity, 0);
 
+  const [requestCheckoutOpen, setRequestCheckoutOpen] = useState<{ token: number } | null>(null);
+  const requestCheckout = () => setRequestCheckoutOpen((prev) => ({ token: (prev?.token ?? 0) + 1 }));
+
   return (
-    <CartContext.Provider value={{ items, itemCount, addItem, updateQuantity, removeItem, clearCart, replacePrices }}>
+    <CartContext.Provider
+      value={{
+        items,
+        itemCount,
+        addItem,
+        updateQuantity,
+        removeItem,
+        clearCart,
+        replacePrices,
+        requestCheckoutOpen,
+        requestCheckout,
+      }}
+    >
       {children}
     </CartContext.Provider>
   );

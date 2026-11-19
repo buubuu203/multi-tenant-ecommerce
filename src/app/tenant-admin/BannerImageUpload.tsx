@@ -17,8 +17,8 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 // surrounding ActionForm never sees a raw File, only the resulting Blob
 // URL, submitted alongside the banner's other fields. Reused for both the
 // desktop (required) and mobile (optional) image slots via `variant`/
-// `fieldName` — the two slots differ only in their crop aspect ratio and
-// whether an empty result is a valid, submittable state.
+// `fieldName` — both slots use the same crop ratio; only their output
+// width and whether an empty result is valid differ.
 //
 // Crop-before-upload (V1): selecting a file opens ImageCropModal instead
 // of uploading immediately — only the CROPPED output (a JPEG Blob) is
@@ -85,9 +85,17 @@ export function BannerImageUpload({
       <input type="hidden" name={fieldName} value={url} />
       {url ? (
         // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
-        <img src={url} alt="" className="h-24 w-full rounded-md border border-border object-cover" />
+        <img
+          src={url}
+          alt=""
+          className="w-full rounded-md border border-border object-cover"
+          style={{ aspectRatio }}
+        />
       ) : (
-        <div className="flex h-24 w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground">
+        <div
+          className="flex w-full items-center justify-center rounded-md border border-dashed border-border text-xs text-muted-foreground"
+          style={{ aspectRatio }}
+        >
           No image
         </div>
       )}

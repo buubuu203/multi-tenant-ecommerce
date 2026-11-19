@@ -32,6 +32,23 @@ export function tenantThemeStyle(branding: ResolvedBranding): ThemeStyle {
   return style;
 }
 
+/**
+ * The storefront "glass" skin's one per-tenant hook: --accent/--accent-2
+ * always come from this tenant's own branding (resolveBranding() already
+ * falls back through an uploaded token, then branding.primaryColor/
+ * secondaryColor, then the platform default) — never the demo's own
+ * hardcoded color. --accent-on is fixed white; every primaryColor this
+ * app accepts today is a saturated, mid-to-dark brand color, same
+ * assumption resolveBranding()'s existing inline usages already make.
+ */
+export function tenantAccentStyle(branding: ResolvedBranding): ThemeStyle {
+  return {
+    '--accent': branding.primaryColor,
+    '--accent-2': branding.secondaryColor,
+    '--accent-on': '#ffffff',
+  };
+}
+
 export function TenantTheme({
   branding,
   children,
@@ -42,7 +59,11 @@ export function TenantTheme({
   className?: string;
 }) {
   return (
-    <div data-tenant-theme className={className} style={tenantThemeStyle(branding)}>
+    <div
+      data-tenant-theme
+      className={className}
+      style={{ ...tenantThemeStyle(branding), ...tenantAccentStyle(branding) }}
+    >
       {children}
     </div>
   );

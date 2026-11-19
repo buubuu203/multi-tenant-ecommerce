@@ -490,9 +490,15 @@ test('empty states say what to do next, not only that nothing is there', () => {
   assert.match(catalog, /No variant options yet/);
 });
 
-test('storefront banners are constrained to a readable desktop width', () => {
+test('storefront banners and admin crops use a consistent 16:9 ratio', () => {
   const carousel = readCode('src/app/_storefront/BannerCarousel.tsx');
-  assert.match(carousel, /mx-auto aspect-\[4\/3\] w-full max-w-4xl/);
+  assert.match(carousel, /aspect-video/);
+  assert.doesNotMatch(carousel, /aspect-\[4\/3\]|aspect-\[21\/9\]/);
+
+  const admin = readCode('src/app/tenant-admin/banners/page.tsx');
+  assert.match(admin, /BANNER_ASPECT_RATIO = 16 \/ 9/);
+  assert.match(admin, /DESKTOP_OUTPUT_WIDTH = 1440/);
+  assert.match(admin, /MOBILE_OUTPUT_WIDTH = 960/);
 });
 
 test('the shipping amount field names its currency and its zero case', () => {

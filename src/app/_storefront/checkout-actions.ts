@@ -71,6 +71,59 @@ export type CheckoutShippingInput = {
  * approved pay-after design, unchanged since Step 48. Payment initiation
  * failing never rolls the order back.
  */
+// Translates the stable, English error CODES createOrder() (order-mutations.ts)
+// returns into the current locale's buyer-facing string. order-mutations.ts
+// has no dictionary/locale access (it's a plain lib function, not a server
+// action), so every one of its error returns is a code, never prose — this
+// is the one place that turns a code into words, same pattern already
+// established for "privacyConsentRequired"/"privacyNoticeChanged" before
+// this pass. Most of these codes can only be reached here if client-side
+// validation (CartWidget.tsx's own validate(), same dict.validation.*
+// strings) was somehow bypassed — the common, expected path is the client
+// catching these first with inline per-field styling, this is the backstop.
+type Dict = Awaited<ReturnType<typeof getDictionary>>;
+function translateOrderErrorCode(code: string, dict: Dict): string {
+  switch (code) {
+    case "privacyConsentRequired":
+      return dict.checkout.privacyConsentRequired;
+    case "privacyNoticeChanged":
+      return dict.privacy.errors.checkoutNoticeChanged;
+    case "orderCreationFailed":
+      return dict.checkout.orderCreationFailed;
+    case "invalidPaymentMethod":
+      return dict.checkout.invalidPaymentMethod;
+    case "nameRequired":
+      return dict.validation.nameRequired;
+    case "emailInvalid":
+      return dict.validation.emailRequired;
+    case "phoneRequired":
+    case "phoneInvalid":
+      return dict.validation.phoneRequired;
+    case "addressRequired":
+      return dict.validation.addressRequired;
+    case "wardRequired":
+      return dict.validation.wardRequired;
+    case "cityRequired":
+      return dict.validation.cityRequired;
+    case "cartEmpty":
+      return dict.checkout.cartEmpty;
+    case "invalidItem":
+      return dict.checkout.invalidItem;
+    case "invalidQuantity":
+      return dict.checkout.invalidQuantity;
+    case "shippingMethodUnavailable":
+      return dict.checkout.noShippingMethod;
+    case "paymentMethodUnavailable":
+      return dict.checkout.noPaymentMethod;
+    default:
+      // Unknown code: still better than leaking an untranslated code string
+      // to the buyer — the actual code is in the server log already (see
+      // order-mutations.ts's console.error), so nothing is lost for
+      // debugging by falling back to the generic message here.
+      return dict.checkout.orderCreationFailed;
+  }
+}
+
 export async function checkoutAction(
   items: CheckoutItemInput[],
   paymentMethod: string,
@@ -82,10 +135,11 @@ export async function checkoutAction(
   privacyNoticeVersionId?: string | null,
   privacyConsentAccepted?: boolean,
 ): Promise<ActionResult<{ orderId: string; instructions: PaymentInstructions }>> {
+  const dict = await getDictionary(await getLocale());
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
-    return { success: false, error: "Store not found." };
+    return { success: false, error: dict.checkout.storeNotFound };
   }
 
   const currentPrivacyNotice = await getCurrentPrivacyNotice(tenantId);
@@ -93,14 +147,12 @@ export async function checkoutAction(
     !currentPrivacyNotice ||
     !isCurrentPrivacyNoticeVersion(currentPrivacyNotice.id, privacyNoticeVersionId)
   ) {
-    const dict = await getDictionary(await getLocale());
     return {
       success: false,
       error: dict.privacy.errors.checkoutNoticeChanged,
     };
   }
   if (!privacyConsentAccepted) {
-    const dict = await getDictionary(await getLocale());
     return { success: false, error: dict.checkout.privacyConsentRequired };
   }
 
@@ -139,15 +191,7 @@ export async function checkoutAction(
     privacyConsentAccepted,
   );
   if (!result.success) {
-    if (result.error === "privacyConsentRequired") {
-      const dict = await getDictionary(await getLocale());
-      return { success: false, error: dict.checkout.privacyConsentRequired };
-    }
-    if (result.error === "privacyNoticeChanged") {
-      const dict = await getDictionary(await getLocale());
-      return { success: false, error: dict.privacy.errors.checkoutNoticeChanged };
-    }
-    return result;
+    return { success: false, error: translateOrderErrorCode(result.error, dict) };
   }
 
   const total =
@@ -204,7 +248,8 @@ export async function getCurrentCartPrices(
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
-    return { success: false, error: "Store not found." };
+    const dict = await getDictionary(await getLocale());
+    return { success: false, error: dict.checkout.storeNotFound };
   }
 
   const variantIds = [...new Set(items.map((item) => item.productVariantId))];
@@ -245,7 +290,8 @@ export async function validateVoucherAction(
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
   if (!tenantId) {
-    return { success: false, error: "Store not found." };
+    const dict = await getDictionary(await getLocale());
+    return { success: false, error: dict.checkout.storeNotFound };
   }
 
   let enrichedItems: CartItemForVoucher[] | undefined;

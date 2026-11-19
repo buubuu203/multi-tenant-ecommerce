@@ -3,6 +3,7 @@ import type { ActionResult } from './action-result';
 import type { DesignTokenConfig } from './design-tokens';
 
 const URL_PATTERN = /^https?:\/\//i;
+const HTTPS_URL_PATTERN = /^https:\/\//i;
 const HEX_COLOR_PATTERN = /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i;
 
 export type BrandingInput = {
@@ -16,6 +17,17 @@ export type BrandingInput = {
   bankName?: string;
   bankAccountNumber?: string;
   bankAccountHolder?: string;
+  // Storefront footer contact/legal block (UI/UX revamp, Board 5) — same
+  // "plain text, trim to null" posture as every other field here. The
+  // footer hides each line individually when its field is null, never
+  // shows a placeholder.
+  address?: string;
+  phone?: string;
+  contactEmail?: string;
+  businessId?: string;
+  facebookUrl?: string;
+  tiktokUrl?: string;
+  zaloUrl?: string;
 };
 
 /**
@@ -90,6 +102,13 @@ export async function updateBranding(
     ...(input.bankAccountHolder !== undefined
       ? { bankAccountHolder: trimToNull(input.bankAccountHolder) }
       : {}),
+    ...(input.address !== undefined ? { address: trimToNull(input.address) } : {}),
+    ...(input.phone !== undefined ? { phone: trimToNull(input.phone) } : {}),
+    ...(input.contactEmail !== undefined ? { contactEmail: trimToNull(input.contactEmail) } : {}),
+    ...(input.businessId !== undefined ? { businessId: trimToNull(input.businessId) } : {}),
+    ...(input.facebookUrl !== undefined ? { facebookUrl: trimToNull(input.facebookUrl) } : {}),
+    ...(input.tiktokUrl !== undefined ? { tiktokUrl: trimToNull(input.tiktokUrl) } : {}),
+    ...(input.zaloUrl !== undefined ? { zaloUrl: trimToNull(input.zaloUrl) } : {}),
   };
 
   try {

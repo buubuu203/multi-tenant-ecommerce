@@ -391,7 +391,7 @@ export type CustomerOrderView = {
  * Looks up a single order for a guest customer, requiring BOTH the correct
  * order id AND the checkout email as proof of ownership — there are no
  * customer accounts/sessions, so this pairing is the entire access-control
- * mechanism (see src/app/orders/actions.ts, which is the only caller and
+ * mechanism (see src/app/(buyer)/orders/actions.ts, which is the only caller and
  * is responsible for never leaking *why* a lookup failed).
  *
  * Returns null for every failure case — order not found, wrong tenant,

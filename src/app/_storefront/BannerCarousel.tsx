@@ -1,7 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import Image from "next/image";
 import type { StorefrontBanner } from "./get-active-banners";
+import { Icon } from "./Icon";
+import { useDictionary } from "@/lib/i18n/use-dictionary";
 
 // Storefront Carousel/Banner (V1). Zero banners never reaches this
 // component (the caller falls back to the existing StorefrontHero — see
@@ -9,11 +12,21 @@ import type { StorefrontBanner } from "./get-active-banners";
 //
 // V1.1: the image IS the content — no title/subtitle text is ever
 // rendered over it (the merchant's photo carries the message). A
-// `<picture>` element swaps in an optional, separately-cropped mobile
-// image below this breakpoint; when a banner has no mobileImageUrl, the
-// desktop image is used at every viewport, matching Banner.mobileImageUrl
-// being null = "no separate mobile crop" throughout the rest of the app.
-const MOBILE_BREAKPOINT = "(max-width: 639px)";
+// `<picture>`-equivalent (next/image doesn't support <source> media
+// swaps directly, so this picks the URL in JS instead) swaps in an
+// optional, separately-cropped mobile image below this breakpoint; when
+// a banner has no mobileImageUrl, the desktop image is used at every
+// viewport, matching Banner.mobileImageUrl being null = "no separate
+// mobile crop" throughout the rest of the app.
+const MOBILE_BREAKPOINT_PX = 640;
+// The FRAME's aspect ratio switches at a different breakpoint (1024)
+// than the mobile-image-source swap above (640) — two independent
+// concerns that happened to collapse into one `isMobile` flag in an
+// earlier draft of this component, which made the frame stay 21:9 all
+// the way down to 640px instead of becoming 16:10 under 1024 as
+// specified. Kept as two separate states so fixing one can't silently
+// move the other again.
+const ASPECT_BREAKPOINT_PX = 1024;
 
 function accessibleLabelFor(banner: StorefrontBanner): string {
   // With no title/subtitle to fall back to, the CTA label is the most
@@ -25,13 +38,49 @@ function accessibleLabelFor(banner: StorefrontBanner): string {
 
 export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
   const [index, setIndex] = useState(0);
+  const [isMobile, setIsMobile] = useState(false);
+  const [isNarrowFrame, setIsNarrowFrame] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const dict = useDictionary();
   const current = banners[index];
   const hasMultiple = banners.length > 1;
   const hasCta = Boolean(current.ctaLabel && current.ctaUrl);
+  const touchStartX = useRef<number | null>(null);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX - 1}px)`);
+    const update = () => setIsMobile(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
+
+  useEffect(() => {
+    const mq = window.matchMedia(`(max-width: ${ASPECT_BREAKPOINT_PX - 1}px)`);
+    const update = () => setIsNarrowFrame(mq.matches);
+    update();
+    mq.addEventListener("change", update);
+    return () => mq.removeEventListener("change", update);
+  }, []);
 
   function goTo(next: number) {
     setIndex((next + banners.length) % banners.length);
   }
+
+  // Autoplay every 6s, paused on hover/focus and entirely skipped under
+  // prefers-reduced-motion — restarts on `index` so a manual prev/next/
+  // dot click pushes the next auto-advance out a full 6s instead of
+  // firing right away.
+  useEffect(() => {
+    if (!hasMultiple || paused) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const id = setInterval(() => {
+      setIndex((current) => (current + 1) % banners.length);
+    }, 6000);
+    return () => clearInterval(id);
+  }, [hasMultiple, paused, banners.length, index]);
+
+  const imageUrl = (isMobile && current.mobileImageUrl) || current.imageUrl;
 
   return (
     <section
@@ -41,29 +90,44 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
       role="region"
       aria-roledescription="carousel"
       aria-label="Featured"
-      className="relative flex flex-col"
+      className="glass relative flex flex-col overflow-hidden"
+      style={{ borderRadius: "var(--radius-card)" }}
       onKeyDown={(e) => {
         if (!hasMultiple) return;
         if (e.key === "ArrowLeft") goTo(index - 1);
         if (e.key === "ArrowRight") goTo(index + 1);
       }}
+      onMouseEnter={() => setPaused(true)}
+      onMouseLeave={() => setPaused(false)}
+      onFocus={() => setPaused(true)}
+      onBlur={() => setPaused(false)}
+      onTouchStart={(e) => { touchStartX.current = e.touches[0].clientX; }}
+      onTouchEnd={(e) => {
+        if (touchStartX.current == null || !hasMultiple) return;
+        const dx = e.changedTouches[0].clientX - touchStartX.current;
+        if (Math.abs(dx) > 40) goTo(dx < 0 ? index + 1 : index - 1);
+        touchStartX.current = null;
+      }}
     >
       <div
-        // A fixed, consistent aspect ratio (taller on mobile, wide on
-        // sm+) so every banner — whatever the merchant's source photo
-        // dimensions — fills the frame via object-cover rather than
-        // stretching or being cropped unpredictably by content height.
-        className="relative mx-auto aspect-[4/3] w-full max-w-4xl overflow-hidden bg-surface-muted sm:aspect-[21/9]"
+        // 21:9 at ≥1024px (1344×576 at the 1440 container width), 16:10
+        // below that, capped at 576px tall either way — replaces the old
+        // uniform aspect-video (16:9) frame, which measured 1344×755 at
+        // 1440px: nearly 200px taller than the board, pushing the "Gợi ý
+        // cho bạn" heading below the first screen.
+        className="relative w-full overflow-hidden"
+        style={{ aspectRatio: isNarrowFrame ? "16/10" : "21/9", maxHeight: "576px" }}
         aria-live="polite"
       >
-        <picture>
-          {current.mobileImageUrl && <source media={MOBILE_BREAKPOINT} srcSet={current.mobileImageUrl} />}
-          <img
-            src={current.imageUrl}
-            alt={accessibleLabelFor(current)}
-            className="absolute inset-0 h-full w-full object-cover"
-          />
-        </picture>
+        <Image
+          key={imageUrl}
+          src={imageUrl}
+          alt={accessibleLabelFor(current)}
+          fill
+          priority={index === 0}
+          sizes="(max-width: 1023px) 100vw, 1344px"
+          className="object-cover object-center spring-fade"
+        />
 
         {hasCta && (
           <>
@@ -74,11 +138,8 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
               className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent"
               aria-hidden="true"
             />
-            <div className="absolute inset-x-0 bottom-4 flex justify-center sm:bottom-6">
-              <a
-                href={current.ctaUrl!}
-                className="rounded-md bg-white px-4 py-2 text-sm font-medium text-black shadow-sm transition-opacity hover:opacity-90"
-              >
+            <div className="absolute inset-x-0 flex justify-center" style={{ bottom: hasMultiple ? "44px" : "16px" }}>
+              <a href={current.ctaUrl!} className="btn-primary cta">
                 {current.ctaLabel}
               </a>
             </div>
@@ -87,43 +148,64 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
 
         {hasMultiple && (
           <>
+            {/* Arrows: 44px glass circles, 16px from each edge, hidden
+                below 768px (swipe takes over — see onTouchStart/End). */}
             <button
               type="button"
               onClick={() => goTo(index - 1)}
-              aria-label="Previous banner"
-              className="absolute left-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white transition-colors hover:bg-black/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              aria-label={dict.storefront.previousBanner}
+              className="glass absolute top-1/2 hidden -translate-y-1/2 items-center justify-center rounded-full md:flex"
+              style={{ left: "16px", width: "44px", height: "44px", border: "1px solid var(--glass-border)" }}
             >
-              ‹
+              <Icon name="chevron" style={{ transform: "rotate(180deg)" }} />
             </button>
             <button
               type="button"
               onClick={() => goTo(index + 1)}
-              aria-label="Next banner"
-              className="absolute right-3 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-black/40 text-white transition-colors hover:bg-black/60 focus-visible:outline focus-visible:outline-2 focus-visible:outline-white"
+              aria-label={dict.storefront.nextBanner}
+              className="glass absolute top-1/2 hidden -translate-y-1/2 items-center justify-center rounded-full md:flex"
+              style={{ right: "16px", width: "44px", height: "44px", border: "1px solid var(--glass-border)" }}
             >
-              ›
+              <Icon name="chevron" />
             </button>
+
+            {/* Dots: inside the frame, bottom:16px, centered — not a
+                separate row below the image anymore. */}
+            <div
+              className="absolute inset-x-0 z-[1] flex items-center justify-center gap-1.5"
+              style={{ bottom: "16px" }}
+              role="tablist"
+              aria-label="Banner selection"
+            >
+              {banners.map((banner, i) => (
+                <button
+                  key={banner.id}
+                  type="button"
+                  role="tab"
+                  aria-selected={i === index}
+                  aria-label={`Show banner ${i + 1} of ${banners.length}`}
+                  onClick={() => goTo(i)}
+                  // The visible dot stays 6px (design intent); the
+                  // tappable area around it is padded out to the 44px
+                  // minimum target size separately.
+                  className="flex items-center justify-center focus-visible:outline focus-visible:outline-2"
+                  style={{ width: "44px", height: "44px", outlineColor: "#fff" }}
+                >
+                  <span
+                    aria-hidden="true"
+                    className="block rounded-full transition-all"
+                    style={{
+                      height: "6px",
+                      width: i === index ? "26px" : "6px",
+                      background: i === index ? "#fff" : "#ffffff80",
+                    }}
+                  />
+                </button>
+              ))}
+            </div>
           </>
         )}
       </div>
-
-      {hasMultiple && (
-        <div className="flex items-center justify-center gap-1.5 bg-background py-2" role="tablist" aria-label="Banner selection">
-          {banners.map((banner, i) => (
-            <button
-              key={banner.id}
-              type="button"
-              role="tab"
-              aria-selected={i === index}
-              aria-label={`Show banner ${i + 1} of ${banners.length}`}
-              onClick={() => goTo(i)}
-              className={`h-2 w-2 rounded-full transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-foreground ${
-                i === index ? "bg-foreground" : "bg-border hover:bg-muted-foreground"
-              }`}
-            />
-          ))}
-        </div>
-      )}
     </section>
   );
 }

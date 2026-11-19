@@ -35,7 +35,7 @@ export type PaymentMethodInput = (typeof PAYMENT_METHODS)[number];
 
 function validatePaymentMethod(paymentMethod: string): { error: string } | null {
   if (!PAYMENT_METHODS.includes(paymentMethod as PaymentMethodInput)) {
-    return { error: "Invalid payment method." };
+    return { error: "invalidPaymentMethod" };
   }
   return null;
 }
@@ -59,20 +59,20 @@ function validateCustomerInput(
 ): { name: string; email: string; phone: string } | { error: string } {
   const name = input.name.trim();
   if (!name) {
-    return { error: "Name is required." };
+    return { error: "nameRequired" };
   }
 
   const email = input.email.trim();
   if (!email || !BASIC_EMAIL_PATTERN.test(email)) {
-    return { error: "A valid email address is required." };
+    return { error: "emailInvalid" };
   }
 
   const phone = input.phone.trim();
   if (!phone) {
-    return { error: "Phone is required." };
+    return { error: "phoneRequired" };
   }
   if (!isValidVietnamesePhone(phone)) {
-    return { error: "A valid Vietnamese phone number is required." };
+    return { error: "phoneInvalid" };
   }
 
   return { name, email, phone };
@@ -96,12 +96,12 @@ function validateShippingInput(
 ): { address: string; ward: string; district: string; city: string; note: string | null } | { error: string } {
   const address = input.address.trim();
   if (!address) {
-    return { error: "Shipping address is required." };
+    return { error: "addressRequired" };
   }
 
   const ward = input.ward.trim();
   if (!ward) {
-    return { error: "Ward is required." };
+    return { error: "wardRequired" };
   }
 
   // District is no longer a real administrative tier as of Vietnam's July
@@ -114,7 +114,7 @@ function validateShippingInput(
 
   const city = input.city.trim();
   if (!city) {
-    return { error: "City is required." };
+    return { error: "cityRequired" };
   }
 
   const note = (input.note ?? "").trim();
@@ -124,14 +124,14 @@ function validateShippingInput(
 
 function validateItemsInput(items: OrderItemInput[]): { error: string } | null {
   if (items.length === 0) {
-    return { error: "Cannot create an order with no items." };
+    return { error: "cartEmpty" };
   }
   for (const item of items) {
     if (!item.productVariantId || !item.productVariantId.trim()) {
-      return { error: "Invalid item in order." };
+      return { error: "invalidItem" };
     }
     if (!Number.isInteger(item.quantity) || item.quantity <= 0) {
-      return { error: "Quantity must be a positive whole number for every item." };
+      return { error: "invalidQuantity" };
     }
   }
   // Merge duplicate productVariantId entries defensively (the cart layer
@@ -242,7 +242,7 @@ export async function createOrder(
   // payment methods.
   const resolvedShipping = await resolveShippingMethod(tenantId, shippingMethodId);
   if (!resolvedShipping) {
-    return { success: false, error: "The selected shipping method is not available for this store." };
+    return { success: false, error: "shippingMethodUnavailable" };
   }
   // Step 51: server-authoritative — a tenant must never end up with a
   // customer able to select a method the tenant hasn't enabled/configured
@@ -256,7 +256,7 @@ export async function createOrder(
     where: { tenantId_method: { tenantId, method: paymentMethod as PaymentMethodInput } },
   });
   if (!tenantMethod || !tenantMethod.enabled) {
-    return { success: false, error: "This payment method is not available for this store." };
+    return { success: false, error: "paymentMethodUnavailable" };
   }
   const customerInput = validateCustomerInput(customer);
   if ("error" in customerInput) {
@@ -487,7 +487,12 @@ export async function createOrder(
       return { success: false, error: e.message };
     }
     console.error("createOrder failed:", e);
-    return { success: false, error: "Something went wrong creating the order." };
+    // A stable, English, machine-checked CODE — not the buyer-facing
+    // string. This lib function has no locale/dictionary access (it's
+    // not a server action or component); checkout-actions.ts (which does)
+    // translates this exact code, same pattern as "privacyConsentRequired"
+    // and "privacyNoticeChanged" above.
+    return { success: false, error: "orderCreationFailed" };
   }
 }
 

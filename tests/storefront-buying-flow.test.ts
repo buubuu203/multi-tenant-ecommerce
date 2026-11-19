@@ -87,7 +87,7 @@ test('the detail page still owns add to cart and variant selection', () => {
 });
 
 test('the product page does not duplicate the locale switcher in its shared header', () => {
-  const page = code('src/app/products/[productId]/page.tsx');
+  const page = code('src/app/(buyer)/products/[productId]/page.tsx');
   assert.equal((page.match(/<LocaleSwitcher \/>/g) ?? []).length, 1);
 });
 

@@ -45,8 +45,11 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
   const dict = useDictionary();
   const paymentDict = dict.payment as Record<string, string>;
   return (
-    <div className="mt-6 overflow-hidden rounded-2xl border border-border bg-surface text-sm shadow-sm">
-      <div className="border-b border-border bg-surface-muted px-4 py-4 sm:px-6">
+    <div
+      className="glass mt-6 overflow-hidden text-sm"
+      style={{ borderRadius: 'var(--radius-card)' }}
+    >
+      <div className="px-4 py-4 sm:px-6" style={{ borderBottom: '1px solid var(--divider)' }}>
         <div className="flex flex-wrap items-center gap-2">
           <span className="font-mono text-xs">{dict.orders.order} {order.id}</span>
           <span
@@ -231,8 +234,9 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
   );
 }
 
-const inputClassName =
-  'w-full rounded-lg border border-border bg-background px-3.5 py-3 text-sm transition-colors placeholder:text-muted-foreground/70 focus:border-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20';
+const inputClassName = 'field-glass';
+const submitButtonClassName = 'btn-primary cta w-full';
+const segWrapClassName = 'seg';
 
 // Order ID + email — the strongest lookup: a high-entropy order id plus
 // the checkout email, unchanged from before Order Lookup by phone/name
@@ -269,7 +273,7 @@ function SingleOrderLookupByEmail({ fixedOrderId, defaultEmail }: { fixedOrderId
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
+          className={submitButtonClassName}
         >
           {pending ? dict.orders.lookingUp : dict.orders.viewOrder}
         </button>
@@ -310,7 +314,7 @@ function SingleOrderLookupByPhone({ fixedOrderId }: { fixedOrderId?: string }) {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
+          className={submitButtonClassName}
         >
           {pending ? dict.orders.lookingUp : dict.orders.viewOrder}
         </button>
@@ -332,12 +336,11 @@ function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: stri
 
   return (
     <div>
-      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-xs">
+      <div className={`${segWrapClassName} mb-3`}>
         <button
           type="button"
           onClick={() => setVerifyBy('email')}
           aria-pressed={verifyBy === 'email'}
-          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           {dict.orders.verifyByEmail}
         </button>
@@ -345,7 +348,6 @@ function SingleOrderLookup({ fixedOrderId, defaultEmail }: { fixedOrderId?: stri
           type="button"
           onClick={() => setVerifyBy('phone')}
           aria-pressed={verifyBy === 'phone'}
-          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'phone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           {dict.orders.verifyByPhone}
         </button>
@@ -383,7 +385,7 @@ function OrderHistoryByEmail() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
+          className={submitButtonClassName}
         >
           {pending ? dict.orders.lookingUp : dict.orders.viewMyOrders}
         </button>
@@ -426,7 +428,7 @@ function OrderHistoryByNameAndPhone() {
         <button
           type="submit"
           disabled={pending}
-          className="w-full rounded-lg bg-foreground px-4 py-3 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground disabled:opacity-40"
+          className={submitButtonClassName}
         >
           {pending ? dict.orders.lookingUp : dict.orders.viewMyOrders}
         </button>
@@ -455,12 +457,11 @@ function OrderHistoryLookup() {
 
   return (
     <div>
-      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-xs">
+      <div className={`${segWrapClassName} mb-3`}>
         <button
           type="button"
           onClick={() => setVerifyBy('email')}
           aria-pressed={verifyBy === 'email'}
-          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'email' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           {dict.orders.byEmail}
         </button>
@@ -468,7 +469,6 @@ function OrderHistoryLookup() {
           type="button"
           onClick={() => setVerifyBy('namePhone')}
           aria-pressed={verifyBy === 'namePhone'}
-          className={`rounded px-2.5 py-1 transition-colors ${verifyBy === 'namePhone' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
         >
           {dict.orders.byNamePhone}
         </button>
@@ -499,21 +499,11 @@ export function OrderLookupForm({
 
   return (
     <div>
-      <div className="mb-3 inline-flex rounded-md border border-border p-0.5 text-sm">
-        <button
-          type="button"
-          onClick={() => setMode('single')}
-          aria-pressed={mode === 'single'}
-          className={`rounded px-3 py-1 transition-colors ${mode === 'single' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
-        >
+      <div className={`${segWrapClassName} mb-3`}>
+        <button type="button" onClick={() => setMode('single')} aria-pressed={mode === 'single'}>
           {dict.orders.lookUpAnOrder}
         </button>
-        <button
-          type="button"
-          onClick={() => setMode('history')}
-          aria-pressed={mode === 'history'}
-          className={`rounded px-3 py-1 transition-colors ${mode === 'history' ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground'}`}
-        >
+        <button type="button" onClick={() => setMode('history')} aria-pressed={mode === 'history'}>
           {dict.orders.myOrderHistory}
         </button>
       </div>
