@@ -1,6 +1,8 @@
+import type { Metadata } from 'next';
 import type { ReactNode } from 'react';
 import { requireTenantAdmin, NotTenantAdminError } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
+import { getCurrentTenant } from '../_storefront/get-current-tenant';
 import { resolveBranding } from '../_storefront/resolve-branding';
 import { TenantTheme } from '@/components/TenantTheme';
 import { Toaster } from '@/components/Toast';
@@ -15,6 +17,31 @@ import { AdminAccountBar } from '@/components/AdminAccountBar';
 import { AdminDenied } from '@/components/AdminDenied';
 import { LocaleSwitcher } from '@/components/LocaleSwitcher';
 import { getLocale, getDictionary } from '@/lib/i18n';
+
+// Browser tabs for the buyer storefront and this admin area were
+// rendering identically (same title, same tenant favicon — see the root
+// layout's own generateMetadata), making them indistinguishable when
+// both were open at once. This overrides both for every /tenant-admin/*
+// route: Next.js metadata merges down through nested layouts, so a
+// title/icons set here always wins over the root's. The favicon is a
+// fixed, tenant-INDEPENDENT inline SVG (a gear badge) — deliberately not
+// the tenant's own uploaded favicon, so the two tabs never look the same
+// no matter which tenant is signed in.
+const ADMIN_FAVICON =
+  'data:image/svg+xml,' +
+  encodeURIComponent(
+    '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="%23ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="24" height="24" rx="6" fill="%231d1d1f" stroke="none"/><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H10.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>',
+  );
+
+export async function generateMetadata(): Promise<Metadata> {
+  const tenant = await getCurrentTenant();
+  const storeName = tenant?.branding?.storeName || tenant?.name || 'Store';
+  return {
+    title: `${storeName} – Quản trị`,
+    description: `${storeName} tenant admin`,
+    icons: { icon: ADMIN_FAVICON },
+  };
+}
 
 // Phase 1 of the admin route split: this layout now owns the chrome
 // (theme, header, tab nav) that used to live inside the single giant
