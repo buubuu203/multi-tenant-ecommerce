@@ -23,19 +23,13 @@ import { getDictionary, getLocale } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
 
-// Matches BannerCarousel.tsx's desktop (≥1024px) rendered aspect ratio
-// exactly — ImageCropModal renders to a canvas at exactly this ratio
+// Matches BannerCarousel.tsx's rendered frame aspect ratio exactly —
+// ImageCropModal renders to a canvas at exactly this ratio
 // (canvas.height = outputWidth / aspectRatio), so the uploaded output can
-// never deviate from 21:9 by construction. That's why there's no
-// separate ">10% off 21:9" warning check anywhere in this flow: the crop
-// step makes that case unreachable, which is a stronger guarantee than a
-// warning would be. (The storefront's <768px frame is a different ratio,
-// 16:10, but still fills via object-cover regardless of the source
-// image's exact ratio — no mismatch results from keeping one upload
-// ratio for both slots.)
-const BANNER_ASPECT_RATIO = 21 / 9;
-const DESKTOP_OUTPUT_WIDTH = 2520;
-const MOBILE_OUTPUT_WIDTH = 1260;
+// never deviate from 16:9 by construction.
+const BANNER_ASPECT_RATIO = 16 / 9;
+const DESKTOP_OUTPUT_WIDTH = 1920;
+const MOBILE_OUTPUT_WIDTH = 960;
 
 export default async function BannersPage() {
   const { tenantId } = await requireTenantAdmin();

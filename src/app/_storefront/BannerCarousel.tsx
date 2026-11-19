@@ -19,14 +19,6 @@ import { useDictionary } from "@/lib/i18n/use-dictionary";
 // viewport, matching Banner.mobileImageUrl being null = "no separate
 // mobile crop" throughout the rest of the app.
 const MOBILE_BREAKPOINT_PX = 640;
-// The FRAME's aspect ratio switches at a different breakpoint (1024)
-// than the mobile-image-source swap above (640) — two independent
-// concerns that happened to collapse into one `isMobile` flag in an
-// earlier draft of this component, which made the frame stay 21:9 all
-// the way down to 640px instead of becoming 16:10 under 1024 as
-// specified. Kept as two separate states so fixing one can't silently
-// move the other again.
-const ASPECT_BREAKPOINT_PX = 1024;
 
 function accessibleLabelFor(banner: StorefrontBanner): string {
   // With no title/subtitle to fall back to, the CTA label is the most
@@ -39,7 +31,6 @@ function accessibleLabelFor(banner: StorefrontBanner): string {
 export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
   const [index, setIndex] = useState(0);
   const [isMobile, setIsMobile] = useState(false);
-  const [isNarrowFrame, setIsNarrowFrame] = useState(false);
   const [paused, setPaused] = useState(false);
   const dict = useDictionary();
   const current = banners[index];
@@ -50,14 +41,6 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
   useEffect(() => {
     const mq = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT_PX - 1}px)`);
     const update = () => setIsMobile(mq.matches);
-    update();
-    mq.addEventListener("change", update);
-    return () => mq.removeEventListener("change", update);
-  }, []);
-
-  useEffect(() => {
-    const mq = window.matchMedia(`(max-width: ${ASPECT_BREAKPOINT_PX - 1}px)`);
-    const update = () => setIsNarrowFrame(mq.matches);
     update();
     mq.addEventListener("change", update);
     return () => mq.removeEventListener("change", update);
@@ -110,13 +93,8 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
       }}
     >
       <div
-        // 21:9 at ≥1024px (1344×576 at the 1440 container width), 16:10
-        // below that, capped at 576px tall either way — replaces the old
-        // uniform aspect-video (16:9) frame, which measured 1344×755 at
-        // 1440px: nearly 200px taller than the board, pushing the "Gợi ý
-        // cho bạn" heading below the first screen.
         className="relative w-full overflow-hidden"
-        style={{ aspectRatio: isNarrowFrame ? "16/10" : "21/9", maxHeight: "576px" }}
+        style={{ aspectRatio: "16/9" }}
         aria-live="polite"
       >
         <Image
