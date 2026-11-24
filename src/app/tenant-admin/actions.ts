@@ -96,7 +96,15 @@ export async function updateBrandingAction(
   _prevState: ActionResult | null,
   formData: FormData,
 ): Promise<ActionResult> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, role } = await requireTenantAdmin();
+  // Telegram credentials are owner-only (2026-11-25, explicit request):
+  // a "tenant_staff" submission simply never carries these fields into
+  // the mutation at all, rather than being rejected outright — every
+  // OTHER branding field (name, logo, footer...) still saves normally
+  // for staff. updateBranding()'s own `undefined` field = "leave
+  // unchanged" semantics means omitting them here can never blank out
+  // whatever the owner already configured.
+  const isOwner = role === 'tenant_admin';
 
   const result = await updateBranding(tenantId, {
     storeName: String(formData.get('storeName') ?? ''),
@@ -112,8 +120,12 @@ export async function updateBrandingAction(
     tiktokUrl: String(formData.get('tiktokUrl') ?? ''),
     zaloUrl: String(formData.get('zaloUrl') ?? ''),
     instagramUrl: String(formData.get('instagramUrl') ?? ''),
-    telegramBotToken: String(formData.get('telegramBotToken') ?? ''),
-    telegramChatId: String(formData.get('telegramChatId') ?? ''),
+    ...(isOwner
+      ? {
+          telegramBotToken: String(formData.get('telegramBotToken') ?? ''),
+          telegramChatId: String(formData.get('telegramChatId') ?? ''),
+        }
+      : {}),
   });
 
   if (result.success) {
@@ -128,9 +140,16 @@ export async function updateBrandingAction(
  * form — an admin must Save first, then Test, so this always verifies
  * what's actually live rather than an unsaved draft). Lets an admin
  * confirm their bot/chat id setup works without waiting for a real order.
+ *
+ * Owner-only, same posture as the Telegram fields in updateBrandingAction
+ * above — a "tenant_staff" account cannot see, change or probe the
+ * configured bot/chat id at all.
  */
 export async function sendTestTelegramNotificationAction(): Promise<ActionResult> {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, role } = await requireTenantAdmin();
+  if (role !== 'tenant_admin') {
+    return { success: false, error: 'Chỉ chủ cửa hàng mới có thể gửi thử thông báo Telegram.' };
+  }
   const branding = await getScopedDb(tenantId).branding.findUnique({
     where: { tenantId },
     select: { storeName: true, telegramBotToken: true, telegramChatId: true },

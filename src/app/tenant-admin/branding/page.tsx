@@ -18,7 +18,8 @@ export const dynamic = 'force-dynamic';
 export const metadata: Metadata = { title: 'Thương hiệu' };
 
 export default async function BrandingPage() {
-  const { tenantId } = await requireTenantAdmin();
+  const { tenantId, role } = await requireTenantAdmin();
+  const isOwner = role === 'tenant_admin';
   const db = getScopedDb(tenantId);
   const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
   const branding = await db.branding.findUnique({ where: { tenantId } });
@@ -135,6 +136,14 @@ export default async function BrandingPage() {
             <input name="zaloUrl" defaultValue={branding?.zaloUrl ?? ''} className={adminInputClassName} />
           </label>
         </section>
+        {/* Owner-only (2026-11-25, explicit request): a "tenant_staff"
+            account never even sees this section exists, let alone its
+            current values — not just a disabled field, which would still
+            reveal whether Telegram is configured. Enforced again,
+            independently, server-side in updateBrandingAction and
+            sendTestTelegramNotificationAction — this hidden section is a
+            UX courtesy, never the actual authorization boundary. */}
+        {isOwner && (
         <section aria-labelledby="brand-telegram" className={adminPanelClassName}>
           <h3 id="brand-telegram" className={adminPanelTitleClassName}>
             Thông báo đơn hàng mới (Telegram)
@@ -175,6 +184,7 @@ export default async function BrandingPage() {
           </label>
           {branding?.telegramBotToken && branding?.telegramChatId && <TelegramTestButton />}
         </section>
+        )}
       </ActionForm>
     </div>
   );

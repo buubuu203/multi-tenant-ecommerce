@@ -38,5 +38,25 @@ test("authorization: matching role + tenantId + hostname-resolved tenant succeed
   assert.equal(decision.authorized, true);
   if (decision.authorized) {
     assert.equal(decision.tenantId, TENANT_A);
+    assert.equal(decision.role, "tenant_admin");
   }
+});
+
+// tenant_staff (2026-11-25): a lower tier that can still reach
+// /tenant-admin generally, but must be refused the owner-only actions
+// (Telegram bot token/chat id) — those checks live in
+// tenant-admin/actions.ts, not here; this only confirms the role itself
+// is resolved correctly so those downstream checks have something to
+// compare against.
+test("authorization: tenant_staff is admitted to tenant-admin like tenant_admin is", () => {
+  const decision = resolveTenantAdminAuthorization({ role: "tenant_staff", tenantId: TENANT_A }, TENANT_A);
+  assert.equal(decision.authorized, true);
+  if (decision.authorized) {
+    assert.equal(decision.role, "tenant_staff");
+  }
+});
+
+test("authorization: an unrecognized role string fails closed, same as no role at all", () => {
+  const decision = resolveTenantAdminAuthorization({ role: "tenant_superadmin", tenantId: TENANT_A }, TENANT_A);
+  assert.equal(decision.authorized, false);
 });

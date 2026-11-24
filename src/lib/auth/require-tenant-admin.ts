@@ -12,14 +12,27 @@ export type TenantAdminMetadata = { role?: string; tenantId?: string } | undefin
  * identical to what requireTenantAdmin() always did; this refactor changes
  * nothing about how a real request is authorized.
  */
+// "tenant_admin" is the store OWNER — unrestricted. "tenant_staff" is a
+// new, lower tier added on explicit request (2026-11-25): someone who
+// needs day-to-day admin access (orders, catalog, customers...) but must
+// NOT see or change sensitive store-level configuration — currently the
+// Telegram bot token/chat id (see updateBrandingAction and
+// sendTestTelegramNotificationAction in tenant-admin/actions.ts, the only
+// two places that check for "tenant_admin" specifically rather than just
+// "signed in as either role"). Assigning either role still only happens
+// by hand in Clerk's dashboard metadata — there is no in-app user
+// management UI to create or invite a staff account yet.
+const TENANT_ROLES = ["tenant_admin", "tenant_staff"] as const;
+export type TenantRole = (typeof TENANT_ROLES)[number];
+
 export function resolveTenantAdminAuthorization(
   metadata: TenantAdminMetadata,
   resolvedTenantId: string | null,
-): { authorized: true; tenantId: string } | { authorized: false; reason: string } {
+): { authorized: true; tenantId: string; role: TenantRole } | { authorized: false; reason: string } {
   if (!resolvedTenantId) {
     return { authorized: false, reason: "No tenant resolved from request hostname" };
   }
-  if (metadata?.role !== "tenant_admin" || !metadata.tenantId) {
+  if (!metadata?.role || !TENANT_ROLES.includes(metadata.role as TenantRole) || !metadata.tenantId) {
     return { authorized: false, reason: "User is not a tenant admin" };
   }
   if (metadata.tenantId !== resolvedTenantId) {
@@ -27,7 +40,7 @@ export function resolveTenantAdminAuthorization(
     // selection — it must match the hostname-resolved tenant too.
     return { authorized: false, reason: "Tenant admin metadata does not match the requested tenant" };
   }
-  return { authorized: true, tenantId: resolvedTenantId };
+  return { authorized: true, tenantId: resolvedTenantId, role: metadata.role as TenantRole };
 }
 
 /**
@@ -54,7 +67,7 @@ export function resolveTenantAdminAuthorization(
  * reached via shop-a.localhost/tenant-admin, shop-b.localhost/tenant-admin,
  * etc. — not a single fixed platform URL, unlike Platform Admin).
  */
-export async function requireTenantAdmin(): Promise<{ tenantId: string; userId: string | null }> {
+export async function requireTenantAdmin(): Promise<{ tenantId: string; userId: string | null; role: TenantRole }> {
   const { userId, redirectToSignIn } = await auth();
   const headerList = await headers();
   const resolvedTenantId = headerList.get("x-tenant-id");
@@ -85,5 +98,5 @@ export async function requireTenantAdmin(): Promise<{ tenantId: string; userId: 
   // authorization control flow for a field only the audit trail uses. An
   // authorized admin always has an id in practice; a null simply records
   // the event without an actor id rather than blocking the mutation.
-  return { tenantId: decision.tenantId, userId: user?.id ?? null };
+  return { tenantId: decision.tenantId, userId: user?.id ?? null, role: decision.role };
 }
