@@ -58,6 +58,15 @@ export type OrderNotificationInput = {
   itemCount: number;
   /** Absolute URL to the order in tenant-admin, or null if it can't be resolved for this request. */
   adminOrderUrl: string | null;
+  /**
+   * True when this order was placed in a non-production environment
+   * (local dev, a preview deploy). A merchant who reuses the same bot/
+   * chat for testing and production (a reasonable thing to do — see
+   * notify-new-order.ts) needs an unmissable way to tell a real order
+   * from a test one at a glance, so this prepends a loud marker rather
+   * than a subtle one.
+   */
+  isTestEnvironment?: boolean;
 };
 
 /**
@@ -79,7 +88,9 @@ function escapeHtml(value: string): string {
  */
 export function buildOrderNotificationMessage(input: OrderNotificationInput): string {
   const lines = [
-    `🛎️ <b>Đơn hàng mới — ${escapeHtml(input.storeName)}</b>`,
+    input.isTestEnvironment
+      ? `🧪 <b>ĐƠN TEST (không phải đơn thật) — ${escapeHtml(input.storeName)}</b>`
+      : `🛎️ <b>Đơn hàng mới — ${escapeHtml(input.storeName)}</b>`,
     `Mã đơn: <b>${escapeHtml(input.orderReference)}</b>`,
     `Khách hàng: ${escapeHtml(input.customerName)}`,
     `Số lượng: ${input.itemCount} sản phẩm`,

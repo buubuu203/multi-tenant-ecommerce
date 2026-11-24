@@ -49,6 +49,13 @@ export async function notifyNewOrder(input: NewOrderNotificationInput): Promise<
       paymentMethodLabel: PAYMENT_METHOD_LABELS[input.paymentMethod] ?? input.paymentMethod,
       itemCount: input.itemCount,
       adminOrderUrl: input.origin ? `${input.origin}/tenant-admin/orders/${input.orderId}` : null,
+      // NODE_ENV is "production" for every deployed build (including
+      // Vercel preview deploys — only `next build` sets it, regardless of
+      // target) and "development" for local `next dev`. That's exactly
+      // the distinction a merchant testing locally with their real bot
+      // needs; it is NOT a provider configuration (no new env var is
+      // introduced), just a label on an already-built message.
+      isTestEnvironment: process.env.NODE_ENV !== "production",
     });
 
     const result = await sendTelegramMessage(branding.telegramBotToken, branding.telegramChatId, message);

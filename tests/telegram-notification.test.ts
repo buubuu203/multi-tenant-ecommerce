@@ -44,6 +44,16 @@ test("HTML-significant characters in merchant/customer text are escaped", () => 
   assert.doesNotMatch(message, /<script>/);
 });
 
+test("a test-environment order is marked unmistakably, so it can never be mistaken for a real one", () => {
+  const real = buildOrderNotificationMessage(input({ isTestEnvironment: false }));
+  assert.match(real, /Đơn hàng mới/);
+  assert.doesNotMatch(real, /ĐƠN TEST/);
+
+  const test_ = buildOrderNotificationMessage(input({ isTestEnvironment: true }));
+  assert.match(test_, /ĐƠN TEST \(không phải đơn thật\)/);
+  assert.doesNotMatch(test_, /Đơn hàng mới/);
+});
+
 test("TENANT ISOLATION — every value comes from the input, never a hardcoded store", () => {
   const a = buildOrderNotificationMessage(input({ storeName: "Shop A" }));
   const b = buildOrderNotificationMessage(input({ storeName: "Shop B" }));
