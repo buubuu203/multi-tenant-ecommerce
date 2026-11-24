@@ -36,6 +36,9 @@ export const MAX_FIELD_LENGTH = 2000;
 
 export type InventoryMode = 'set_on_hand' | 'adjust_on_hand';
 
+/** One variant axis on a row, e.g. { name: "Color", value: "Red" }. */
+export type RowOption = { name: string; value: string };
+
 /** A validated row, before it is compared against the database. */
 export type ParsedRow = {
   rowNumber: number;
@@ -48,6 +51,15 @@ export type ParsedRow = {
   category: string | null;
   onHand: number | null;
   inventoryMode: InventoryMode | null;
+  /**
+   * Groups rows into one product (buildImportPlan does the grouping and
+   * cross-row validation — this contract only parses one row at a time).
+   * Null means this row is its own single-row product, exactly like a
+   * file that never uses this column at all.
+   */
+  productKey: string | null;
+  option1: RowOption | null;
+  option2: RowOption | null;
 };
 
 export type RowError = { rowNumber: number; message: string };
@@ -77,6 +89,17 @@ const V2_COLUMNS = [
   'category',
   'on_hand',
   'inventory_mode',
+  // Multi-variant products (Shopee/TikTok-style bulk import): rows sharing
+  // the same product_key become ONE product with one ProductVariant per
+  // row. option_name/option_value is the first variant axis (e.g.
+  // "Color"/"Red"); option2_name/option2_value is an optional second axis
+  // (e.g. "Size"/"L") — matching Shopee's own two-axis limit. See
+  // buildImportPlan's grouping logic and docs/catalog-csv-import.md.
+  'product_key',
+  'option_name',
+  'option_value',
+  'option2_name',
+  'option2_value',
 ] as const;
 
 const V2_REQUIRED = ['sku', 'name', 'price'] as const;
@@ -93,10 +116,11 @@ const KNOWN_UNSUPPORTED: Record<string, string> = {
   media: 'Media cannot be imported from CSV. Upload images in the product editor.',
   discount: 'Discounts cannot be imported from CSV. Set them in the product editor.',
   discount_percent: 'Discounts cannot be imported from CSV. Set them in the product editor.',
-  option: 'Variant options cannot be imported from CSV. Create them in the product editor.',
-  option_name: 'Variant options cannot be imported from CSV. Create them in the product editor.',
-  option_value: 'Variant options cannot be imported from CSV. Create them in the product editor.',
-  variant_label: 'Variant options cannot be imported from CSV. Create them in the product editor.',
+  // "option" and "variant_label" remain unsupported column NAMES — the
+  // real, supported columns are option_name/option_value (+ an optional
+  // option2_name/option2_value), see V2_COLUMNS above.
+  option: 'Use option_name and option_value (and optionally option2_name/option2_value) instead.',
+  variant_label: 'Variant options cannot be imported from CSV. Use option_name and option_value instead.',
   reserved: 'Reserved stock is managed by orders and can never be imported.',
   stock_reserved: 'Reserved stock is managed by orders and can never be imported.',
   location: 'Only the default location is supported by import.',
@@ -258,6 +282,9 @@ function parseV1(dataRows: string[][], hasStatus: boolean, hasWeight: boolean): 
       category: null,
       onHand: null,
       inventoryMode: null,
+      productKey: null,
+      option1: null,
+      option2: null,
     });
   });
 
@@ -324,6 +351,11 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
     const category = at(cols, 'category');
     const onHandRaw = at(cols, 'on_hand').trim();
     const modeRaw = at(cols, 'inventory_mode').trim();
+    const productKey = at(cols, 'product_key').trim();
+    const option1NameRaw = at(cols, 'option_name').trim();
+    const option1ValueRaw = at(cols, 'option_value').trim();
+    const option2NameRaw = at(cols, 'option2_name').trim();
+    const option2ValueRaw = at(cols, 'option2_value').trim();
 
     if (
       pushFieldLengthErrors(
@@ -335,6 +367,11 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
           ...(weightColumnPresent ? { weight_grams: weightRaw } : {}),
           description,
           category,
+          product_key: productKey,
+          option_name: option1NameRaw,
+          option_value: option1ValueRaw,
+          option2_name: option2NameRaw,
+          option2_value: option2ValueRaw,
         },
         errors,
       )
@@ -414,6 +451,35 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
       return;
     }
 
+    // option_name/option_value must be given together, same for the
+    // second axis; option2 requires option1 (an unnamed first axis makes
+    // "second axis" meaningless). Cross-row consistency (every row in a
+    // product_key group using the same axis names, no duplicate
+    // combinations) is buildImportPlan's job, not this per-row parser's.
+    if ((option1NameRaw === '') !== (option1ValueRaw === '')) {
+      errors.push({
+        rowNumber,
+        message: 'option_name and option_value must be given together, or both left blank.',
+      });
+      return;
+    }
+    if ((option2NameRaw === '') !== (option2ValueRaw === '')) {
+      errors.push({
+        rowNumber,
+        message: 'option2_name and option2_value must be given together, or both left blank.',
+      });
+      return;
+    }
+    if (option1NameRaw === '' && option2NameRaw !== '') {
+      errors.push({
+        rowNumber,
+        message: 'option2_name requires option_name to be set on the same row.',
+      });
+      return;
+    }
+    const option1: RowOption | null = option1NameRaw ? { name: option1NameRaw, value: option1ValueRaw } : null;
+    const option2: RowOption | null = option2NameRaw ? { name: option2NameRaw, value: option2ValueRaw } : null;
+
     rows.push({
       rowNumber,
       sku,
@@ -423,6 +489,9 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
       category: category.trim() === '' ? null : category.trim(),
       onHand,
       inventoryMode,
+      productKey: productKey === '' ? null : productKey,
+      option1,
+      option2,
     });
   });
 

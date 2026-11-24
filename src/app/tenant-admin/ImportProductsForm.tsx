@@ -227,7 +227,7 @@ export function ImportProductsForm({
           <p className="text-xs text-muted-foreground">
             {preview.format === 'v1-minimal'
               ? 'This file uses the simple name,price,weight_grams format, which has no SKU and can only create products.'
-              : 'Rows are matched to existing products by SKU. A new SKU creates; a known SKU updates.'}
+              : 'Rows are matched to existing products by SKU. A new SKU creates; a known SKU updates. Rows sharing a product_key become one product with several variants — see the CSV import guide.'}
             {preview.inventoryChanges > 0
               ? ` ${preview.inventoryChanges} stock change${preview.inventoryChanges === 1 ? '' : 's'} included.`
               : ''}

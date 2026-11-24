@@ -144,9 +144,13 @@ test("unsupported-but-expected columns say why, not just 'unknown'", () => {
     /Discounts cannot be imported/,
   );
   assert.match(
-    parseError('sku,name,price,option_value\nA,B,1,x\n'),
+    parseError('sku,name,price,variant_label\nA,B,1,x\n'),
     /Variant options cannot be imported/,
   );
+  // option_value alone (no option_name) is a real, supported column pair
+  // now — rejected as a row-level error instead, not a file-level one.
+  const optionOnlyValue = parsed('sku,name,price,option_value\nA,B,1,x\n');
+  assert.match(optionOnlyValue.errors[0]?.message ?? '', /must be given together/);
   assert.match(
     parseError('sku,name,price,stock_reserved\nA,B,1,x\n'),
     /Reserved stock is managed by orders/,
@@ -395,6 +399,118 @@ test('IDEMPOTENCY — re-importing the same file changes nothing', async () => {
   assert.ok(!second.success, 'a no-op import is refused rather than duplicating');
   assert.match(second.error, /already matches/);
   assert.deepEqual(await snapshot(tenantA.id), after1, 'nothing was duplicated');
+});
+
+// ---------- apply: multi-variant products (product_key + option_name/option_value) ----------
+
+test('a product_key group creates ONE product with real, option-bearing variants', async () => {
+  const key = `GRP-${suffix}`;
+  const csv =
+    'sku,name,price,weight_grams,status,product_key,option_name,option_value,on_hand,inventory_mode\n' +
+    `VAR-RED-${suffix},Shirt ${suffix},100000,200,active,${key},Color,Red,10,set_on_hand\n` +
+    `VAR-BLUE-${suffix},Shirt ${suffix},110000,200,active,${key},Color,Blue,20,set_on_hand\n`;
+
+  const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
+  assert.ok(result.success, result.success ? '' : result.error);
+  assert.equal(result.data.created, 2);
+
+  const variants = await prisma.productVariant.findMany({
+    where: { tenantId: tenantA.id, sku: { in: [`VAR-RED-${suffix}`, `VAR-BLUE-${suffix}`] } },
+    include: { product: true, inventory: true, optionValues: { include: { variantOptionValueTenant: true } } },
+  });
+  assert.equal(variants.length, 2);
+  // Both variants belong to the SAME product — not two separate products
+  // sharing a name.
+  assert.equal(variants[0].productId, variants[1].productId);
+  assert.equal(variants[0].product.name, `Shirt ${suffix}`);
+  assert.equal(variants[0].product.weightGrams, 200);
+
+  // combinationKey was never computed by application code — it must be
+  // real (non-placeholder) and distinct per variant once the deferred
+  // trigger has run at commit.
+  assert.notEqual(variants[0].combinationKey, variants[1].combinationKey);
+  assert.notEqual(variants[0].combinationKey, '');
+
+  const redVariant = variants.find((v) => v.sku === `VAR-RED-${suffix}`)!;
+  assert.equal(redVariant.optionValues.length, 1);
+  assert.equal(redVariant.optionValues[0].variantOptionValueTenant.value, 'Red');
+  assert.equal(redVariant.inventory[0].onHand, 10);
+
+  const productOptions = await prisma.productOption.findMany({
+    where: { tenantId: tenantA.id, productId: variants[0].productId },
+    include: { variantOption: true },
+  });
+  assert.equal(productOptions.length, 1);
+  assert.equal(productOptions[0].variantOption.name, 'Color');
+});
+
+test('two option axes (option_name + option2_name) produce two ProductOptions and correct pairings', async () => {
+  const key = `GRP2-${suffix}`;
+  const csv =
+    'sku,name,price,weight_grams,status,product_key,option_name,option_value,option2_name,option2_value\n' +
+    `SHOE-RED-S-${suffix},Shoe ${suffix},200000,300,active,${key},Color,Red,Size,S\n` +
+    `SHOE-RED-M-${suffix},Shoe ${suffix},200000,300,active,${key},Color,Red,Size,M\n`;
+
+  const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
+  assert.ok(result.success, result.success ? '' : result.error);
+  assert.equal(result.data.created, 2);
+
+  const variants = await prisma.productVariant.findMany({
+    where: { tenantId: tenantA.id, sku: { in: [`SHOE-RED-S-${suffix}`, `SHOE-RED-M-${suffix}`] } },
+    include: { optionValues: { include: { variantOptionValueTenant: true } } },
+  });
+  for (const v of variants) {
+    assert.equal(v.optionValues.length, 2, 'each variant has both axes attached');
+  }
+  const productOptions = await prisma.productOption.findMany({
+    where: { tenantId: tenantA.id, productId: variants[0].productId },
+  });
+  assert.equal(productOptions.length, 2, 'Color and Size are both declared on the product, once each');
+});
+
+test('re-using a VariantOption name across two different products reuses the same tenant-global row', async () => {
+  const keyA = `GA-${suffix}`;
+  const keyB = `GB-${suffix}`;
+  const csv =
+    'sku,name,price,weight_grams,status,product_key,option_name,option_value\n' +
+    `REUSE-A-RED-${suffix},Hat ${suffix},50000,80,active,${keyA},Color,Red\n` +
+    `REUSE-A-BLUE-${suffix},Hat ${suffix},50000,80,active,${keyA},Color,Blue\n` +
+    `REUSE-B-RED-${suffix},Scarf ${suffix},40000,60,active,${keyB},Color,Red\n` +
+    `REUSE-B-BLUE-${suffix},Scarf ${suffix},40000,60,active,${keyB},Color,Blue\n`;
+
+  const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
+  assert.ok(result.success, result.success ? '' : result.error);
+  assert.equal(result.data.created, 4);
+
+  const colorOptions = await prisma.variantOption.findMany({ where: { tenantId: tenantA.id, name: 'Color' } });
+  assert.equal(colorOptions.length, 1, 'one tenant-global "Color" option, shared by both products');
+
+  const redValues = await prisma.variantOptionValue.findMany({
+    where: { tenantId: tenantA.id, variantOptionId: colorOptions[0].id, value: 'Red' },
+  });
+  assert.equal(redValues.length, 1, 'one "Red" value, shared by both products\' Red variants');
+});
+
+test('a new variant SKU for an existing multi-variant product is rejected, not silently created as a duplicate product', async () => {
+  const key = `GEXIST-${suffix}`;
+  const create =
+    'sku,name,price,weight_grams,status,product_key,option_name,option_value\n' +
+    `EXIST-S-${suffix},Hoodie ${suffix},150000,400,active,${key},Size,S\n`;
+  assert.ok((await applyProductCsv(tenantA.id, create, csvFingerprint(create))).success);
+
+  const addVariant =
+    'sku,name,price,weight_grams,status,product_key,option_name,option_value\n' +
+    `EXIST-S-${suffix},Hoodie ${suffix},150000,400,active,${key},Size,S\n` +
+    `EXIST-M-${suffix},Hoodie ${suffix},150000,400,active,${key},Size,M\n`;
+  const planned = await plan(tenantA.id, addVariant);
+  assert.equal(planned.rows.find((r) => r.sku === `EXIST-S-${suffix}`)?.action, 'unchanged');
+  assert.equal(planned.rows.find((r) => r.sku === `EXIST-M-${suffix}`)?.action, 'duplicate');
+  assert.equal(planIsImportable(planned), false);
+
+  const result = await applyProductCsv(tenantA.id, addVariant, csvFingerprint(addVariant));
+  assert.ok(!result.success);
+  const variantCount = await prisma.productVariant.count({ where: { tenantId: tenantA.id, sku: { startsWith: `EXIST-` } } });
+  assert.equal(variantCount, 1, 'the blocked import changed nothing');
 });
 
 test('a changed row updates in place and preserves unrelated fields', async () => {

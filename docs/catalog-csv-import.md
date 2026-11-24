@@ -47,6 +47,49 @@ unchanged. A new SKU must include a positive whole-number weight in grams.
 Omitting `description` leaves existing text alone. Import never blanks a
 field it does not carry.
 
+### V2 multi-variant — one product, several SKUs (Shopee/TikTok-style)
+
+Four more optional V2 columns let several rows become ONE product with one
+real, option-bearing `ProductVariant` per row — the same thing
+`/tenant-admin/catalog`'s "Assign option → Generate variants" does by
+hand, driven from a bulk file instead.
+
+| Column          | Required                         | Meaning                                                  |
+| --------------- | --------------------------------- | --------------------------------------------------------- |
+| `product_key`   | No                                 | Rows sharing this value become one product. Any text you choose — it is scoped to this one file, never stored. |
+| `option_name`   | Required if `option_value` is set  | The first variant axis, e.g. `Color`. Shared tenant-wide, same as options created in the catalog page. |
+| `option_value`  | Required if `option_name` is set   | e.g. `Red`.                                                |
+| `option2_name`  | Optional, requires `option_name`   | A second axis, e.g. `Size` (Shopee's own two-axis limit).  |
+| `option2_value` | Required if `option2_name` is set  | e.g. `M`.                                                  |
+
+```csv
+sku,name,price,weight_grams,status,product_key,option_name,option_value,option2_name,option2_value,on_hand,inventory_mode
+SHIRT-RED-S,Basic Tee,150000,200,active,TEE-1,Color,Red,Size,S,40,set_on_hand
+SHIRT-RED-M,Basic Tee,150000,200,active,TEE-1,Color,Red,Size,M,35,set_on_hand
+SHIRT-BLUE-S,Basic Tee,160000,200,active,TEE-1,Color,Blue,Size,S,20,set_on_hand
+```
+
+Every row still carries its own `sku`, `price`, `on_hand` and
+`inventory_mode` — those are variant-level, exactly like today. `name`,
+`weight_grams`, `status`, `description` and `category` are product-level:
+every row sharing a `product_key` must agree on them (give the same value,
+or leave it blank on all but one row); a disagreement is `invalid` and
+blocks the whole import, the same posture as everywhere else in this
+contract.
+
+A lone row (no `product_key`, or a `product_key` nobody else uses) with
+`option_name` set is also valid — a real one-variant product that already
+declares an option, same as a merchant who picked "Color" in the catalog
+page before having a second color in stock yet.
+
+**What this does NOT do: add a new variant to an already-existing
+product.** `product_key` only groups rows within the SAME file into a
+BRAND NEW product. If some of a group's SKUs already exist and others
+don't, the existing ones update normally but the new ones are rejected as
+`duplicate` — CSV import cannot attach a new SKU to a product it didn't
+just create in this same file. Add a new variant to an existing product
+in `/tenant-admin/catalog` instead.
+
 ## Matching and idempotency
 
 **`sku` is the only matching key.** It is the only stable, tenant-scoped,

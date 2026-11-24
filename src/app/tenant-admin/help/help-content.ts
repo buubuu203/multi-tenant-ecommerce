@@ -299,6 +299,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       'Xem trước kết quả trước khi nhập thật.',
       'Nhập file dạng đơn giản gồm tên, giá và trọng lượng theo gram.',
       'Nhập file dạng mở rộng có SKU để cập nhật sản phẩm đã có.',
+      'Tạo sản phẩm có nhiều biến thể (màu, size...) cùng lúc bằng product_key + option_name/option_value.',
       'Đặt tồn kho theo số tuyệt đối hoặc tăng giảm tương đối.',
       'Gán phân loại (category) cho sản phẩm, tự tạo phân loại mới nếu tên đó chưa có.',
       'Xuất danh sách sản phẩm hiện tại.',
@@ -334,13 +335,19 @@ export const HELP_SECTIONS: HelpSection[] = [
         meaning:
           'Chỉ có ở dạng mở rộng. Ghi tên phân loại vào đó — nếu tên này chưa tồn tại, hệ thống tự tạo mới; nếu đã có thì dùng lại, không tạo trùng. Để trống hoặc bỏ cột này thì giữ nguyên phân loại sản phẩm đang có, không xoá.',
       },
+      {
+        term: 'product_key và option_name/option_value',
+        meaning:
+          'Các dòng cùng một product_key sẽ gộp thành MỘT sản phẩm, mỗi dòng là một biến thể (ví dụ: Color=Đỏ, Color=Xanh). Có thể thêm trục thứ hai bằng option2_name/option2_value (ví dụ Size). Tên sản phẩm, trọng lượng, trạng thái, mô tả, phân loại phải giống nhau trên mọi dòng cùng product_key; giá, SKU, tồn kho vẫn ghi riêng từng dòng như bình thường.',
+      },
     ],
     limits: [
       'Toàn bộ file được nhập trong một lần duy nhất: nếu có một dòng lỗi thì không dòng nào được ghi vào hệ thống.',
       'Dòng sai hoặc trùng SKU sẽ chặn cả lần nhập, hệ thống không tự bỏ qua dòng sai.',
       'Dòng tạo mới có tên trùng với sản phẩm đã có (hoặc trùng với dòng khác trong cùng file) cũng bị chặn, để tránh tạo nhầm sản phẩm thứ hai cùng tên.',
+      'product_key chỉ tạo sản phẩm MỚI nhiều biến thể — chưa hỗ trợ thêm biến thể mới vào sản phẩm đã có sẵn; việc đó vẫn phải làm trong Danh mục (Assign option → Generate variants).',
       'Mỗi file tối đa 1 MB và 500 dòng.',
-      'Không nhập được giảm giá, hình ảnh, thuộc tính hay mẫu mã qua CSV. Các cột đó sẽ bị báo lỗi kèm lý do.',
+      'Không nhập được giảm giá, hình ảnh qua CSV. Các cột đó sẽ bị báo lỗi kèm lý do.',
       'Sản phẩm cũ chưa có SKU thì không cập nhật được bằng CSV. Hãy đặt SKU cho sản phẩm đó trước.',
       'File xuất ra là bản báo cáo để đọc, không dùng để nhập ngược trở lại.',
     ],
