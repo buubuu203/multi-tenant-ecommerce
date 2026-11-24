@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       if (size > MAX_BANNER_IMAGE_BYTES) {
         await reader.cancel();
         return NextResponse.json(
-          { success: false, error: "Banner image exceeds the 8MB limit." },
+          { success: false, error: "Ảnh banner vượt 4MB, vui lòng chọn ảnh nhỏ hơn." },
           { status: 413 },
         );
       }

@@ -14,6 +14,7 @@ import { createOrder } from "../src/lib/order-mutations";
 
 const UNIT_PRICE = 100_000;
 const SHIPPING_AMOUNT = 20_000;
+const EXPECTED_REMOTE_SHIPPING_AMOUNT = SHIPPING_AMOUNT + 20_000;
 
 let tenantA: { id: string };
 let tenantB: { id: string };
@@ -46,8 +47,14 @@ async function provisionTenant(label: string, suffix: string) {
       combinationKey: "",
     },
   });
+  // onHand must comfortably exceed the sum of every quantity this file's
+  // success-expected tests place against variantA across a single run
+  // (tests share this fixture and never release reserved stock between
+  // each other) — currently ~10 units; headroom here avoids a repeat of
+  // the 2026-11-24 incident where adding two new shipping tests silently
+  // exhausted a tighter onHand and failed an unrelated later test.
   await prisma.inventory.create({
-    data: { tenantId: tenant.id, productVariantId: variant.id, locationId: location.id, onHand: 10 },
+    data: { tenantId: tenant.id, productVariantId: variant.id, locationId: location.id, onHand: 100 },
   });
   const shippingMethod = await prisma.tenantShippingMethod.create({
     data: { tenantId: tenant.id, name: "Standard", amount: SHIPPING_AMOUNT, enabled: true, isDefault: true },
@@ -122,11 +129,30 @@ test("shipping: snapshots the server-resolved amount, never a client-supplied on
   );
   assert.equal(result.success, true);
   if (!result.success) return;
-  assert.equal(result.data.shippingAmount, SHIPPING_AMOUNT);
+  assert.equal(result.data.shippingAmount, EXPECTED_REMOTE_SHIPPING_AMOUNT);
 
   const order = await prisma.order.findUnique({ where: { id: result.data.orderId } });
-  assert.equal(order?.shippingAmount, SHIPPING_AMOUNT);
+  assert.equal(order?.shippingAmount, EXPECTED_REMOTE_SHIPPING_AMOUNT);
   assert.equal(order?.shippingMethodName, "Standard");
+});
+
+test("shipping: order creation estimates from the database product weight", async () => {
+  await prisma.product.update({ where: { id: productA.id }, data: { weightGrams: 501 } });
+  try {
+    const result = await createOrder(
+      tenantA.id,
+      [{ productVariantId: variantA.id, quantity: 1 }],
+      "cod",
+      customer,
+      shipping,
+      shippingMethodA.id,
+    );
+    assert.ok(result.success);
+    if (!result.success) return;
+    assert.equal(result.data.shippingAmount, SHIPPING_AMOUNT + 20_000 + 10_000);
+  } finally {
+    await prisma.product.update({ where: { id: productA.id }, data: { weightGrams: 100 } });
+  }
 });
 
 test("inventory: a successful order reserves stock", async () => {

@@ -3,8 +3,8 @@ import { createProduct } from "./product-mutations";
 export const MAX_ROWS = 500;
 export const MAX_BYTES = 1024 * 1024; // 1 MB
 
-const EXPECTED_HEADERS_WITH_STATUS = ["name", "price", "status"];
-const EXPECTED_HEADERS_WITHOUT_STATUS = ["name", "price"];
+const EXPECTED_HEADERS_WITH_STATUS = ["name", "price", "weight_grams", "status"];
+const EXPECTED_HEADERS_WITHOUT_STATUS = ["name", "price", "weight_grams"];
 
 export type ImportSummary = {
   totalRows: number;
@@ -93,7 +93,7 @@ export function validateHeader(header: string[]): { hasStatus: boolean } | { err
     if (matches) return { hasStatus: false };
   }
   return {
-    error: `Unrecognized header. Expected exactly "name,price" or "name,price,status", got "${normalized.join(",")}".`,
+    error: `Unrecognized header. Expected exactly "name,price,weight_grams" or "name,price,weight_grams,status", got "${normalized.join(",")}".`,
   };
 }
 
@@ -133,7 +133,7 @@ export async function importProductsFromCsv(
     return { success: false, error: "File has no data rows." };
   }
 
-  const expectedColumns = hasStatus ? 3 : 2;
+  const expectedColumns = hasStatus ? 4 : 3;
   const failures: { row: number; reason: string }[] = [];
   let imported = 0;
 
@@ -146,12 +146,13 @@ export async function importProductsFromCsv(
       continue;
     }
 
-    const [name, price, statusRaw] = cols;
+    const [name, price, weightGrams, statusRaw] = cols;
     const status = hasStatus ? statusRaw.trim() : "";
 
     const result = await createProduct(tenantId, {
       name,
       price,
+      weightGrams,
       status: status === "" ? "draft" : status,
     });
 

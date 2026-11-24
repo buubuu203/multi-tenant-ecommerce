@@ -13,16 +13,17 @@ import {
   adminPanelTitleClassName,
   adminInputClassName,
   adminLabelClassName,
-  adminRequiredClassName,
 } from '../styles';
 import { shippingBlockedReason } from '@/lib/shipping-availability';
 import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge } from '../StatusBadge';
+import { getDictionary, getLocale } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
 
 export default async function ShippingPage() {
   const { tenantId } = await requireTenantAdmin();
+  const dict = await getDictionary(await getLocale());
   const db = getScopedDb(tenantId);
   // V1 Configurable Shipping — a tenant-authored list, ordered for display
   // (see TenantShippingMethod's doc comment for why this is a list rather
@@ -41,8 +42,8 @@ export default async function ShippingPage() {
   return (
     <div className={adminPageClassName}>
       <AdminPageHeader
-        title="Shipping"
-        description="Only enabled methods appear at checkout. If none is enabled, checkout is blocked entirely."
+        title={dict.admin.shipping}
+        description={dict.admin.shippingEstimateDescription}
       />
 
       {blockedReason && (
@@ -102,8 +103,7 @@ export default async function ShippingPage() {
               </label>
               <label className={adminLabelClassName}>
                 <span className="flex flex-wrap items-baseline gap-1.5">
-                  Amount
-                  <span className={adminRequiredClassName}>in VND — enter 0 for free shipping</span>
+                  {dict.admin.shippingBaseAmountLabel}
                 </span>
                 <input
                   name="amount"
@@ -111,6 +111,9 @@ export default async function ShippingPage() {
                   defaultValue={String(method.amount)}
                   className={adminInputClassName}
                 />
+                <span className="text-xs text-muted-foreground">
+                  {dict.admin.shippingBaseAmountHint}
+                </span>
               </label>
               <label className="flex items-center gap-2 text-xs">
                 <input type="checkbox" name="enabled" defaultChecked={method.enabled} />
@@ -168,8 +171,7 @@ export default async function ShippingPage() {
           </label>
           <label className={adminLabelClassName}>
             <span className="flex flex-wrap items-baseline gap-1.5">
-              Amount
-              <span className={adminRequiredClassName}>in VND — enter 0 for free shipping</span>
+              {dict.admin.shippingBaseAmountLabel}
             </span>
             <input
               name="amount"
@@ -177,6 +179,9 @@ export default async function ShippingPage() {
               placeholder="20000"
               className={adminInputClassName}
             />
+            <span className="text-xs text-muted-foreground">
+              {dict.admin.shippingBaseAmountHint}
+            </span>
           </label>
           <label className="flex items-center gap-2 text-xs">
             <input type="checkbox" name="enabled" />

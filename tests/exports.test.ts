@@ -16,6 +16,7 @@ import { toCsv } from "../src/lib/csv";
 
 const PRICE = 250_000;
 const SHIPPING = 30_000;
+const EXPECTED_REMOTE_SHIPPING = SHIPPING + 20_000;
 
 let tenantA: { id: string };
 let tenantB: { id: string };
@@ -133,10 +134,12 @@ test("products export has the documented headers in a stable order", async () =>
 test("products export includes this tenant's variant, price, stock and discount", async () => {
   const table = await buildProductsExport(tenantA.id);
   assert.ok(table.rows.length > 0);
-  const row = table.rows.find((r) => String(r[5]).includes(`EXP-a-${suffix}`));
+  const skuIndex = PRODUCT_EXPORT_HEADERS.indexOf("variant_sku");
+  const row = table.rows.find((r) => String(r[skuIndex]).includes(`EXP-a-${suffix}`));
   assert.ok(row, "tenant A's own SKU is present");
   const col = (name: string) => row[PRODUCT_EXPORT_HEADERS.indexOf(name as never)];
   assert.equal(col("variant_price_vnd"), "250000");
+  assert.equal(col("product_weight_grams"), 100);
   assert.equal(col("discount_percent"), 20);
   assert.equal(col("discounted_price_vnd"), "200000");
   assert.equal(col("stock_on_hand"), 40);
@@ -195,11 +198,11 @@ test("orders export carries operational totals and the item summary", async () =
   for (const row of table.rows) {
     assert.equal(col(row, "order_status"), "pending");
     assert.equal(col(row, "payment_method"), "cod");
-    assert.equal(col(row, "shipping_amount_vnd"), String(SHIPPING));
+    assert.equal(col(row, "shipping_amount_vnd"), String(EXPECTED_REMOTE_SHIPPING));
     // total = subtotal + shipping, taken from the same query the UI uses.
     const subtotal = Number(col(row, "subtotal_vnd"));
     const total = Number(col(row, "total_vnd"));
-    assert.equal(total, subtotal + SHIPPING);
+    assert.equal(total, subtotal + EXPECTED_REMOTE_SHIPPING);
     assert.match(String(col(row, "items")), / x =Túi/);
   }
 });

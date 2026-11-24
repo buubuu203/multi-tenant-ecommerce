@@ -68,10 +68,12 @@ export default async function TenantAdminLayout({ children }: { children: ReactN
   }
 
   const db = getScopedDb(tenantId);
-  const tenant = await db.tenant.findUnique({ where: { id: tenantId } });
-  const branding = await db.branding.findUnique({ where: { tenantId } });
+  const [tenant, branding, primaryDomain] = await Promise.all([
+    db.tenant.findUnique({ where: { id: tenantId } }),
+    db.branding.findUnique({ where: { tenantId } }),
+    db.domain.findFirst({ where: { tenantId, isPrimary: true } }),
+  ]);
   const themeBranding = resolveBranding(tenant ?? { name: 'Store' }, branding);
-  const primaryDomain = await db.domain.findFirst({ where: { tenantId, isPrimary: true } });
 
   return (
     <TenantTheme branding={themeBranding} className="admin-chrome flex flex-1 flex-col">

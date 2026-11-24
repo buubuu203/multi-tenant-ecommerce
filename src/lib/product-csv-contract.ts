@@ -1,11 +1,12 @@
 import { MAX_BYTES, MAX_ROWS, parseCsv } from './product-csv';
+import { MAX_PRODUCT_WEIGHT_GRAMS } from './product-weight';
 
 /**
  * The product CSV contract: two formats, one parser, one set of rules.
  *
- * V1 (minimal, unchanged): exactly `name,price` or `name,price,status`,
- * positional. Create-only, because it carries no stable identifier — this
- * is the historical format and it behaves exactly as it always has.
+ * V1 (minimal): positional `name,price,weight_grams` with optional status.
+ * Legacy V1 headers still parse, but cannot create a product until a weight
+ * is supplied. V1 is create-only because it carries no stable identifier.
  *
  * V2 (extended): NAMED columns, order-independent, keyed on `sku`. A row
  * whose SKU already exists in this tenant updates that variant and its
@@ -19,7 +20,9 @@ import { MAX_BYTES, MAX_ROWS, parseCsv } from './product-csv';
  * Matching by NAME is deliberately not an update key: names are not
  * unique, not stable, and merchants rename things.
  *
- * `category` (V2 only) is matched by NAME, not id — a CSV has no way to
+ * `weight_grams` is required to create a product and optional for SKU-based
+ * updates, where omission leaves the existing weight unchanged. `category`
+ * (V2 only) is matched by NAME, not id — a CSV has no way to
  * carry a tenant's internal category uuid, and name is the only handle a
  * merchant has. A name that doesn't exist yet for this tenant is created
  * on the fly (applyProductCsv, inside the same transaction as the import);
@@ -39,6 +42,7 @@ export type ParsedRow = {
   sku: string | null;
   name: string;
   price: number;
+  weightGrams: number | null;
   status: 'draft' | 'active';
   description: string | null;
   category: string | null;
@@ -57,14 +61,17 @@ export type ParsedCsv = {
 
 export type ParseFailure = { error: string };
 
-const V1_WITH_STATUS = ['name', 'price', 'status'];
-const V1_WITHOUT_STATUS = ['name', 'price'];
+const V1_WITH_STATUS = ['name', 'price', 'weight_grams', 'status'];
+const V1_WITHOUT_STATUS = ['name', 'price', 'weight_grams'];
+const LEGACY_V1_WITH_STATUS = ['name', 'price', 'status'];
+const LEGACY_V1_WITHOUT_STATUS = ['name', 'price'];
 
 /** Every column V2 understands. Anything else is rejected, never ignored. */
 const V2_COLUMNS = [
   'sku',
   'name',
   'price',
+  'weight_grams',
   'status',
   'description',
   'category',
@@ -138,9 +145,17 @@ export function parseProductCsv(rawText: string): ParsedCsv | ParseFailure {
   }
   if (dataRows.length === 0) return { error: 'File has no data rows.' };
 
-  // V1 first, so the historical format keeps its exact behaviour.
-  if (matchesPositional(header, V1_WITH_STATUS) || matchesPositional(header, V1_WITHOUT_STATUS)) {
-    return parseV1(dataRows, header.length === 3);
+  // V1 first, preserving the historical positional format while allowing
+  // new files to carry the required weight for newly created products.
+  const v1WithStatus = matchesPositional(header, V1_WITH_STATUS);
+  const v1WithoutStatus = matchesPositional(header, V1_WITHOUT_STATUS);
+  if (v1WithStatus || v1WithoutStatus) {
+    return parseV1(dataRows, v1WithStatus, true);
+  }
+  const legacyV1WithStatus = matchesPositional(header, LEGACY_V1_WITH_STATUS);
+  const legacyV1WithoutStatus = matchesPositional(header, LEGACY_V1_WITHOUT_STATUS);
+  if (legacyV1WithStatus || legacyV1WithoutStatus) {
+    return parseV1(dataRows, legacyV1WithStatus, false);
   }
 
   return parseV2(header, dataRows);
@@ -194,8 +209,8 @@ function validateCore(
   return { name: trimmedName, price, status };
 }
 
-function parseV1(dataRows: string[][], hasStatus: boolean): ParsedCsv {
-  const expectedColumns = hasStatus ? 3 : 2;
+function parseV1(dataRows: string[][], hasStatus: boolean, hasWeight: boolean): ParsedCsv {
+  const expectedColumns = 2 + Number(hasWeight) + Number(hasStatus);
   const rows: ParsedRow[] = [];
   const errors: RowError[] = [];
 
@@ -208,16 +223,37 @@ function parseV1(dataRows: string[][], hasStatus: boolean): ParsedCsv {
       });
       return;
     }
-    const [name, price, statusRaw = ''] = cols;
-    if (pushFieldLengthErrors(rowNumber, { name, price }, errors)) return;
+    const name = cols[0];
+    const price = cols[1];
+    const weightRaw = hasWeight ? cols[2] : '';
+    const statusRaw = hasStatus ? cols[hasWeight ? 3 : 2] : '';
+    if (
+      pushFieldLengthErrors(
+        rowNumber,
+        { name, price, ...(hasWeight ? { weight_grams: weightRaw } : {}) },
+        errors,
+      )
+    ) return;
 
     const core = validateCore(rowNumber, name, price, hasStatus ? statusRaw : '', errors);
     if (!core) return;
+    const weightGrams = hasWeight ? parseInteger(weightRaw.trim()) : null;
+    if (
+      hasWeight &&
+      (weightGrams === null || weightGrams <= 0 || weightGrams > MAX_PRODUCT_WEIGHT_GRAMS)
+    ) {
+      errors.push({
+        rowNumber,
+        message: 'weight_grams must be a positive whole number of grams within the supported range.',
+      });
+      return;
+    }
 
     rows.push({
       rowNumber,
       sku: null, // V1 carries no identifier, so every row can only create.
       ...core,
+      weightGrams,
       description: null,
       category: null,
       onHand: null,
@@ -246,7 +282,8 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
   if (unknown) {
     return {
       error:
-        `Unrecognized column "${unknown}". Use the simple format "name,price" or "name,price,status", ` +
+        `Unrecognized column "${unknown}". Use the simple format "name,price,weight_grams" ` +
+        `or "name,price,weight_grams,status", ` +
         `or the extended format with any of: ${V2_COLUMNS.join(', ')}.`,
     };
   }
@@ -280,6 +317,8 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
     const sku = at(cols, 'sku').trim();
     const name = at(cols, 'name');
     const priceRaw = at(cols, 'price');
+    const weightColumnPresent = header.includes('weight_grams');
+    const weightRaw = at(cols, 'weight_grams').trim();
     const statusRaw = at(cols, 'status');
     const description = at(cols, 'description');
     const category = at(cols, 'category');
@@ -289,7 +328,14 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
     if (
       pushFieldLengthErrors(
         rowNumber,
-        { sku, name, price: priceRaw, description, category },
+        {
+          sku,
+          name,
+          price: priceRaw,
+          ...(weightColumnPresent ? { weight_grams: weightRaw } : {}),
+          description,
+          category,
+        },
         errors,
       )
     ) {
@@ -311,6 +357,17 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
 
     const core = validateCore(rowNumber, name, priceRaw, statusRaw, errors);
     if (!core) return;
+    const weightGrams = weightColumnPresent ? parseInteger(weightRaw) : null;
+    if (
+      weightColumnPresent &&
+      (weightGrams === null || weightGrams <= 0 || weightGrams > MAX_PRODUCT_WEIGHT_GRAMS)
+    ) {
+      errors.push({
+        rowNumber,
+        message: 'weight_grams must be a positive whole number of grams within the supported range.',
+      });
+      return;
+    }
 
     let onHand: number | null = null;
     let inventoryMode: InventoryMode | null = null;
@@ -361,6 +418,7 @@ function parseV2(header: string[], dataRows: string[][]): ParsedCsv | ParseFailu
       rowNumber,
       sku,
       ...core,
+      weightGrams,
       description: description.trim() === '' ? null : description,
       category: category.trim() === '' ? null : category.trim(),
       onHand,

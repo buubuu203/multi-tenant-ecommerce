@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useEffect, useMemo, useState } from 'react';
+import { Suspense, useEffect, useMemo, useRef, useState } from 'react';
 import Link from 'next/link';
 import { useSearchParams } from 'next/navigation';
 import type { TenantProduct, TenantProductVariant } from './get-tenant-products';
@@ -16,6 +16,10 @@ import { iconForCategory } from './category-icon';
 function formatVnd(price: number): string {
   return `${price.toLocaleString('vi-VN')} ₫`;
 }
+
+// PDP variant chips (QA round, 2026-11-23): at most this many values show
+// as chips before collapsing behind "Xem cả N".
+const MAX_VISIBLE_CHIPS = 6;
 
 // Step 40: a fixed, non-configurable threshold for the lightweight
 // "Only N left" hint — deliberately not a database field, admin setting,
@@ -76,19 +80,36 @@ export function isValueSelectable(
   });
 }
 
-// Annotates every value of one option with whether it's currently
-// selectable, given the rest of the selection. Used to render disabled
-// <option> entries without hiding them.
-export function getAvailableValues(
+// Same matching rule as isValueSelectable() above, but ALSO requires at
+// least one matching variant to have real stock (available > 0) — the
+// PDP chip UI (QA round, 2026-11-23) dims a value for either reason
+// ("tổ hợp không tồn tại/hết hàng"), where the plain <select> on the grid
+// card only ever cared about combination existence. Kept as a SEPARATE
+// function rather than changing isValueSelectable()'s own contract,
+// since applySelection() deliberately auto-clears a value only when its
+// COMBINATION stops existing, never just because stock ran out — that
+// existing behavior stays untouched.
+export function isValueSelectableInStock(
   variants: TenantProductVariant[],
-  targetOptionId: string,
-  values: { variantOptionValueId: string; valueLabel: string }[],
   selection: Record<string, string>,
-): { variantOptionValueId: string; valueLabel: string; selectable: boolean }[] {
-  return values.map((value) => ({
-    ...value,
-    selectable: isValueSelectable(variants, selection, targetOptionId, value.variantOptionValueId),
-  }));
+  targetOptionId: string,
+  targetValueId: string,
+): boolean {
+  const otherSelections = Object.entries(selection).filter(
+    ([optionId]) => optionId !== targetOptionId,
+  );
+  return variants.some((variant) => {
+    if (variant.available <= 0) return false;
+    const hasTarget = variant.options.some(
+      (ov) => ov.variantOptionId === targetOptionId && ov.variantOptionValueId === targetValueId,
+    );
+    if (!hasTarget) return false;
+    return otherSelections.every(([optionId, valueId]) =>
+      variant.options.some(
+        (ov) => ov.variantOptionId === optionId && ov.variantOptionValueId === valueId,
+      ),
+    );
+  });
 }
 
 // After changing `changedOptionId` to `changedValueId` (or clearing it),
@@ -119,6 +140,139 @@ export function applySelection(
   }
 
   return next;
+}
+
+// Best-effort color swatch for the PDP chip UI (QA round, 2026-11-23).
+// There is no color-code field anywhere in the schema — VariantOptionValue
+// is a bare string ("White", "36"), and adding one is a bigger schema
+// change than this round asked for — so this recognizes a real hex value
+// typed directly as the option value ("#E11D2E"), or a small built-in
+// dictionary of common Vietnamese/English color names. Anything else
+// (including every non-color option, like Size) falls back to a plain
+// text chip — exactly "nếu có mã màu... nếu không có thì chip chữ".
+const COLOR_NAME_HEX: Record<string, string> = {
+  'đỏ': '#e11d2e', red: '#e11d2e',
+  'xanh': '#2563eb', blue: '#2563eb',
+  'xanh lá': '#16a34a', 'xanh lá cây': '#16a34a', green: '#16a34a',
+  'xanh dương': '#2563eb', 'xanh biển': '#0ea5e9', 'xanh da trời': '#0ea5e9',
+  'vàng': '#eab308', yellow: '#eab308',
+  'đen': '#18181b', black: '#18181b',
+  'trắng': '#ffffff', white: '#ffffff',
+  'hồng': '#ec4899', pink: '#ec4899',
+  'tím': '#8b5cf6', purple: '#8b5cf6',
+  'cam': '#f97316', orange: '#f97316',
+  'xám': '#6b7280', gray: '#6b7280', grey: '#6b7280',
+  'nâu': '#78350f', brown: '#78350f',
+  'bạc': '#c0c0c0', silver: '#c0c0c0',
+  'vàng kim': '#d4af37', gold: '#d4af37',
+};
+
+function resolveColorSwatch(optionName: string, valueLabel: string): string | null {
+  if (!/màu|color|colour/i.test(optionName)) return null;
+  const normalized = valueLabel.trim().toLowerCase();
+  const hexOnly = normalized.replace(/^#/, '');
+  if (/^[0-9a-f]{6}$/i.test(hexOnly)) return `#${hexOnly}`;
+  return COLOR_NAME_HEX[normalized] ?? null;
+}
+
+// One option's chip group on the PDP — a real <input type="radio"> per
+// value is overkill here (no form submission reads these directly; the
+// parent tracks selection in `selection` state), so this is a hand-rolled
+// ARIA radiogroup instead: role="radio" + aria-checked per chip, roving
+// tabIndex (only the checked chip, or the first when none is checked, is
+// in the Tab order — arrow keys move focus within the group), which is
+// the standard accessible pattern for "exactly one of these" when the
+// visual design isn't native radio buttons.
+function VariantOptionChipGroup({
+  option,
+  values,
+  selectedValueId,
+  onSelect,
+  dict,
+}: {
+  option: { variantOptionId: string; optionName: string };
+  values: { variantOptionValueId: string; valueLabel: string; selectable: boolean }[];
+  selectedValueId: string | undefined;
+  onSelect: (valueId: string) => void;
+  dict: ReturnType<typeof useDictionary>;
+}) {
+  const [expanded, setExpanded] = useState(false);
+  const groupRef = useRef<HTMLDivElement>(null);
+  const visibleValues = expanded ? values : values.slice(0, MAX_VISIBLE_CHIPS);
+  const hiddenCount = values.length - MAX_VISIBLE_CHIPS;
+
+  function focusChipAt(index: number) {
+    const buttons = groupRef.current?.querySelectorAll<HTMLButtonElement>('[role="radio"]');
+    const target = buttons?.[(index + visibleValues.length) % visibleValues.length];
+    target?.focus();
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent, index: number) {
+    if (e.key === 'ArrowRight' || e.key === 'ArrowDown') {
+      e.preventDefault();
+      focusChipAt(index + 1);
+    } else if (e.key === 'ArrowLeft' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      focusChipAt(index - 1);
+    }
+  }
+
+  return (
+    <div className="flex flex-col gap-2">
+      <span className="kicker">{option.optionName}</span>
+      <div
+        ref={groupRef}
+        role="radiogroup"
+        aria-label={option.optionName}
+        className="flex flex-wrap gap-2"
+      >
+        {visibleValues.map((value, i) => {
+          const swatch = resolveColorSwatch(option.optionName, value.valueLabel);
+          const selected = selectedValueId === value.variantOptionValueId;
+          // Roving tabIndex: the checked chip is reachable by Tab; if
+          // nothing is checked yet, the first chip is, so the group is
+          // never entirely skipped by keyboard.
+          const isTabStop = selected || (!selectedValueId && i === 0);
+          return (
+            <button
+              key={value.variantOptionValueId}
+              type="button"
+              role="radio"
+              aria-checked={selected}
+              aria-disabled={!value.selectable}
+              tabIndex={isTabStop ? 0 : -1}
+              onKeyDown={(e) => handleKeyDown(e, i)}
+              onClick={() => {
+                if (value.selectable) onSelect(value.variantOptionValueId);
+              }}
+              className="variant-chip"
+            >
+              {swatch && (
+                <span
+                  className="variant-chip-swatch"
+                  style={{ background: swatch }}
+                  aria-hidden="true"
+                />
+              )}
+              <span style={value.selectable ? undefined : { textDecoration: 'line-through' }}>
+                {value.valueLabel}
+              </span>
+            </button>
+          );
+        })}
+      </div>
+      {hiddenCount > 0 && !expanded && (
+        <button
+          type="button"
+          onClick={() => setExpanded(true)}
+          className="text-xs underline"
+          style={{ color: 'var(--ink-2)', width: 'fit-content' }}
+        >
+          {dict.products.viewAllValues.replace('{count}', String(values.length))}
+        </button>
+      )}
+    </div>
+  );
 }
 
 // Step 46: exported so the product detail page (/products/[productId])
@@ -157,9 +311,23 @@ export function MediaThumbnail({
 export function ProductRow({
   product,
   linkToDetail = true,
+  activeOrderVoucher = null,
+  enabledShippingMethods = [],
+  enabledPaymentMethods = [],
 }: {
   product: TenantProduct;
   linkToDetail?: boolean;
+  // PDP only (QA round, 2026-11-23) — the best currently-active automatic
+  // ORDER-scope voucher, if any (see vouchers.ts's
+  // getActiveAutoOrderVoucher). Grid cards never pass this; the line only
+  // ever renders in the !linkToDetail (PDP) branch below.
+  activeOrderVoucher?: { label: string | null; discountValue: number } | null;
+  // PDP trust block (QA round, 2026-11-23): replaces static copy — the
+  // Giao hàng row shows the lowest fee among these, hidden entirely when
+  // empty; the Thanh toán row lists these by name, hidden when empty.
+  // Grid cards never pass either, same posture as activeOrderVoucher.
+  enabledShippingMethods?: { name: string; amount: number }[];
+  enabledPaymentMethods?: ('cod' | 'momo' | 'bank_transfer')[];
 }) {
   // Simple-product path: unchanged from before this step — a product with
   // exactly one variant carrying the combinationKey === "" sentinel (the
@@ -215,6 +383,18 @@ export function ProductRow({
 
   const resolvedVariant = simpleVariant ?? resolveVariant(product.variants, selection, optionIds);
   const hasCompleteSelection = optionIds.length > 0 && optionIds.every((id) => selection[id]);
+  // PDP-only display text for the "Đã chọn: ..." line below (QA round,
+  // 2026-11-23) — deliberately SEPARATE from handleAddToCart's own
+  // variantLabel (which keeps its "OptionName: value" format for the
+  // cart/order rows; changing that is out of this round's scope). Just
+  // the chosen values, e.g. "Đỏ / S".
+  const selectedValuesLabel =
+    resolvedVariant && resolvedVariant.options.length > 0
+      ? [...resolvedVariant.options]
+          .sort((a, b) => a.optionName.localeCompare(b.optionName))
+          .map((o) => o.valueLabel)
+          .join(' / ')
+      : '';
   // Step 50: sortOrder 0 IS the primary media everywhere the app needs
   // one — media is already returned pre-sorted by get-tenant-products.ts.
   const primaryMedia = product.media[0];
@@ -324,50 +504,38 @@ export function ProductRow({
     }
   }
 
-  // Step 50 (revised): variant options get their own labeled block on the
-  // detail page (larger, one-per-line) so a product with several options
-  // stays legible as more get added — the card view keeps the original
-  // compact wrapped-row layout, since a list card has no room to spare.
+  // Step 50 (revised) / QA round (2026-11-23): variant options get their
+  // own labeled chip group on the detail page (PDP-only — this component
+  // is never rendered with linkToDetail=true carrying real options; the
+  // grid card shows a plain "Chọn tùy chọn" prompt with no inline
+  // selector at all, see the card's own return path further down).
   const optionsBlock = !simpleVariant && options.length > 0 && (
-    <div className={linkToDetail ? 'flex flex-wrap gap-3 text-xs' : 'flex flex-col gap-3 text-sm'}>
+    <div className="flex flex-col gap-4 text-sm">
       {options.map((option) => {
-        const annotatedValues = getAvailableValues(
-          product.variants,
-          option.variantOptionId,
-          option.values,
-          selection,
-        );
+        const annotatedValues = option.values.map((value) => ({
+          ...value,
+          // "Tổ hợp không tồn tại/hết hàng" — a value dims for either
+          // reason, per isValueSelectableInStock()'s own doc comment.
+          selectable: isValueSelectableInStock(
+            product.variants,
+            selection,
+            option.variantOptionId,
+            value.variantOptionValueId,
+          ),
+        }));
         return (
-          <label key={option.variantOptionId} className="flex flex-col gap-1">
-            <span
-              className={linkToDetail ? 'kicker' : 'kicker'}
-              style={linkToDetail ? { fontSize: '11px', textTransform: 'none' } : undefined}
-            >
-              {option.optionName}
-            </span>
-            <select
-              className={linkToDetail ? 'field-glass' : 'field-glass w-full max-w-xs'}
-              style={linkToDetail ? { padding: '6px 10px', fontSize: '13px', minHeight: '32px' } : undefined}
-              value={selection[option.variantOptionId] ?? ''}
-              onChange={(e) =>
-                setSelection((prev) =>
-                  applySelection(product.variants, prev, option.variantOptionId, e.target.value),
-                )
-              }
-            >
-              <option value="">{dict.products.select.replace("{option}", option.optionName)}</option>
-              {annotatedValues.map((value) => (
-                <option
-                  key={value.variantOptionValueId}
-                  value={value.variantOptionValueId}
-                  disabled={!value.selectable}
-                >
-                  {value.valueLabel}
-                  {value.selectable ? '' : ` ${dict.products.unavailable}`}
-                </option>
-              ))}
-            </select>
-          </label>
+          <VariantOptionChipGroup
+            key={option.variantOptionId}
+            option={option}
+            values={annotatedValues}
+            selectedValueId={selection[option.variantOptionId]}
+            onSelect={(valueId) =>
+              setSelection((prev) =>
+                applySelection(product.variants, prev, option.variantOptionId, valueId),
+              )
+            }
+            dict={dict}
+          />
         );
       })}
     </div>
@@ -426,6 +594,16 @@ export function ProductRow({
                 </span>
               )}
             </div>
+            {activeOrderVoucher && (
+              <p className="savings-pill" style={{ width: 'fit-content' }}>
+                {dict.products.autoVoucherHint
+                  .replace('{label}', activeOrderVoucher.label ?? 'Voucher')
+                  .replace('{percent}', String(activeOrderVoucher.discountValue))}
+              </p>
+            )}
+            <p className="text-sm" style={{ color: 'var(--ink-2)' }}>
+              {dict.products.weightLabel} {product.weightGrams.toLocaleString()} g
+            </p>
           </div>
 
           {/* Product Description Rich Text: descriptionHtml is ALREADY
@@ -444,14 +622,18 @@ export function ProductRow({
 
           {optionsBlock}
 
-          {/* SKU (Board 6 decision): only when the product actually has
-              ≥2 variants to tell apart — a single-variant product's SKU
-              (if it even set one) is never shown, since there's no
-              "which one" question for it to answer. Real field
+          {/* "Đã chọn: ... · SKU: ..." (QA round, 2026-11-23) — only once
+              a full selection resolves to a real variant on a product
+              that actually HAS options to tell apart (a single-variant
+              product's SKU, if it even set one, answers no "which one"
+              question, so it's never shown). SKU itself stays optional:
+              a resolved variant with no sku set still shows the chosen
+              values, just without the "· SKU: ..." suffix. Real field
               (ProductVariant.sku), never invented. */}
-          {product.variants.length > 1 && resolvedVariant?.sku && (
+          {!simpleVariant && resolvedVariant && selectedValuesLabel && (
             <p className="text-xs" style={{ color: 'var(--ink-2)' }}>
-              SKU: {resolvedVariant.sku}
+              {dict.products.selectedLabel.replace('{label}', selectedValuesLabel)}
+              {resolvedVariant.sku ? ` · SKU: ${resolvedVariant.sku}` : ''}
             </p>
           )}
 
@@ -532,16 +714,29 @@ export function ProductRow({
               buttons). One glass block, 3 rows stacked, divider between
               each, small 20px icon box on the left of each row. */}
           <div className="glass flex flex-col" style={{ borderRadius: '28px' }}>
-            <div className="flex items-center gap-3" style={{ padding: '6px 18px' }}>
-              <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
-                <Icon name="truck" size={12} />
-              </span>
-              <div>
-                <b className="block text-[15px]">{dict.pdpTrust.shippingTitle}</b>
-                <div className="text-xs" style={{ color: 'var(--ink-2)' }}>{dict.pdpTrust.shippingHint}</div>
+            {enabledShippingMethods.length > 0 && (
+              <div className="flex items-center gap-3" style={{ padding: '6px 18px' }}>
+                <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
+                  <Icon name="truck" size={12} />
+                </span>
+                <div>
+                  <b className="block text-[15px]">{dict.pdpTrust.shippingTitle}</b>
+                  <div className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                    {dict.pdpTrust.shippingFromHint.replace(
+                      '{amount}',
+                      formatVnd(Math.min(...enabledShippingMethods.map((m) => m.amount))),
+                    )}
+                  </div>
+                </div>
               </div>
-            </div>
-            <div className="flex items-center gap-3" style={{ padding: '6px 18px', borderTop: '1px solid var(--divider)' }}>
+            )}
+            <div
+              className="flex items-center gap-3"
+              style={{
+                padding: '6px 18px',
+                borderTop: enabledShippingMethods.length > 0 ? '1px solid var(--divider)' : undefined,
+              }}
+            >
               <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
                 <Icon name="info" size={12} />
               </span>
@@ -552,15 +747,21 @@ export function ProductRow({
                 </Link>
               </div>
             </div>
-            <div className="flex items-center gap-3" style={{ padding: '6px 18px', borderTop: '1px solid var(--divider)' }}>
-              <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
-                <Icon name="wallet" size={12} />
-              </span>
-              <div>
-                <b className="block text-[15px]">{dict.pdpTrust.paymentTitle}</b>
-                <div className="text-xs" style={{ color: 'var(--ink-2)' }}>{dict.pdpTrust.paymentHint}</div>
+            {enabledPaymentMethods.length > 0 && (
+              <div className="flex items-center gap-3" style={{ padding: '6px 18px', borderTop: '1px solid var(--divider)' }}>
+                <span className="ibox" style={{ width: '20px', height: '20px', borderRadius: '7px' }}>
+                  <Icon name="wallet" size={12} />
+                </span>
+                <div>
+                  <b className="block text-[15px]">{dict.pdpTrust.paymentTitle}</b>
+                  <div className="text-xs" style={{ color: 'var(--ink-2)' }}>
+                    {enabledPaymentMethods
+                      .map((m) => (dict.payment as Record<string, string>)[m])
+                      .join(', ')}
+                  </div>
+                </div>
               </div>
-            </div>
+            )}
           </div>
         </div>
 

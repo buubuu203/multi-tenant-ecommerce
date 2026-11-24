@@ -9,6 +9,7 @@ import { CodProvider } from "./cod-provider";
 import { ManualBankTransferProvider, buildManualTransferQrUrl } from "./manual-bank-transfer-provider";
 import { SePayVirtualAccountProvider } from "./sepay-va-provider";
 import { MomoProvider } from "./momo-provider";
+import type { PaymentTitleCode, PaymentNextActionCode } from "./payment-instructions-i18n";
 
 const PROVIDERS: Record<PaymentProviderType, PaymentProvider> = {
   cod: new CodProvider(),
@@ -222,7 +223,7 @@ export async function markManualPaymentReceived(
  */
 export async function getStoredPaymentInstructions(tenantId: string, payment: Payment): Promise<PaymentInstructions> {
   if (payment.provider === "cod") {
-    return { type: "none", nextAction: "Pay in cash when your order arrives." };
+    return { type: "none", nextAction: "PAY_COD_ON_DELIVERY" satisfies PaymentNextActionCode };
   }
 
   if (payment.provider === "bank_transfer_manual") {
@@ -231,35 +232,35 @@ export async function getStoredPaymentInstructions(tenantId: string, payment: Pa
     });
     const config = (tenantMethod?.config as { bankName?: string; accountNumber?: string; accountHolder?: string } | null) ?? null;
     if (!config?.bankName || !config.accountNumber || !config.accountHolder) {
-      return { type: "none", nextAction: "Contact the store directly for payment instructions." };
+      return { type: "none", nextAction: "PAY_BANK_TRANSFER_NOT_CONFIGURED" satisfies PaymentNextActionCode };
     }
     return {
       type: "bank_transfer",
-      title: "Transfer to:",
+      title: "PAY_BANK_TRANSFER_TITLE" satisfies PaymentTitleCode,
       amount: payment.amount,
       currency: "VND",
       bankName: config.bankName,
       accountNumber: config.accountNumber,
       accountHolder: config.accountHolder,
       qrCodeUrl: buildManualTransferQrUrl(config.bankName, config.accountNumber, config.accountHolder, payment.amount, payment.orderId),
-      nextAction: "Please include your order ID as the transfer note.",
+      nextAction: "PAY_BANK_TRANSFER_MANUAL_NOTE_ONLY" satisfies PaymentNextActionCode,
     };
   }
 
   if (payment.provider === "bank_transfer_sepay_va") {
     const metadata = (payment.providerMetadata as { vaNumber?: string; qrCodeUrl?: string } | null) ?? null;
     if (!metadata?.vaNumber) {
-      return { type: "none", nextAction: "Contact the store directly for payment instructions." };
+      return { type: "none", nextAction: "PAY_BANK_TRANSFER_NOT_CONFIGURED" satisfies PaymentNextActionCode };
     }
     return {
       type: "bank_transfer",
-      title: "Transfer to:",
+      title: "PAY_BANK_TRANSFER_TITLE" satisfies PaymentTitleCode,
       amount: payment.amount,
       currency: "VND",
       virtualAccountNumber: metadata.vaNumber,
       qrCodeUrl: metadata.qrCodeUrl ?? undefined,
       expiresAt: payment.expiresAt ? payment.expiresAt.toISOString() : undefined,
-      nextAction: "Scan the QR code or transfer the exact amount to the virtual account number above.",
+      nextAction: "PAY_BANK_TRANSFER_SCAN_QR" satisfies PaymentNextActionCode,
     };
   }
 
@@ -269,11 +270,10 @@ export async function getStoredPaymentInstructions(tenantId: string, payment: Pa
   // probably-dead link.
   return {
     type: "none",
-    nextAction:
-      payment.status === "succeeded"
-        ? "Payment received via MoMo."
-        : payment.status === "pending"
-          ? "If you haven't completed payment yet, please check out again to get a fresh MoMo payment link."
-          : "MoMo payment was not completed.",
+    nextAction: (payment.status === "succeeded"
+      ? "PAY_MOMO_SUCCEEDED"
+      : payment.status === "pending"
+        ? "PAY_MOMO_PENDING_RETRY"
+        : "PAY_MOMO_NOT_COMPLETED") satisfies PaymentNextActionCode,
   };
 }

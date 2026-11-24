@@ -35,6 +35,7 @@ import { PRODUCT_STATUSES } from '../product-status';
 import { formatVnd } from '../format';
 import { DateTimePicker } from '@/components/DateTimePicker';
 import { LOW_STOCK_THRESHOLD } from '@/lib/inventory-availability';
+import { getDictionary, getLocale } from '@/lib/i18n';
 import {
   adminInputClassName,
   adminLabelClassName,
@@ -166,6 +167,7 @@ export default async function CatalogPage({
   searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   const { tenantId } = await requireTenantAdmin();
+  const dict = await getDictionary(await getLocale());
   const db = getScopedDb(tenantId);
 
   const params = await searchParams;
@@ -307,8 +309,8 @@ export default async function CatalogPage({
               <h3 className="text-sm font-medium">Export products (CSV)</h3>
               <p className="text-xs text-muted-foreground">
                 One row per variant, including drafts and archived variants, with SKU, price, any
-                discount and current stock. Opens in Excel with Vietnamese text intact. Contains no
-                customer data.
+                discount, product weight and current stock. Opens in Excel with Vietnamese text
+                intact. Contains no customer data.
               </p>
               <div className="mt-auto">
                 <ExportCsvButton dataset="products" label="products" />
@@ -607,6 +609,21 @@ export default async function CatalogPage({
                         ) : (
                           <input type="hidden" name="price" value="0" />
                         )}
+                        <label className={productLabelClassName}>
+                          {dict.products.weightInputLabel}
+                          <input
+                            name="weightGrams"
+                            type="number"
+                            min="1"
+                            step="1"
+                            required
+                            defaultValue={String(product.weightGrams)}
+                            className={productInputClassName}
+                          />
+                          <span className="text-xs text-muted-foreground">
+                            {dict.products.weightInputHint}
+                          </span>
+                        </label>
                         <label className={productLabelClassName}>
                           Status
                           <select

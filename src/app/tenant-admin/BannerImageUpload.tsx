@@ -3,14 +3,21 @@
 import { useRef, useState } from "react";
 import { showToast } from "@/components/Toast";
 import { ImageCropModal } from "./ImageCropModal";
+import { compressImageInBrowser } from "@/lib/images/client-compress";
 
 // Client-side-only pre-check, mirroring blob-storage.ts's BANNER_MIME_TYPES
-// / MAX_BANNER_IMAGE_BYTES — an early, friendly rejection before spending
-// effort opening the crop UI. This is NOT the security boundary: the
-// cropped output still goes through the upload route's server-side
-// validation regardless of what happens here.
+// — an early, friendly rejection before spending effort opening the crop
+// UI. This is NOT the security boundary: the compressed output still goes
+// through the upload route's server-side validation regardless of what
+// happens here.
 const ACCEPTED_MIME_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
-const MAX_INPUT_BYTES = 8 * 1024 * 1024;
+// 10MB at SELECTION time — the server (blob-storage.ts's
+// MAX_BANNER_IMAGE_BYTES) still caps at 4MB, a Vercel Functions platform
+// limit that cannot be raised. The gap is closed by compressing the
+// CROPPED output client-side (compressImageInBrowser) before it uploads —
+// see uploadCroppedBlob below. Compression never re-crops; it only
+// resizes/re-encodes within the aspect ratio the crop step already fixed.
+const MAX_INPUT_BYTES = 10 * 1024 * 1024;
 
 // Same imperative "upload immediately, hidden field carries the URL"
 // pattern as BrandingUploadControls.tsx's logo/favicon uploads — the
@@ -20,12 +27,14 @@ const MAX_INPUT_BYTES = 8 * 1024 * 1024;
 // `fieldName` — both slots use the same crop ratio; only their output
 // width and whether an empty result is valid differ.
 //
-// Crop-before-upload (V1): selecting a file opens ImageCropModal instead
-// of uploading immediately — only the CROPPED output (a JPEG Blob) is
-// ever sent as a raw request body to the banner upload route.
-// Canceling the crop discards the selected file entirely; nothing is
-// uploaded, matching "do not upload the original before crop
-// confirmation."
+// Crop-before-upload: selecting a file opens ImageCropModal instead of
+// uploading immediately. Cropping itself is OPTIONAL (QA round,
+// 2026-11-23) — the modal offers "Giữ nguyên ảnh gốc" alongside the crop
+// confirm, so a photo that's already composed at some other ratio (e.g.
+// 16:9 with text near the edges) never gets force-cropped and losing
+// content; either choice still goes through compressImageInBrowser
+// before upload. Canceling discards the selected file entirely; nothing
+// is uploaded.
 export function BannerImageUpload({
   fieldName,
   variant,
@@ -49,18 +58,36 @@ export function BannerImageUpload({
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [url, setUrl] = useState(initialUrl ?? "");
+  const [optimizing, setOptimizing] = useState(false);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [pendingCropFile, setPendingCropFile] = useState<File | null>(null);
 
-  async function uploadCroppedBlob(blob: Blob) {
+  // `source` is either the cropped canvas output (Blob, already at the
+  // recommended ratio) or the merchant's ORIGINAL file untouched (when
+  // they chose "Giữ nguyên ảnh gốc" in the crop modal — see onSkip below).
+  // Either way, compression only ever resizes/re-encodes — it never
+  // crops — so an original uploaded this way keeps its real aspect ratio
+  // and content exactly as selected, never losing anything to a forced
+  // ratio.
+  async function uploadImage(source: Blob) {
     setError(null);
+    setOptimizing(true);
+    const compressed = await compressImageInBrowser(
+      source instanceof File ? source : new File([source], "banner-image", { type: source.type || "image/jpeg" }),
+    );
+    setOptimizing(false);
+    if (!compressed.ok) {
+      setError(compressed.error);
+      return;
+    }
+
     setUploading(true);
     try {
       const response = await fetch(`/tenant-admin/banners/upload?variant=${variant}`, {
         method: "POST",
-        headers: { "Content-Type": blob.type },
-        body: blob,
+        headers: { "Content-Type": compressed.file.type },
+        body: compressed.file,
       });
       const result = (await response.json()) as
         | { success: true; data: { url: string } }
@@ -103,10 +130,10 @@ export function BannerImageUpload({
         <button
           type="button"
           onClick={() => inputRef.current?.click()}
-          disabled={uploading}
+          disabled={uploading || optimizing}
           className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface-muted disabled:opacity-50 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
         >
-          {uploading ? "Uploading…" : url ? "Replace" : "Upload"}
+          {optimizing ? "Đang tối ưu ảnh…" : uploading ? "Đang tải lên…" : url ? "Replace" : "Upload"}
         </button>
         {removable && url && (
           <button
@@ -132,11 +159,11 @@ export function BannerImageUpload({
           if (!file) return;
           setError(null);
           if (!ACCEPTED_MIME_TYPES.has(file.type)) {
-            setError("Unsupported image type. Use JPG, PNG, or WebP.");
+            setError("Định dạng ảnh không được hỗ trợ. Dùng JPG, PNG hoặc WebP.");
             return;
           }
           if (file.size > MAX_INPUT_BYTES) {
-            setError("Image exceeds the 8MB limit.");
+            setError("Ảnh vượt 10MB, vui lòng chọn ảnh nhỏ hơn.");
             return;
           }
           setPendingCropFile(file);
@@ -158,7 +185,11 @@ export function BannerImageUpload({
           onCancel={() => setPendingCropFile(null)}
           onConfirm={(blob) => {
             setPendingCropFile(null);
-            void uploadCroppedBlob(blob);
+            void uploadImage(blob);
+          }}
+          onSkip={(file) => {
+            setPendingCropFile(null);
+            void uploadImage(file);
           }}
         />
       )}

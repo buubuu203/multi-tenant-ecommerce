@@ -10,15 +10,27 @@ import { convertImageToWebp } from './images/webp-conversion';
 export const MAX_MEDIA_ITEMS = 10;
 export const MAX_IMAGES = 8;
 export const MAX_VIDEOS = 2;
-export const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
-export const MAX_VIDEO_BYTES = 100 * 1024 * 1024;
-export const MAX_LOGO_BYTES = 5 * 1024 * 1024;
+// Production incident (2026-11-19): every server-side upload path here —
+// product images, banner, logo — runs through a Vercel Function (Server
+// Action or Route Handler), which enforces a HARD, non-configurable 4.5MB
+// request body limit (see https://vercel.com/docs/functions/limitations).
+// Requests over that are rejected by the platform itself with a bare 413
+// before this code ever runs, regardless of any limit set here or in
+// Next.js's own serverActions.bodySizeLimit. 4MB keeps every one of these
+// paths safely under that ceiling with headroom for multipart overhead.
+// Video never goes through this limit at all: it uploads directly from
+// the browser to Vercel Blob (see product-media/upload-video/route.ts +
+// ProductMediaGallery.tsx's uploadSingleVideo), bypassing our server —
+// and therefore this 4.5MB ceiling — entirely. Its own cap lives at
+// MAX_VIDEO_UPLOAD_BYTES below, enforced by Vercel Blob's own token.
+export const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
+export const MAX_VIDEO_UPLOAD_BYTES = 30 * 1024 * 1024;
+export const MAX_LOGO_BYTES = 4 * 1024 * 1024;
 export const MAX_FAVICON_BYTES = 1 * 1024 * 1024;
-// Storefront Carousel/Banner (V1): a hero-sized photo, so a slightly
-// higher cap than the logo/favicon (small UI chrome) but the same order
-// of magnitude — not raster/video's 10-100MB product-media ceiling, which
-// would be excessive for a banner.
-export const MAX_BANNER_IMAGE_BYTES = 8 * 1024 * 1024;
+// Storefront Carousel/Banner (V1): same 4MB ceiling as every other
+// server-proxied upload here, for the same Vercel Functions hard-limit
+// reason — not a banner-specific design choice anymore.
+export const MAX_BANNER_IMAGE_BYTES = 4 * 1024 * 1024;
 
 export type MediaKind = 'image' | 'video';
 
@@ -54,6 +66,20 @@ export function classifyMediaMimeType(mimeType: string): MediaKind | null {
 }
 
 /**
+ * The tenant-scoped path convention every product-media blob uses,
+ * regardless of whether it got there via uploadProductMediaFile() (images,
+ * proxied through this server) or the direct-to-browser video upload route
+ * (which calls this same helper to mint the pathname it hands the client,
+ * then re-validates that the client uploaded to exactly this prefix).
+ * Centralised so the convention — and therefore deleteProductMediaFile()'s
+ * ownership check — can never drift between the two paths.
+ */
+export function buildProductMediaPathname(tenantId: string, fileName: string): string {
+  const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
+  return `product-media/${tenantId}/${randomUUID()}-${safeName}`;
+}
+
+/**
  * Uploads one file to Vercel Blob for the given tenant. The pathname
  * ALWAYS embeds the tenantId (`product-media/<tenantId>/<uuid>-<name>`) —
  * this is what lets deleteProductMediaFile() verify ownership from the URL
@@ -70,14 +96,21 @@ export async function uploadProductMediaFile(
   const kind = classifyMediaMimeType(file.type);
   if (!kind) {
     return {
-      error: 'Unsupported file type. Use JPG, PNG, or WebP for images, or MP4 or WebM for videos.',
+      error: 'Định dạng không được hỗ trợ. Dùng JPG, PNG hoặc WebP cho ảnh.',
     };
   }
 
-  const maxBytes = kind === 'image' ? MAX_IMAGE_BYTES : MAX_VIDEO_BYTES;
-  if (file.size > maxBytes) {
-    const limitMb = Math.round(maxBytes / (1024 * 1024));
-    return { error: `${kind === 'image' ? 'Image' : 'Video'} exceeds the ${limitMb}MB limit.` };
+  // This function is the server-PROXIED image path only. Video never
+  // reaches here — it uploads directly from the browser to Blob (see the
+  // MAX_VIDEO_UPLOAD_BYTES comment above), so this is purely a defensive
+  // invariant check, not a user-facing path.
+  if (kind === 'video') {
+    return { error: 'Video phải tải lên qua đường tải trực tiếp, không qua đường này.' };
+  }
+
+  if (file.size > MAX_IMAGE_BYTES) {
+    const limitMb = Math.round(MAX_IMAGE_BYTES / (1024 * 1024));
+    return { error: `Ảnh vượt ${limitMb}MB, vui lòng chọn ảnh nhỏ hơn.` };
   }
 
   // Raster images are normalised to WebP BEFORE the key is derived, so
@@ -92,8 +125,7 @@ export async function uploadProductMediaFile(
     contentType = converted.contentType;
   }
 
-  const safeName = upload.name.replace(/[^a-zA-Z0-9._-]/g, '_').slice(-80);
-  const pathname = `product-media/${tenantId}/${randomUUID()}-${safeName}`;
+  const pathname = buildProductMediaPathname(tenantId, upload.name);
 
   const blob = await put(pathname, upload, { access: 'public', contentType });
   return { url: blob.url, type: kind };
@@ -118,10 +150,10 @@ export async function uploadBrandingLogoFile(
   file: File,
 ): Promise<{ url: string } | { error: string }> {
   if (!LOGO_MIME_TYPES.has(file.type)) {
-    return { error: 'Unsupported logo type. Use JPG, PNG, WebP, or SVG.' };
+    return { error: 'Định dạng logo không được hỗ trợ. Dùng JPG, PNG, WebP hoặc SVG.' };
   }
   if (file.size > MAX_LOGO_BYTES) {
-    return { error: 'Logo image exceeds the 5MB limit.' };
+    return { error: 'Logo vượt 4MB, vui lòng chọn ảnh nhỏ hơn.' };
   }
   // SVG sanitisation runs FIRST and is unchanged: SVG is an exception to
   // conversion, never to validation.
@@ -164,10 +196,10 @@ export async function uploadBrandingFaviconFile(
   file: File,
 ): Promise<{ url: string } | { error: string }> {
   if (!FAVICON_MIME_TYPES.has(file.type)) {
-    return { error: 'Unsupported favicon type. Use ICO, PNG, or SVG.' };
+    return { error: 'Định dạng favicon không được hỗ trợ. Dùng ICO, PNG hoặc SVG.' };
   }
   if (file.size > MAX_FAVICON_BYTES) {
-    return { error: 'Favicon exceeds the 1MB limit.' };
+    return { error: 'Favicon vượt 1MB, vui lòng chọn ảnh nhỏ hơn.' };
   }
   const svgError = await validateSvgUpload(file);
   if (svgError) return { error: svgError };
@@ -192,10 +224,10 @@ export async function uploadBannerImageFile(
   variant: 'desktop' | 'mobile' = 'desktop',
 ): Promise<{ url: string } | { error: string }> {
   if (!BANNER_MIME_TYPES.has(file.type)) {
-    return { error: 'Unsupported image type. Use JPG, PNG, or WebP.' };
+    return { error: 'Định dạng ảnh không được hỗ trợ. Dùng JPG, PNG hoặc WebP.' };
   }
   if (file.size > MAX_BANNER_IMAGE_BYTES) {
-    return { error: 'Banner image exceeds the 8MB limit.' };
+    return { error: 'Ảnh banner vượt 4MB, vui lòng chọn ảnh nhỏ hơn.' };
   }
 
   const converted = await convertImageToWebp(file, BANNER_MIME_TYPES);

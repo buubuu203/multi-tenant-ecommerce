@@ -1,7 +1,9 @@
 import Link from 'next/link';
 import { getCurrentTenant } from '../../_storefront/get-current-tenant';
 import { getTenantProducts } from '../../_storefront/get-tenant-products';
-import { resolveBranding } from '../../_storefront/resolve-branding';
+import { resolveBranding, resolveFooterContact } from '../../_storefront/resolve-branding';
+import { getRequestOrigin } from '@/lib/seo/request-origin';
+import { buildStoreJsonLd } from '@/lib/seo/store-seo';
 import { StorefrontHeader } from '../../_storefront/StorefrontHeader';
 import { StorefrontHero } from '../../_storefront/StorefrontHero';
 import { BannerCarousel } from '../../_storefront/BannerCarousel';
@@ -49,7 +51,29 @@ export default async function StorefrontHomePage() {
 
   const branding = resolveBranding(tenant, tenant.branding);
   const comingSoon = tenant.status === 'pending';
-  const products = comingSoon ? [] : await getTenantProducts();
+  const [products, enabledPaymentMethods, enabledShippingMethods, privacyNotice, banners, origin] =
+    await Promise.all([
+      comingSoon ? Promise.resolve([]) : getTenantProducts(),
+      getEnabledPaymentMethods(tenant.id),
+      getEnabledShippingMethods(tenant.id),
+      getCurrentPrivacyNotice(tenant.id),
+      comingSoon ? Promise.resolve([]) : getActiveBanners(),
+      getRequestOrigin(),
+    ]);
+  // Organization JSON-LD for search engines, home page only (Google's own
+  // guidance for site-level Organization markup). Omitted when the origin
+  // can't be resolved — same guard sitemap.ts/robots.ts use, since an
+  // absolute url is required and there is no tenant-safe fallback host.
+  const contact = resolveFooterContact(tenant.branding);
+  const storeJsonLd = origin
+    ? buildStoreJsonLd({
+        storeName: branding.storeName,
+        tagline: contact.tagline,
+        origin,
+        logoUrl: branding.logoUrl,
+        socialUrls: [contact.facebookUrl, contact.tiktokUrl, contact.zaloUrl, contact.instagramUrl],
+      })
+    : null;
   // Step 39: CartWidget's quantity controls need each variant's current
   // availability to cap increments (see CartWidget.tsx) — it has no other
   // access to product data, so this flat id -> available map is passed
@@ -60,16 +84,27 @@ export default async function StorefrontHomePage() {
       product.variants.map((variant) => [variant.id, variant.available]),
     ),
   );
-  const enabledPaymentMethods = await getEnabledPaymentMethods(tenant.id);
-  const enabledShippingMethods = await getEnabledShippingMethods(tenant.id);
-  const privacyNotice = await getCurrentPrivacyNotice(tenant.id);
+  const weightGramsByVariant = Object.fromEntries(
+    products.flatMap((product) =>
+      product.variants.map((variant) => [variant.id, product.weightGrams]),
+    ),
+  );
   // Storefront Carousel/Banner (V1): tenant-curated banners replace the
   // generic StorefrontHero when at least one exists — a "coming soon"
   // store never shows banners regardless (it has nothing to promote yet).
-  const banners = comingSoon ? [] : await getActiveBanners();
-
   return (
     <CartProvider>
+      {storeJsonLd && (
+        <script
+          type="application/ld+json"
+          // JSON.stringify never emits unescaped '<', so a stray "</script>"
+          // inside a merchant-supplied tagline/name can't break out of this
+          // tag — the one XSS-relevant risk with inline JSON-LD.
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(storeJsonLd).replace(/</g, '\\u003c'),
+          }}
+        />
+      )}
       <StorefrontHeader
         branding={branding}
         searchPlaceholder={dict.products.searchPlaceholder}
@@ -82,6 +117,7 @@ export default async function StorefrontHomePage() {
             <CartWidget
               branding={branding}
               availabilityByVariant={availabilityByVariant}
+              weightGramsByVariant={weightGramsByVariant}
               enabledPaymentMethods={enabledPaymentMethods}
               enabledShippingMethods={enabledShippingMethods}
               privacyNoticeVersionId={privacyNotice?.id ?? null}

@@ -72,7 +72,7 @@ async function plan(tenantId: string, csv: string) {
   return result.plan;
 }
 
-const EXT = 'sku,name,price,status';
+const EXT = 'sku,name,price,weight_grams,status';
 
 // ---------- format detection and backward compatibility ----------
 
@@ -109,19 +109,19 @@ test('a UTF-8 BOM is stripped rather than corrupting the first header', () => {
 });
 
 test('Vietnamese text survives intact', () => {
-  const p = parsed(`${EXT}\nSKU-VN,Ghế gỗ óc chó,1500000,active\n`);
+  const p = parsed(`${EXT}\nSKU-VN,Ghế gỗ óc chó,1500000,100,active\n`);
   assert.equal(p.rows[0].name, 'Ghế gỗ óc chó');
 });
 
 test('quoted commas and newlines are parsed, not split', () => {
-  const p = parsed(`${EXT}\nSKU-Q,"Bàn, gỗ",1000,active\n`);
+  const p = parsed(`${EXT}\nSKU-Q,"Bàn, gỗ",1000,100,active\n`);
   assert.equal(p.rows[0].name, 'Bàn, gỗ');
   const multiline = parsed(`sku,name,price,description\nSKU-M,Alpha,1000,"line one\nline two"\n`);
   assert.match(multiline.rows[0].description ?? '', /line one\nline two/);
 });
 
 test('a formula-like value is data on import, never evaluated', () => {
-  const p = parsed(`${EXT}\nSKU-F,"=SUM(A1:A9)",1000,active\n`);
+  const p = parsed(`${EXT}\nSKU-F,"=SUM(A1:A9)",1000,100,active\n`);
   assert.equal(p.rows[0].name, '=SUM(A1:A9)');
 });
 
@@ -162,10 +162,10 @@ test('row limits and oversized files are rejected', () => {
 test('row-level problems are reported per row, never dropped', () => {
   const p = parsed(
     `${EXT}\n` +
-      `SKU-1,,1000,active\n` +
-      `SKU-2,Beta,12.5,active\n` +
-      `SKU-3,Gamma,1000,nope\n` +
-      `,Delta,1000,active\n`,
+      `SKU-1,,1000,100,active\n` +
+      `SKU-2,Beta,12.5,100,active\n` +
+      `SKU-3,Gamma,1000,100,nope\n` +
+      `,Delta,1000,100,active\n`,
   );
   assert.equal(p.rows.length, 0, 'no row survived');
   assert.equal(p.errors.length, 4);
@@ -179,15 +179,36 @@ test('row-level problems are reported per row, never dropped', () => {
   );
 });
 
+test('the sample product import includes a valid weight for every new product', () => {
+  const sample = readFileSync(new URL('../import-products.csv', import.meta.url), 'utf8');
+  const csv = parsed(sample);
+  const plan = buildImportPlan(csv, new Map());
+
+  assert.equal(csv.rows.length, csv.totalRows);
+  assert.ok(csv.rows.every((row) => row.weightGrams !== null && row.weightGrams > 0));
+  assert.equal(plan.counts.create, csv.totalRows);
+  assert.equal(plan.counts.invalid, 0);
+});
+
+test('weight must be positive when supplied, and is required before creating a product', () => {
+  const invalidWeight = parsed('sku,name,price,weight_grams\nSKU-W,Alpha,1000,0\n');
+  assert.equal(invalidWeight.rows.length, 0);
+  assert.match(invalidWeight.errors[0].message, /positive whole number of grams/);
+
+  const missingWeight = buildImportPlan(parsed('sku,name,price\nSKU-N,Alpha,1000\n'), new Map());
+  assert.equal(missingWeight.counts.invalid, 1);
+  assert.match(missingWeight.rows[0].message ?? '', /weight_grams is required/);
+});
+
 test('an overlong field is rejected rather than silently truncated', () => {
-  const p = parsed(`${EXT}\nSKU-L,${'x'.repeat(2001)},1000,active\n`);
+  const p = parsed(`${EXT}\nSKU-L,${'x'.repeat(2001)},1000,100,active\n`);
   assert.equal(p.rows.length, 0);
   assert.match(p.errors[0].message, /maximum is 2000/);
 });
 
 test('a wrong column count is reported', () => {
   const p = parsed(`${EXT}\nSKU-1,Alpha,1000\n`);
-  assert.match(p.errors[0].message, /Expected 4 columns, got 3/);
+  assert.match(p.errors[0].message, /Expected 5 columns, got 3/);
 });
 
 // ---------- inventory mode must be explicit ----------
@@ -232,7 +253,7 @@ test('an empty or omitted category cell parses as null, not empty string', () =>
   const withColumn = parsed(`sku,name,price,category\nC-1,Alpha,1000,\n`);
   assert.equal(withColumn.rows[0].category, null);
 
-  const withoutColumn = parsed(`${EXT}\nC-2,Beta,1000,active\n`);
+  const withoutColumn = parsed(`${EXT}\nC-2,Beta,1000,100,active\n`);
   assert.equal(withoutColumn.rows[0].category, null);
 });
 
@@ -251,7 +272,7 @@ test('an overlong category name is rejected like any other field', () => {
 
 test('a duplicate SKU inside one file is a conflict, not a last-one-wins', () => {
   const p = buildImportPlan(
-    parsed(`${EXT}\nDUP,Alpha,1000,active\nDUP,Beta,2000,active\n`),
+    parsed(`${EXT}\nDUP,Alpha,1000,100,active\nDUP,Beta,2000,100,active\n`),
     new Map(),
   );
   assert.equal(p.counts.create, 1);
@@ -261,7 +282,7 @@ test('a duplicate SKU inside one file is a conflict, not a last-one-wins', () =>
 });
 
 test('an invalid row blocks the import rather than being skipped', () => {
-  const p = buildImportPlan(parsed(`${EXT}\nS1,Alpha,1000,active\nS2,,1000,active\n`), new Map());
+  const p = buildImportPlan(parsed(`${EXT}\nS1,Alpha,1000,100,active\nS2,,1000,100,active\n`), new Map());
   assert.equal(p.counts.invalid, 1);
   assert.equal(planIsImportable(p), false);
 });
@@ -270,7 +291,7 @@ test('an invalid row blocks the import rather than being skipped', () => {
 
 test('previewing writes nothing, whatever the file contains', async () => {
   const before_ = await snapshot(tenantA.id);
-  await plan(tenantA.id, `${EXT}\nRO-1,Alpha,1000,active\nRO-2,,1,active\n`);
+  await plan(tenantA.id, `${EXT}\nRO-1,Alpha,1000,100,active\nRO-2,,1,100,active\n`);
   assert.deepEqual(await snapshot(tenantA.id), before_);
 });
 
@@ -287,8 +308,8 @@ test('the plan and preview modules hold no database client', () => {
 
 test('a confirmed import creates products, variants and inventory together', async () => {
   const csv =
-    'sku,name,price,status,on_hand,inventory_mode\n' +
-    `CRE-1-${suffix},Alpha ${suffix},1000,active,7,set_on_hand\n`;
+    'sku,name,price,weight_grams,status,on_hand,inventory_mode\n' +
+    `CRE-1-${suffix},Alpha ${suffix},1000,100,active,7,set_on_hand\n`;
   const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(result.success, result.success ? '' : result.error);
   assert.equal(result.data.created, 1);
@@ -307,8 +328,8 @@ test('a confirmed import creates products, variants and inventory together', asy
 
 test('IDEMPOTENCY — re-importing the same file changes nothing', async () => {
   const csv =
-    'sku,name,price,status,on_hand,inventory_mode\n' +
-    `IDEM-${suffix},Beta ${suffix},2000,active,5,set_on_hand\n`;
+    'sku,name,price,weight_grams,status,on_hand,inventory_mode\n' +
+    `IDEM-${suffix},Beta ${suffix},2000,100,active,5,set_on_hand\n`;
 
   const first = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(first.success);
@@ -330,7 +351,7 @@ test('IDEMPOTENCY — re-importing the same file changes nothing', async () => {
 
 test('a changed row updates in place and preserves unrelated fields', async () => {
   const sku = `UPD-${suffix}`;
-  const create = `sku,name,price,status,description\n${sku},Gamma ${suffix},3000,active,keep me\n`;
+  const create = `sku,name,price,weight_grams,status,description\n${sku},Gamma ${suffix},3000,100,active,keep me\n`;
   assert.ok((await applyProductCsv(tenantA.id, create, csvFingerprint(create))).success);
 
   const before_ = await snapshot(tenantA.id);
@@ -363,9 +384,9 @@ test('a new category is created by name and reused across rows in the same file'
   const skuB = `CAT-B-${suffix}`;
   const categoryName = `Decor ${suffix}`;
   const csv =
-    'sku,name,price,category\n' +
-    `${skuA},Alpha ${suffix},1000,${categoryName}\n` +
-    `${skuB},Beta ${suffix},2000,${categoryName}\n`;
+    'sku,name,price,weight_grams,category\n' +
+    `${skuA},Alpha ${suffix},1000,100,${categoryName}\n` +
+    `${skuB},Beta ${suffix},2000,100,${categoryName}\n`;
 
   const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(result.success, result.success ? '' : result.error);
@@ -390,7 +411,7 @@ test('an existing category is matched by name, not duplicated', async () => {
     data: { tenantId: tenantA.id, name: categoryName },
   });
 
-  const csv = `sku,name,price,category\n${sku},Gamma ${suffix},1000,${categoryName}\n`;
+  const csv = `sku,name,price,weight_grams,category\n${sku},Gamma ${suffix},1000,100,${categoryName}\n`;
   const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(result.success, result.success ? '' : result.error);
 
@@ -409,7 +430,7 @@ test('an existing category is matched by name, not duplicated', async () => {
 test('an omitted category column leaves an existing assignment untouched; a given one updates it, surfaced as a plan change', async () => {
   const sku = `CAT-UPD-${suffix}`;
   const firstCategory = `Lighting ${suffix}`;
-  const create = `sku,name,price,category\n${sku},Delta ${suffix},1000,${firstCategory}\n`;
+  const create = `sku,name,price,weight_grams,category\n${sku},Delta ${suffix},1000,100,${firstCategory}\n`;
   assert.ok((await applyProductCsv(tenantA.id, create, csvFingerprint(create))).success);
 
   // Price changes; category column omitted entirely — must not clear it.
@@ -445,8 +466,8 @@ test('CATEGORY TENANT ISOLATION — same category name in two tenants stays two 
   const name = `Shared Name ${suffix}`;
   const skuA = `CAT-ISO-A-${suffix}`;
   const skuB = `CAT-ISO-B-${suffix}`;
-  const csvA = `sku,name,price,category\n${skuA},Owned by A,1000,${name}\n`;
-  const csvB = `sku,name,price,category\n${skuB},Owned by B,1000,${name}\n`;
+  const csvA = `sku,name,price,weight_grams,category\n${skuA},Owned by A,1000,100,${name}\n`;
+  const csvB = `sku,name,price,weight_grams,category\n${skuB},Owned by B,1000,100,${name}\n`;
 
   assert.ok((await applyProductCsv(tenantA.id, csvA, csvFingerprint(csvA))).success);
   assert.ok((await applyProductCsv(tenantB.id, csvB, csvFingerprint(csvB))).success);
@@ -458,7 +479,7 @@ test('CATEGORY TENANT ISOLATION — same category name in two tenants stays two 
 
 test('set_on_hand and adjust_on_hand both go through the guarded helper', async () => {
   const sku = `INV-${suffix}`;
-  const create = `sku,name,price,on_hand,inventory_mode\n${sku},Delta ${suffix},1000,10,set_on_hand\n`;
+  const create = `sku,name,price,weight_grams,on_hand,inventory_mode\n${sku},Delta ${suffix},1000,100,10,set_on_hand\n`;
   assert.ok((await applyProductCsv(tenantA.id, create, csvFingerprint(create))).success);
 
   const adjust = `sku,name,price,on_hand,inventory_mode\n${sku},Delta ${suffix},1000,-4,adjust_on_hand\n`;
@@ -479,9 +500,9 @@ test('ATOMICITY — one bad row rolls the entire import back', async () => {
   // Row one must not survive.
   const before_ = await snapshot(tenantA.id);
   const csv =
-    'sku,name,price,on_hand,inventory_mode\n' +
-    `ATOM-OK-${suffix},Good ${suffix},1000,5,set_on_hand\n` +
-    `ATOM-BAD-${suffix},Bad ${suffix},1000,-99,adjust_on_hand\n`;
+    'sku,name,price,weight_grams,on_hand,inventory_mode\n' +
+    `ATOM-OK-${suffix},Good ${suffix},1000,100,5,set_on_hand\n` +
+    `ATOM-BAD-${suffix},Bad ${suffix},1000,100,-99,adjust_on_hand\n`;
 
   const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(!result.success, 'the import failed');
@@ -496,7 +517,7 @@ test('ATOMICITY — one bad row rolls the entire import back', async () => {
 
 test('an import with any invalid row refuses before touching the database', async () => {
   const before_ = await snapshot(tenantA.id);
-  const csv = `${EXT}\nREF-1-${suffix},Alpha,1000,active\nREF-2-${suffix},,1000,active\n`;
+  const csv = `${EXT}\nREF-1-${suffix},Alpha,1000,100,active\nREF-2-${suffix},,1000,100,active\n`;
   const result = await applyProductCsv(tenantA.id, csv, csvFingerprint(csv));
   assert.ok(!result.success);
   assert.match(result.error, /Nothing was imported/);
@@ -507,7 +528,7 @@ test('an import with any invalid row refuses before touching the database', asyn
 
 test('TENANT ISOLATION — a SKU in another tenant is invisible', async () => {
   const sku = `ISO-${suffix}`;
-  const csv = `${EXT}\n${sku},Owned by B,1000,active\n`;
+  const csv = `${EXT}\n${sku},Owned by B,1000,100,active\n`;
   assert.ok((await applyProductCsv(tenantB.id, csv, csvFingerprint(csv))).success);
 
   // Tenant A previewing the same SKU sees a CREATE, never B's record.
@@ -533,7 +554,7 @@ test('TENANT ISOLATION — a SKU in another tenant is invisible', async () => {
 // ---------- confirmation integrity ----------
 
 test('the fingerprint identifies the exact bytes previewed', () => {
-  const csv = `${EXT}\nFP,Alpha,1000,active\n`;
+  const csv = `${EXT}\nFP,Alpha,1000,100,active\n`;
   assert.equal(csvFingerprint(csv), csvFingerprint(csv));
   assert.notEqual(csvFingerprint(csv), csvFingerprint(csv.replace('1000', '1001')));
 });
@@ -548,7 +569,7 @@ test('the preview carries no authority into the import', () => {
 });
 
 test('the preview shape exposes counts the UI cannot forge into authority', async () => {
-  const csv = `${EXT}\nSHAPE-${suffix},Alpha,1000,active\n`;
+  const csv = `${EXT}\nSHAPE-${suffix},Alpha,1000,100,active\n`;
   const p = await plan(tenantA.id, csv);
   const view = toPreview(p, csvFingerprint(csv));
   assert.equal(view.atomic, true);

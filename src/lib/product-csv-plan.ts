@@ -13,6 +13,7 @@ export type ExistingVariant = {
   productId: string;
   productName: string;
   price: number;
+  weightGrams: number;
   status: 'draft' | 'active';
   description: string | null;
   category: string | null;
@@ -122,6 +123,20 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
     const match = row.sku === null ? undefined : existing.get(row.sku);
 
     if (!match) {
+      if (row.weightGrams === null) {
+        counts.invalid += 1;
+        byRow.set(row.rowNumber, {
+          rowNumber: row.rowNumber,
+          action: 'invalid',
+          sku: row.sku,
+          name: row.name,
+          changes: [],
+          message: 'weight_grams is required when creating a product.',
+          target: null,
+          row: null,
+        });
+        continue;
+      }
       counts.create += 1;
       const inventory = describeInventory(row, null);
       if (inventory) inventoryChanges += 1;
@@ -144,6 +159,13 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
     }
     if (match.price !== row.price) {
       changes.push({ field: 'price', from: String(match.price), to: String(row.price) });
+    }
+    if (row.weightGrams !== null && match.weightGrams !== row.weightGrams) {
+      changes.push({
+        field: 'weight_grams',
+        from: String(match.weightGrams),
+        to: String(row.weightGrams),
+      });
     }
     if (match.status !== row.status) {
       changes.push({ field: 'status', from: match.status, to: row.status });

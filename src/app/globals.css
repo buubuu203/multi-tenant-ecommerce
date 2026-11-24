@@ -596,6 +596,58 @@ body {
   padding: 12px 14px;
 }
 
+/* Custom checkbox/radio control (QA round, 2026-11-23): replaces the bare
+   native widget — appearance:none + hand-drawn checkmark/dot — while
+   staying a real <input> (full keyboard + screen-reader behavior, no
+   custom ARIA needed). Visually 20px, same "small visible mark inside a
+   bigger tappable row" pattern as BannerCarousel's 6px dots inside a 44px
+   button — the ≥44px touch target comes from the surrounding label
+   (.consent-box/.option-row/.pay-card), not from sizing this up. */
+.storefront-glass input.ctrl {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  width: 20px;
+  height: 20px;
+  margin: 0;
+  border: 1.5px solid var(--field-border);
+  background-color: var(--sheet, #fff);
+  cursor: pointer;
+  position: relative;
+}
+.storefront-glass input.ctrl[type="checkbox"] {
+  border-radius: 6px;
+}
+.storefront-glass input.ctrl[type="radio"] {
+  border-radius: 50%;
+}
+.storefront-glass input.ctrl:checked {
+  border-color: var(--ink);
+}
+.storefront-glass input.ctrl[type="checkbox"]:checked {
+  background-color: var(--ink);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='white' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M3 8.2l3.3 3.3L13 4.5'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: 11px 11px;
+}
+.storefront-glass input.ctrl[type="radio"]:checked::after {
+  content: "";
+  position: absolute;
+  inset: 4px;
+  border-radius: 50%;
+  background: var(--ink);
+}
+/* :has() puts the ring on the row the control sits in, since the ring on
+   a 20px box alone would be easy to miss — the whole row is what visibly
+   "has focus" to a keyboard user. */
+.storefront-glass .consent-box:has(input.ctrl:focus-visible),
+.storefront-glass .option-row:has(input.ctrl:focus-visible),
+.storefront-glass .pay-card:has(input.ctrl:focus-visible) {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+
 .storefront-glass .pay-card {
   display: flex;
   align-items: center;
@@ -631,6 +683,43 @@ body {
   background: var(--pst);
   padding: 4px 10px;
   border-radius: 999px;
+}
+
+/* PDP variant chips (QA round, 2026-11-23), replacing the native <select>
+   — touch target is the full 44px button, not just the visible pill, per
+   the same "small visible mark, bigger tappable area" convention used
+   elsewhere (BannerCarousel's dots, the custom checkbox/radio .ctrl). */
+.storefront-glass .variant-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  padding: 0 16px;
+  border-radius: 999px;
+  border: 1.5px solid var(--field-border);
+  background: var(--field-fill);
+  font-size: 14px;
+  cursor: pointer;
+}
+.storefront-glass .variant-chip[aria-checked="true"] {
+  border-color: var(--ink);
+  border-width: 1.5px;
+  font-weight: 600;
+}
+.storefront-glass .variant-chip[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.storefront-glass .variant-chip:focus-visible {
+  outline: 2px solid var(--ink);
+  outline-offset: 2px;
+}
+.storefront-glass .variant-chip-swatch {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1px solid var(--field-border);
+  flex: none;
 }
 
 .storefront-glass .policy-note {

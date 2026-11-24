@@ -1,10 +1,13 @@
-import type { Metadata } from 'next';
+import type { Metadata, Viewport } from 'next';
 import { Be_Vietnam_Pro, Geist_Mono } from 'next/font/google';
 import { ClerkProvider } from '@clerk/nextjs';
 import { getCurrentTenant } from './_storefront/get-current-tenant';
+import { resolveBranding } from './_storefront/resolve-branding';
 import { getLocale, getDictionary } from '@/lib/i18n';
 import { LocaleProvider } from '@/lib/i18n/locale-context';
 import { DictionaryProvider } from '@/lib/i18n/use-dictionary';
+import { getRequestOrigin } from '@/lib/seo/request-origin';
+import { buildStoreDescription } from '@/lib/seo/store-seo';
 import './globals.css';
 
 // Be Vietnam Pro is the storefront and admin typeface: a Vietnamese-first
@@ -36,7 +39,7 @@ const geistMono = Geist_Mono({
 });
 
 export async function generateMetadata(): Promise<Metadata> {
-  const tenant = await getCurrentTenant();
+  const [tenant, origin] = await Promise.all([getCurrentTenant(), getRequestOrigin()]);
   if (!tenant) {
     return {
       title: 'Create Next App',
@@ -44,10 +47,46 @@ export async function generateMetadata(): Promise<Metadata> {
     };
   }
 
+  const storeName = tenant.branding?.storeName || tenant.name;
+  const description = buildStoreDescription({ storeName, tagline: tenant.branding?.tagline ?? null });
+  const logoUrl = tenant.branding?.logoUrl || undefined;
+
   return {
-    title: tenant.branding?.storeName || tenant.name,
-    description: `${tenant.branding?.storeName || tenant.name} storefront`,
+    // generateMetadata already reads a per-request origin (same pattern as
+    // the product page and sitemap.ts), so metadataBase can be set here
+    // without baking one tenant's host into a build-time constant — every
+    // tenant's pages resolve their own OG image / canonical URLs against
+    // their own request's origin.
+    ...(origin ? { metadataBase: new URL(origin) } : {}),
+    title: storeName,
+    description,
+    ...(origin ? { alternates: { canonical: origin } } : {}),
     icons: tenant.branding?.faviconUrl ? { icon: tenant.branding.faviconUrl } : undefined,
+    openGraph: {
+      title: storeName,
+      description,
+      ...(origin ? { url: origin } : {}),
+      siteName: storeName,
+      locale: 'vi_VN',
+      type: 'website',
+      ...(logoUrl ? { images: [{ url: logoUrl, alt: storeName }] } : {}),
+    },
+    twitter: {
+      card: logoUrl ? 'summary_large_image' : 'summary',
+      title: storeName,
+      description,
+      ...(logoUrl ? { images: [logoUrl] } : {}),
+    },
+  };
+}
+
+export async function generateViewport(): Promise<Viewport> {
+  const tenant = await getCurrentTenant();
+  const branding = tenant ? resolveBranding(tenant, tenant.branding) : null;
+  return {
+    width: 'device-width',
+    initialScale: 1,
+    ...(branding ? { themeColor: branding.primaryColor } : {}),
   };
 }
 

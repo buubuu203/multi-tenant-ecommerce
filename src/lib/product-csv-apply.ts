@@ -63,7 +63,13 @@ export async function resolveExistingBySku(
       price: true,
       productId: true,
       product: {
-        select: { name: true, status: true, description: true, category: { select: { name: true } } },
+        select: {
+          name: true,
+          status: true,
+          weightGrams: true,
+          description: true,
+          category: { select: { name: true } },
+        },
       },
       inventory: { select: { onHand: true, reserved: true } },
     },
@@ -78,6 +84,7 @@ export async function resolveExistingBySku(
       productId: variant.productId,
       productName: variant.product.name,
       price: variant.price,
+      weightGrams: variant.product.weightGrams,
       status: variant.product.status === 'active' ? 'active' : 'draft',
       description: variant.product.description,
       category: variant.product.category?.name ?? null,
@@ -181,11 +188,15 @@ export async function applyProductCsv(
           if (!row) continue;
 
           if (planned.action === 'create') {
+            if (row.weightGrams === null) {
+              throw new ImportAbort(`Row ${planned.rowNumber} is missing weight_grams.`);
+            }
             const product = await tx.product.create({
               data: {
                 tenantId,
                 name: row.name,
                 status: row.status,
+                weightGrams: row.weightGrams,
                 description: row.description,
                 categoryId: row.category ? categoryIdByName.get(row.category) : null,
               },
@@ -226,6 +237,7 @@ export async function applyProductCsv(
             data: {
               name: row.name,
               status: row.status,
+              ...(row.weightGrams !== null ? { weightGrams: row.weightGrams } : {}),
               // Omitted description leaves existing text alone.
               ...(row.description !== null ? { description: row.description } : {}),
               // Same rule for category — see product-csv-contract.ts.

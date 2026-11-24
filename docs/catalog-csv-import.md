@@ -8,15 +8,16 @@ Source: `product-csv-contract.ts` (parse + validate), `product-csv-plan.ts`
 
 ## Two formats
 
-### V1 — simple, unchanged, create-only
+### V1 — simple, create-only
 
 ```csv
-name,price,status
-Sunrise Tote Bag,250000,active
+name,price,weight_grams,status
+Sunrise Tote Bag,250000,350,active
 ```
 
-Exactly `name,price` or `name,price,status`, **positional**. Carries no
-identifier, so every row creates. Files that worked before still work.
+Columns are positional. Legacy `name,price` and `name,price,status`
+headers still parse for compatibility, but rows without a weight are
+blocked from creation until `weight_grams` is supplied.
 
 ### V2 — extended, keyed on SKU
 
@@ -28,17 +29,21 @@ two shapes selects this format.
 | `sku`            | **Yes**                 | text, unique per tenant           | Sets the variant SKU  | **The matching key**                         |
 | `name`           | **Yes**                 | text, trimmed                     | `Product.name`        | Overwrites                                   |
 | `price`          | **Yes**                 | whole VND, digits only            | Variant price         | Overwrites                                   |
+| `weight_grams`   | Create only              | positive whole grams              | `Product.weightGrams` | Overwrites when present                      |
 | `status`         | No                      | `draft` \| `active`               | Default `draft`       | Overwrites                                   |
 | `description`    | No                      | text                              | `Product.description` | Overwrites **only if the column is present** |
+| `category`       | No                      | category name                     | `Product.categoryId`  | Matched by name; omitted/blank leaves intact |
 | `on_hand`        | No                      | whole number                      | Initial stock         | Changes stock per `inventory_mode`           |
 | `inventory_mode` | Required with `on_hand` | `set_on_hand` \| `adjust_on_hand` | —                     | —                                            |
 
 ```csv
-sku,name,price,status,on_hand,inventory_mode
-TOTE-01,Sunrise Tote Bag,250000,active,24,set_on_hand
-MUG-02,Ghế gỗ óc chó,120000,draft,-3,adjust_on_hand
+sku,name,price,weight_grams,status,on_hand,inventory_mode
+TOTE-01,Sunrise Tote Bag,250000,350,active,24,set_on_hand
+MUG-02,Ghế gỗ óc chó,120000,220,draft,-3,adjust_on_hand
 ```
 
+For an existing SKU, omitting `weight_grams` leaves its current weight
+unchanged. A new SKU must include a positive whole-number weight in grams.
 Omitting `description` leaves existing text alone. Import never blanks a
 field it does not carry.
 
@@ -135,7 +140,7 @@ rejected outright.
 
 Normalization is minimal and deliberate:
 
-- `name`, `sku`, `price`, `status` are trimmed.
+- `name`, `sku`, `price`, `weight_grams`, `status` are trimmed.
 - Empty `status` becomes `draft`.
 - Empty `description` becomes null.
 - Nothing else is altered. `=SUM(A1:A9)` is stored verbatim as a name —

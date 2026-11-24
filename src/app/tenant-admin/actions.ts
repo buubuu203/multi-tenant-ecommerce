@@ -29,6 +29,7 @@ import {
   uploadBrandingLogoFile,
   uploadBrandingFaviconFile,
   deleteBrandingLogoFile,
+  buildProductMediaPathname,
   type MediaKind,
 } from '@/lib/blob-storage';
 import { DESIGN_TOKEN_FILE_MAX_BYTES, parseDesignTokens } from '@/lib/design-tokens';
@@ -250,6 +251,7 @@ export async function createProductAction(
   const result = await createProduct(tenantId, {
     name: String(formData.get('name') ?? ''),
     price: String(formData.get('price') ?? ''),
+    weightGrams: String(formData.get('weightGrams') ?? ''),
     status: String(formData.get('status') ?? ''),
     description: String(formData.get('description') ?? ''),
     categoryId: String(formData.get('categoryId') ?? ''),
@@ -304,6 +306,21 @@ export async function uploadProductMediaAction(
     return { success: false, error: result.error };
   }
   return { success: true, data: result };
+}
+
+// Mints the pathname a video client-upload will use, WITHOUT handling any
+// file bytes — those go straight from the browser to Vercel Blob (see
+// product-media/upload-video/route.ts), never through this server. The
+// pathname still has to embed the authenticated tenantId (the same
+// convention every other product-media blob uses — see
+// buildProductMediaPathname()'s own comment), and requireTenantAdmin() is
+// the only trustworthy source for that id, so the client asks for one
+// here rather than constructing it itself.
+export async function createProductVideoPathnameAction(
+  fileName: string,
+): Promise<ActionResult<{ pathname: string }>> {
+  const { tenantId } = await requireTenantAdmin();
+  return { success: true, data: { pathname: buildProductMediaPathname(tenantId, fileName) } };
 }
 
 // Cleans up a file the admin uploaded but then removed from the gallery
@@ -482,6 +499,7 @@ export async function updateProductAction(
   const result = await updateProduct(tenantId, productId, {
     name: String(formData.get('name') ?? ''),
     price: String(formData.get('price') ?? ''),
+    weightGrams: String(formData.get('weightGrams') ?? ''),
     status: String(formData.get('status') ?? ''),
     description: String(formData.get('description') ?? ''),
     categoryId: String(formData.get('categoryId') ?? ''),

@@ -23,13 +23,19 @@ import { getDictionary, getLocale } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
 
-// Matches BannerCarousel.tsx's rendered frame aspect ratio exactly —
-// ImageCropModal renders to a canvas at exactly this ratio
-// (canvas.height = outputWidth / aspectRatio), so the uploaded output can
-// never deviate from 16:9 by construction.
-const BANNER_ASPECT_RATIO = 16 / 9;
-const DESKTOP_OUTPUT_WIDTH = 1920;
-const MOBILE_OUTPUT_WIDTH = 960;
+// QA round (2026-11-23): recommended ratio moved to 16:5 — this is still
+// the ratio ImageCropModal forces on upload (canvas.height = outputWidth /
+// aspectRatio), so following the recommendation gets a merchant a banner
+// that fills BannerCarousel.tsx's frame edge-to-edge with no letterbox.
+// It's a RECOMMENDATION, not a hard requirement: the frame itself (21:9,
+// blurred backdrop + object-contain foreground) already displays ANY
+// aspect ratio in full, never cropping — that's what lets older banners
+// uploaded before this change (or at some other ratio) keep rendering
+// correctly, just with soft blurred bars on the sides instead of filling
+// edge-to-edge.
+const BANNER_ASPECT_RATIO = 16 / 5;
+const DESKTOP_OUTPUT_WIDTH = 2688;
+const MOBILE_OUTPUT_WIDTH = 1344;
 
 export default async function BannersPage() {
   const { tenantId } = await requireTenantAdmin();
@@ -91,6 +97,7 @@ export default async function BannersPage() {
               className={adminInputClassName}
             />
           </label>
+          <p className="text-xs text-muted-foreground">{dict.admin.bannerCtaHint}</p>
           <div className="flex items-end gap-4">
             <label className={`${adminLabelClassName} w-28`}>
               Sort order
@@ -181,6 +188,7 @@ export default async function BannersPage() {
                     className={adminInputClassName}
                   />
                 </label>
+                <p className="text-xs text-muted-foreground">{dict.admin.bannerCtaHint}</p>
                 <div className="flex items-end gap-4">
                   <label className={`${adminLabelClassName} w-28`}>
                     Sort order

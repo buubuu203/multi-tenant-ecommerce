@@ -198,7 +198,7 @@ model Branding {
 // why each of these choices was made and what remains explicitly out of
 // scope (warehouse UI, InventoryReservation, InventoryMovement, stock
 // decrement logic, OrderItem snapshotting, multi-variant admin UI,
-// speculative catalog fields, multi-currency).
+// other speculative catalog fields, multi-currency).
 
 enum ProductStatus {
   draft
@@ -209,6 +209,9 @@ model Product {
   id          String        @id @default(uuid())
   tenantId    String
   name        String
+  // Estimated per-item shipping weight in grams. The default backfills
+  // existing products; product create/import flows require an explicit value.
+  weightGrams Int           @default(100)
   // Step 43: optional plain-text description — no Markdown, no HTML, no
   // rich text, rendered as-is. null means "no description set" (never an
   // empty string — see product-mutations.ts's validateDescription()).
@@ -881,10 +884,13 @@ model TenantPaymentMethod {
 // fixed-enum row-per-method shape like TenantPaymentMethod above —
 // "payment method" is a closed set of integration types, "shipping
 // method" is merchant-defined ("Standard", "Express", "Local Pickup").
-// Flat-rate only for V1: `amount` is a plain VND integer, 0 = free/pickup
-// (no separate free-shipping or pickup mechanism — see the doc comment on
-// Order.shippingAmount/shippingMethodName for why Order never reads this
-// model live). At most one row per tenant may have isDefault: true,
+// `amount` is the merchant-configured local first-500g base in VND. A zero
+// base does not waive province or extra-weight surcharges. Checkout
+// estimates the customer fee from this base, product weights and
+// destination; it does not query or represent a carrier quote.
+// The resulting estimate is snapshotted on Order.shippingAmount and this
+// model is never read again for an existing order. At most one row per
+// tenant may have isDefault: true,
 // enforced BOTH in application code (shipping-mutations.ts's
 // clearOtherDefaults(), which handles the normal case cleanly) AND at the
 // database level via a partial unique index (tenant_shipping_methods_one_default_per_tenant,

@@ -1,24 +1,42 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
+import { upload } from '@vercel/blob/client';
 import {
   uploadProductMediaAction,
   deleteUploadedProductMediaAction,
   addProductMediaAction,
   removeProductMediaAction,
   reorderProductMediaAction,
+  createProductVideoPathnameAction,
 } from './actions';
+import { compressImageInBrowser } from '@/lib/images/client-compress';
 
 const MAX_MEDIA_ITEMS = 10;
 const MAX_IMAGES = 8;
 const MAX_VIDEOS = 2;
+// Caps how many files upload at once — unbounded parallelism would fire
+// every selected file's request simultaneously, which on a merchant's
+// upload bandwidth just makes each individual file slower rather than
+// actually finishing the batch sooner. Images and videos share this one
+// pool (not a separate budget each), for the same bandwidth reason.
+const MAX_PARALLEL_UPLOADS = 3;
+// A rough pre-check only, at SELECTION time — the server (blob-storage.ts's
+// MAX_IMAGE_BYTES) still caps at 4MB, a Vercel Functions platform limit
+// that cannot be raised. The gap is closed by client-side compression
+// (compressImageInBrowser): the admin can pick up to 10MB, and it is
+// resized/re-encoded to clear 4MB BEFORE it ever leaves the browser.
+const MAX_IMAGE_INPUT_BYTES = 10 * 1024 * 1024;
+// Video uploads directly from the browser to Vercel Blob (never through
+// our server — see uploadSingleVideo below), so it isn't bound by the
+// 4.5MB Vercel Functions limit at all. 30MB matches the token's own
+// maximumSizeInBytes in product-media/upload-video/route.ts.
+const MAX_VIDEO_INPUT_BYTES = 30 * 1024 * 1024;
 // HEIC/HEIF accepted here for the file PICKER only — they are never sent
 // to the server as-is. Some phones report an empty/generic MIME type for
 // .heic files, so the extensions are listed too, not just the MIME types.
 const ACCEPTED_TYPES =
   'image/jpeg,image/png,image/webp,image/heic,image/heif,.heic,.heif,video/mp4,video/webm';
-// MOV is deliberately NOT in this list — see classifyFile()'s explicit
-// rejection message below (Phase 4: no MOV support, no transcoding).
 
 type MediaItem = {
   // In "create" mode this is a client-generated key (nothing persisted
@@ -27,12 +45,20 @@ type MediaItem = {
   type: 'image' | 'video';
   url: string;
   uploading?: boolean;
-  // Distinguishes the brief client-side HEIC->JPEG conversion step from
-  // the actual network upload that follows it — same visual "busy" state
-  // (the overlay), different label, so a merchant isn't confused about
-  // why a HEIC file takes longer to appear than a JPEG.
+  // Distinguishes three sequential, mutually-exclusive busy states so a
+  // merchant always knows what's actually happening: HEIC->JPEG
+  // conversion (images only, rare), then client-side resize/compress
+  // (images only, every file), then the network upload itself (both).
   converting?: boolean;
+  optimizing?: boolean;
+  // Video only — percentage (0-100) from @vercel/blob's onUploadProgress.
+  progress?: number;
   error?: string;
+  // Whether this item's original File is still available for a "Thử lại"
+  // retry — false for errors with no stored file to resubmit (e.g. a
+  // server-side DB error after the upload itself already succeeded and
+  // was cleared from pendingFilesRef).
+  canRetry?: boolean;
 };
 
 function isHeic(file: File): boolean {
@@ -51,13 +77,41 @@ function isMov(file: File): boolean {
 }
 
 /**
+ * Runs `tasks` with at most `limit` running concurrently. Each task's
+ * outcome is captured independently (like Promise.allSettled) — one
+ * task throwing never cancels or fails the others, and the caller gets
+ * every result once all have settled, never a short-circuit.
+ */
+async function runWithConcurrency<T>(
+  tasks: (() => Promise<T>)[],
+  limit: number,
+): Promise<PromiseSettledResult<T>[]> {
+  const results: PromiseSettledResult<T>[] = new Array(tasks.length);
+  let next = 0;
+  async function worker() {
+    while (true) {
+      const i = next++;
+      if (i >= tasks.length) return;
+      try {
+        const value = await tasks[i]();
+        results[i] = { status: 'fulfilled', value };
+      } catch (reason) {
+        results[i] = { status: 'rejected', reason };
+      }
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(limit, tasks.length) }, worker));
+  return results;
+}
+
+/**
  * Browser-side HEIC/HEIF -> JPEG conversion via heic2any (WASM libheif,
  * dynamically imported so its ~2.7MB payload is only ever fetched when a
  * merchant actually selects a HEIC file — everyone uploading JPG/PNG/WebP
  * pays zero extra bundle cost). The server (blob-storage.ts) never sees or
- * stores the original HEIC bytes — only the converted JPEG, which is what
- * every browser can already display via a plain <img>, exactly like the
- * existing JPG/PNG/WebP path, no new storefront rendering logic needed.
+ * stores the original HEIC bytes — only the converted JPEG, which then
+ * still goes through the same client-side compression step as any other
+ * image before upload.
  */
 async function convertHeicToJpeg(file: File): Promise<File> {
   const heic2any = (await import('heic2any')).default;
@@ -109,21 +163,286 @@ export function ProductMediaGallery({
   // keyboard-operable, so they remain the accessible path; dragging is
   // purely an added convenience for a mouse.
   const [dragIndex, setDragIndex] = useState<number | null>(null);
+  // Keeps each file keyed by its item's `key` so a failed item's "Thử
+  // lại" button can resubmit the exact same File without asking the
+  // merchant to reselect it. Not React state — the File objects
+  // themselves never need to trigger a re-render.
+  const pendingFilesRef = useRef<Map<string, File>>(new Map());
+  // Edit mode's addProductMediaAction reads the product's current media
+  // count/sortOrder before writing — running two of those concurrently
+  // would race on the same snapshot and could assign duplicate sortOrder
+  // values or blow past MAX_MEDIA_ITEMS server-side. Every DB-persisting
+  // call in this component (initial batch AND later retries, images AND
+  // videos) chains onto this single queue so they always run one at a
+  // time, in the order their upload finished.
+  const dbQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // One AbortController per in-flight video upload, so its "Hủy" button
+  // can cancel exactly that upload without touching any other file.
+  const videoAbortControllersRef = useRef<Map<string, AbortController>>(new Map());
 
   const imageCount = items.filter((i) => i.type === 'image' && !i.error).length;
   const videoCount = items.filter((i) => i.type === 'video' && !i.error).length;
   const totalCount = items.filter((i) => !i.error).length;
-  const anyUploading = items.some((i) => i.uploading || i.converting);
+  const anyUploading = items.some((i) => i.uploading || i.converting || i.optimizing);
 
   useEffect(() => {
     onUploadingChange?.(anyUploading);
   }, [anyUploading, onUploadingChange]);
+
+  // Leaving mid-upload would silently lose that file (or, in "create"
+  // mode, strand it as an orphaned blob with no ProductMedia row ever
+  // created for it) — this is the browser's own native confirm prompt,
+  // which is the only one a beforeunload handler is allowed to trigger.
+  useEffect(() => {
+    if (!anyUploading) return;
+    function handleBeforeUnload(e: BeforeUnloadEvent) {
+      e.preventDefault();
+      e.returnValue = '';
+    }
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [anyUploading]);
 
   function classifyFile(file: File): 'image' | 'video' | null {
     if (['image/jpeg', 'image/png', 'image/webp'].includes(file.type) || isHeic(file))
       return 'image';
     if (['video/mp4', 'video/webm'].includes(file.type)) return 'video';
     return null;
+  }
+
+  // One image's full pipeline (HEIC conversion -> client-side resize/
+  // compress -> Blob upload (proxied through the server, still capped at
+  // 4MB) -> DB persist in edit mode), isolated so a thrown error here
+  // only ever marks THIS item as failed.
+  async function uploadSingleImage(key: string, file: File) {
+    try {
+      let fileToUpload = file;
+      if (isHeic(file)) {
+        try {
+          fileToUpload = await convertHeicToJpeg(file);
+        } catch {
+          setItems((prev) =>
+            prev.map((i) =>
+              i.key === key
+                ? {
+                    ...i,
+                    converting: false,
+                    error: "Couldn't convert this HEIC image — try exporting it as JPEG first.",
+                    canRetry: true,
+                  }
+                : i,
+            ),
+          );
+          return;
+        }
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { ...i, converting: false, optimizing: true } : i)),
+        );
+      }
+
+      const compressed = await compressImageInBrowser(fileToUpload);
+      if (!compressed.ok) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.key === key
+              ? { ...i, optimizing: false, error: compressed.error, canRetry: true }
+              : i,
+          ),
+        );
+        return;
+      }
+      fileToUpload = compressed.file;
+      setItems((prev) =>
+        prev.map((i) => (i.key === key ? { ...i, optimizing: false, uploading: true } : i)),
+      );
+
+      const formData = new FormData();
+      formData.append('file', fileToUpload);
+      const result = await uploadProductMediaAction(formData);
+
+      if (!result.success) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.key === key ? { ...i, uploading: false, error: result.error, canRetry: true } : i,
+          ),
+        );
+        return;
+      }
+
+      const uploaded = result.data;
+      if (mode === 'edit' && productId) {
+        const thisWrite = dbQueueRef.current.then(async () => {
+          const addFormData = new FormData();
+          addFormData.append('productId', productId);
+          addFormData.append(
+            'media',
+            JSON.stringify([{ url: uploaded.url, type: uploaded.type }]),
+          );
+          const addResult = await addProductMediaAction(addFormData);
+          if (!addResult.success) {
+            setItems((prev) =>
+              prev.map((i) =>
+                i.key === key
+                  ? { ...i, uploading: false, error: addResult.error, canRetry: true }
+                  : i,
+              ),
+            );
+            return;
+          }
+          // addProductMediaAction already persisted the row and ran
+          // revalidatePath() server-side. Swap the local placeholder's
+          // key for the REAL ProductMedia.id it returned — remove/
+          // reorder calls made later in this same session must target
+          // the real row, not the client-generated placeholder key.
+          const realId = addResult.data.ids[0];
+          pendingFilesRef.current.delete(key);
+          setItems((prev) =>
+            prev.map((i) =>
+              i.key === key ? { key: realId, type: uploaded.type, url: uploaded.url } : i,
+            ),
+          );
+        });
+        dbQueueRef.current = thisWrite;
+        await thisWrite;
+      } else {
+        pendingFilesRef.current.delete(key);
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { key, type: uploaded.type, url: uploaded.url } : i)),
+        );
+      }
+    } catch {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.key === key
+            ? {
+                ...i,
+                uploading: false,
+                converting: false,
+                optimizing: false,
+                error: 'Tải lên thất bại, vui lòng thử lại.',
+                canRetry: true,
+              }
+            : i,
+        ),
+      );
+    }
+  }
+
+  // Video's full pipeline: the file goes DIRECTLY from the browser to
+  // Vercel Blob — @vercel/blob's upload() only round-trips our server for
+  // a short-lived token (product-media/upload-video/route.ts), never for
+  // the bytes themselves. That's what makes this immune to the 4.5MB
+  // Vercel Functions body limit that caps every other path in this file.
+  async function uploadSingleVideo(key: string, file: File) {
+    const controller = new AbortController();
+    videoAbortControllersRef.current.set(key, controller);
+    try {
+      const pathnameResult = await createProductVideoPathnameAction(file.name);
+      if (!pathnameResult.success) {
+        setItems((prev) =>
+          prev.map((i) =>
+            i.key === key
+              ? { ...i, uploading: false, error: pathnameResult.error, canRetry: true }
+              : i,
+          ),
+        );
+        return;
+      }
+
+      const blobResult = await upload(pathnameResult.data.pathname, file, {
+        access: 'public',
+        handleUploadUrl: '/tenant-admin/product-media/upload-video',
+        contentType: file.type,
+        abortSignal: controller.signal,
+        onUploadProgress: ({ percentage }) => {
+          setItems((prev) => prev.map((i) => (i.key === key ? { ...i, progress: percentage } : i)));
+        },
+      });
+      videoAbortControllersRef.current.delete(key);
+
+      if (mode === 'edit' && productId) {
+        const thisWrite = dbQueueRef.current.then(async () => {
+          const addFormData = new FormData();
+          addFormData.append('productId', productId);
+          addFormData.append('media', JSON.stringify([{ url: blobResult.url, type: 'video' }]));
+          const addResult = await addProductMediaAction(addFormData);
+          if (!addResult.success) {
+            setItems((prev) =>
+              prev.map((i) =>
+                i.key === key
+                  ? { ...i, uploading: false, error: addResult.error, canRetry: true }
+                  : i,
+              ),
+            );
+            return;
+          }
+          const realId = addResult.data.ids[0];
+          pendingFilesRef.current.delete(key);
+          setItems((prev) =>
+            prev.map((i) => (i.key === key ? { key: realId, type: 'video', url: blobResult.url } : i)),
+          );
+        });
+        dbQueueRef.current = thisWrite;
+        await thisWrite;
+      } else {
+        pendingFilesRef.current.delete(key);
+        setItems((prev) =>
+          prev.map((i) => (i.key === key ? { key, type: 'video', url: blobResult.url } : i)),
+        );
+      }
+    } catch (e) {
+      videoAbortControllersRef.current.delete(key);
+      const canceled = e instanceof Error && e.name === 'AbortError';
+      setItems((prev) =>
+        prev.map((i) =>
+          i.key === key
+            ? {
+                ...i,
+                uploading: false,
+                progress: undefined,
+                error: canceled ? 'Đã hủy tải lên.' : 'Tải video thất bại, vui lòng thử lại.',
+                canRetry: true,
+              }
+            : i,
+        ),
+      );
+    }
+  }
+
+  function handleCancelVideo(item: MediaItem) {
+    videoAbortControllersRef.current.get(item.key)?.abort();
+  }
+
+  function handleRetry(item: MediaItem) {
+    const file = pendingFilesRef.current.get(item.key);
+    if (!file) return;
+    if (item.type === 'video') {
+      setItems((prev) =>
+        prev.map((i) =>
+          i.key === item.key
+            ? { ...i, error: undefined, canRetry: false, uploading: true, progress: undefined }
+            : i,
+        ),
+      );
+      void runWithConcurrency([() => uploadSingleVideo(item.key, file)], 1);
+      return;
+    }
+    const needsConversion = isHeic(file);
+    setItems((prev) =>
+      prev.map((i) =>
+        i.key === item.key
+          ? {
+              ...i,
+              error: undefined,
+              canRetry: false,
+              converting: needsConversion,
+              optimizing: !needsConversion,
+              uploading: false,
+            }
+          : i,
+      ),
+    );
+    void runWithConcurrency([() => uploadSingleImage(item.key, file)], 1);
   }
 
   async function handleFilesSelected(fileList: FileList | null) {
@@ -137,7 +456,7 @@ export function ProductMediaGallery({
     let nextImageCount = imageCount;
     let nextVideoCount = videoCount;
     let nextTotal = totalCount;
-    const accepted: File[] = [];
+    const accepted: { file: File; kind: 'image' | 'video' }[] = [];
     for (const file of files) {
       if (isMov(file)) {
         setFormError("MOV isn't supported yet. Please upload MP4 or WebM.");
@@ -146,6 +465,14 @@ export function ProductMediaGallery({
       const kind = classifyFile(file);
       if (!kind) {
         setFormError(`${file.name}: unsupported file type.`);
+        continue;
+      }
+      if (kind === 'image' && file.size > MAX_IMAGE_INPUT_BYTES) {
+        setFormError(`${file.name}: ảnh vượt 10MB, vui lòng chọn ảnh nhỏ hơn.`);
+        continue;
+      }
+      if (kind === 'video' && file.size > MAX_VIDEO_INPUT_BYTES) {
+        setFormError(`${file.name}: video vượt 30MB, vui lòng chọn file nhỏ hơn.`);
         continue;
       }
       if (nextTotal >= MAX_MEDIA_ITEMS) {
@@ -160,99 +487,48 @@ export function ProductMediaGallery({
         setFormError(`You can only add up to ${MAX_VIDEOS} videos.`);
         continue;
       }
-      accepted.push(file);
+      accepted.push({ file, kind });
       nextTotal++;
       if (kind === 'image') nextImageCount++;
       else nextVideoCount++;
     }
 
-    for (const file of accepted) {
-      const key = `${file.name}-${crypto.randomUUID()}`;
-      const kind = classifyFile(file) as 'image' | 'video';
-      const objectUrl = URL.createObjectURL(file);
-      const needsConversion = isHeic(file);
-      setItems((prev) => [
-        ...prev,
-        {
-          key,
-          type: kind,
-          url: objectUrl,
-          uploading: !needsConversion,
-          converting: needsConversion,
-        },
-      ]);
+    if (accepted.length === 0) return;
 
-      // HEIC/HEIF -> JPEG happens entirely in the browser, BEFORE the file
-      // ever reaches uploadProductMediaAction — the server (blob-storage.ts)
-      // is never given HEIC bytes and its MIME allowlist needed no change.
-      // Converting first, uploading second means a failed conversion never
-      // calls the upload action at all, so no ProductMedia row (or orphan
-      // Blob object) can ever result from it.
-      let fileToUpload = file;
-      if (needsConversion) {
-        try {
-          fileToUpload = await convertHeicToJpeg(file);
-        } catch {
-          setItems((prev) =>
-            prev.map((i) =>
-              i.key === key
-                ? {
-                    ...i,
-                    converting: false,
-                    error: "Couldn't convert this HEIC image — try exporting it as JPEG first.",
-                  }
-                : i,
-            ),
-          );
-          continue;
-        }
-        setItems((prev) =>
-          prev.map((i) => (i.key === key ? { ...i, converting: false, uploading: true } : i)),
-        );
-      }
+    // Every accepted file gets its tile and busy state added UP FRONT,
+    // before any upload starts — a multi-file selection shows every tile
+    // immediately, each with its own independent progress.
+    const queued = accepted.map(({ file, kind }) => ({
+      file,
+      kind,
+      key: `${file.name}-${crypto.randomUUID()}`,
+      needsConversion: kind === 'image' && isHeic(file),
+      objectUrl: URL.createObjectURL(file),
+    }));
+    queued.forEach(({ key, file }) => pendingFilesRef.current.set(key, file));
+    setItems((prev) => [
+      ...prev,
+      ...queued.map(({ key, kind, needsConversion, objectUrl }) => ({
+        key,
+        type: kind,
+        url: objectUrl,
+        converting: needsConversion,
+        optimizing: kind === 'image' && !needsConversion,
+        uploading: kind === 'video',
+      })),
+    ]);
 
-      const formData = new FormData();
-      formData.append('file', fileToUpload);
-      const result = await uploadProductMediaAction(formData);
-
-      if (!result.success) {
-        setItems((prev) =>
-          prev.map((i) => (i.key === key ? { ...i, uploading: false, error: result.error } : i)),
-        );
-        continue;
-      }
-
-      const uploaded = result.data;
-      if (mode === 'edit' && productId) {
-        const addFormData = new FormData();
-        addFormData.append('productId', productId);
-        addFormData.append('media', JSON.stringify([{ url: uploaded.url, type: uploaded.type }]));
-        const addResult = await addProductMediaAction(addFormData);
-        if (!addResult.success) {
-          setItems((prev) =>
-            prev.map((i) =>
-              i.key === key ? { ...i, uploading: false, error: addResult.error } : i,
-            ),
-          );
-          continue;
-        }
-        // addProductMediaAction already persisted the row and ran
-        // revalidatePath() server-side. Swap the local placeholder's key
-        // for the REAL ProductMedia.id it returned — remove/reorder calls
-        // made later in this same session must target the real row, not
-        // the client-generated placeholder key.
-        const realId = addResult.data.ids[0];
-        setItems((prev) =>
-          prev.map((i) =>
-            i.key === key ? { key: realId, type: uploaded.type, url: uploaded.url } : i,
-          ),
-        );
-      } else {
-        setItems((prev) =>
-          prev.map((i) => (i.key === key ? { key, type: uploaded.type, url: uploaded.url } : i)),
-        );
-      }
-    }
+    // Bounded to MAX_PARALLEL_UPLOADS concurrent files (images and videos
+    // share the one pool), and each file's outcome is independent — one
+    // file failing never stops or slows the rest of the batch.
+    await runWithConcurrency(
+      queued.map(
+        ({ file, key, kind }) =>
+          () =>
+            kind === 'video' ? uploadSingleVideo(key, file) : uploadSingleImage(key, file),
+      ),
+      MAX_PARALLEL_UPLOADS,
+    );
   }
 
   async function handleRemove(item: MediaItem) {
@@ -266,6 +542,7 @@ export function ProductMediaGallery({
       formData.append('url', item.url);
       await deleteUploadedProductMediaAction(formData);
     }
+    pendingFilesRef.current.delete(item.key);
     setItems((prev) => prev.filter((i) => i.key !== item.key));
   }
 
@@ -325,14 +602,12 @@ export function ProductMediaGallery({
         Product media
       </h4>
       <p className="text-xs text-muted-foreground">
-        Upload up to {MAX_MEDIA_ITEMS} files — Max {MAX_IMAGES} images · Max {MAX_VIDEOS} videos
+        Upload up to {MAX_IMAGES} images and {MAX_VIDEOS} videos (max {MAX_MEDIA_ITEMS} media
+        items total)
       </p>
       <p className="text-xs text-muted-foreground">
-        Images: JPG, PNG, WebP, HEIC/HEIF (max 10MB) · Videos: MP4, WebM (max 100MB)
-      </p>
-      <p className="text-xs text-muted-foreground">
-        Raster images are optimized and stored as WebP, which reduces object-storage size and image
-        transfer size. Videos are stored as uploaded.
+        Images: JPG, PNG, WebP, HEIC/HEIF, up to 10MB — optimized to WebP in your browser before
+        upload. Videos: MP4, WebM, up to 30MB — uploaded directly from your browser.
       </p>
 
       {/* Only meaningful in "create" mode — the enclosing <ActionForm>'s
@@ -367,15 +642,41 @@ export function ProductMediaGallery({
                   </span>
                 </div>
               )}
-              {(item.uploading || item.converting) && (
-                <span className="absolute inset-0 flex items-center justify-center rounded-md bg-black/50 text-[10px] text-white">
-                  {item.converting ? 'Converting…' : 'Uploading…'}
-                </span>
+              {(item.uploading || item.converting || item.optimizing) && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-md bg-black/50 text-center text-[10px] text-white">
+                  <span>
+                    {item.converting
+                      ? 'Converting…'
+                      : item.optimizing
+                        ? 'Đang tối ưu ảnh…'
+                        : item.type === 'video' && item.progress != null
+                          ? `Đang tải lên… ${Math.round(item.progress)}%`
+                          : 'Đang tải lên…'}
+                  </span>
+                  {item.type === 'video' && item.uploading && (
+                    <button
+                      type="button"
+                      onClick={() => handleCancelVideo(item)}
+                      className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-medium hover:bg-white/30"
+                    >
+                      Hủy
+                    </button>
+                  )}
+                </div>
               )}
               {item.error && (
-                <span className="absolute inset-0 flex items-center justify-center rounded-md bg-red-600/80 p-1 text-center text-[9px] text-white">
-                  {item.error}
-                </span>
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-1 rounded-md bg-red-600/80 p-1 text-center text-[9px] text-white">
+                  <span>{item.error}</span>
+                  {item.canRetry && (
+                    <button
+                      type="button"
+                      onClick={() => handleRetry(item)}
+                      className="rounded bg-white/20 px-1.5 py-0.5 text-[9px] font-medium hover:bg-white/30"
+                    >
+                      Thử lại
+                    </button>
+                  )}
+                </div>
               )}
               <button
                 type="button"
@@ -413,7 +714,11 @@ export function ProductMediaGallery({
       )}
 
       {formError && <p className="text-xs text-red-600">{formError}</p>}
-      {anyUploading && <p className="text-xs text-muted-foreground">Uploading…</p>}
+      {anyUploading && (
+        <p className="text-xs text-muted-foreground">
+          Đang xử lý/tải lên — bạn vẫn có thể tiếp tục điền các phần khác của form.
+        </p>
+      )}
 
       <button
         type="button"

@@ -69,6 +69,8 @@
     "selectOptions": "Select options",
     "select": "Select {option}",
     "unavailable": "(unavailable)",
+    "viewAllValues": "View all {count}",
+    "selectedLabel": "Selected: {label}",
     "outOfStock": "Out of stock",
     "maxInCart": "Max in cart",
     "addToCart": "Add to cart",
@@ -82,7 +84,12 @@
     "productNotFound": "Product not found",
     "productNotFoundBody": "This product doesn't exist or is no longer available.",
     "keepBrowsing": "Keep browsing",
-    "youMightAlsoLike": "You might also like"
+    "youMightAlsoLike": "You might also like",
+    "weightLabel": "Weight:",
+    "autoVoucherHint": "{label} −{percent}%, automatically applied at checkout",
+    "weightInputLabel": "Estimated weight (g per product)",
+    "weightInputHint": "Enter an estimated weight for one product in grams; packaging is not included.",
+    "weightImportHint": "New products require the weight_grams column in grams. For an existing SKU update, you can omit it to keep the current weight."
   },
   "cart": {
     "checkout": "Checkout",
@@ -120,6 +127,7 @@
     "noEligibleItems": "This voucher doesn't apply to any items in your cart."
   },
   "checkout": {
+    "yourOrder": "Your order",
     "contactInfo": "Contact info",
     "fullName": "Full name",
     "email": "Email",
@@ -134,6 +142,10 @@
     "deliveryNote": "Delivery note (optional)",
     "deliveryNotePlaceholder": "e.g. Leave with the receptionist",
     "shippingMethod": "Shipping method",
+    "shippingEstimateLabel": "Estimated shipping",
+    "shippingEstimateNote": "Shipping is an estimate: the base amount covers the first 500 g within Ho Chi Minh City; other provinces add VND 20,000; each additional 500 g adds VND 10,000. The carrier's actual fee may differ.",
+    "shippingEstimateSelectProvince": "Select a province to update the estimate; the base amount is shown until then.",
+    "shippingEstimateUnavailable": "Product weights are missing for items in this cart, so the fee can't be estimated. Refresh the page and check the products.",
     "noShippingMethod": "This store hasn't enabled any shipping method yet.",
     "paymentMethod": "Payment method",
     "noPaymentMethod": "This store hasn't enabled any payment method yet.",
@@ -270,7 +282,16 @@
     "amount": "Amount",
     "expires": "Expires:",
     "paymentQrCode": "Payment QR code",
-    "orderPlaced": "Your order was placed"
+    "orderPlaced": "Your order was placed",
+    "transferToTitle": "Transfer to:",
+    "manualTransferCreatedHint": "Please include your order ID as the transfer note, then wait for the merchant to confirm your order.",
+    "manualTransferNoteHint": "Please include your order ID as the transfer note.",
+    "contactStoreHint": "Contact the store directly for payment instructions.",
+    "scanQrHint": "Scan the QR code or transfer the exact amount to the virtual account number above.",
+    "momoRedirectHint": "Complete your payment with MoMo, then return here.",
+    "momoSucceededHint": "Payment received via MoMo.",
+    "momoPendingRetryHint": "If you haven't completed payment yet, please check out again to get a fresh MoMo payment link.",
+    "momoNotCompletedHint": "MoMo payment was not completed."
   },
   "validation": {
     "nameRequired": "Full name is required.",
@@ -283,11 +304,10 @@
   },
   "pdpTrust": {
     "shippingTitle": "Shipping",
-    "shippingHint": "Nationwide, 2–4 business days",
+    "shippingFromHint": "Nationwide shipping, from {amount}",
     "policyTitle": "Policy",
     "policyLink": "No returns or exchanges — please check carefully before ordering",
-    "paymentTitle": "Payment",
-    "paymentHint": "COD or QR bank transfer"
+    "paymentTitle": "Payment"
   },
   "trustStrip": {
     "shippingTitle": "Nationwide shipping",
@@ -357,13 +377,17 @@
     "branding": "Branding",
     "privacy": "Privacy notice",
     "banners": "Banners",
-    "bannerDesktopHelp": "JPG, PNG, or WebP, up to 8 MB. Recommended 1920×1080 (16:9), minimum 1280×720. Keep the main content within the middle ~80% of the width. Images are optimized and stored as WebP.",
-    "bannerMobileHelp": "A separate crop for smaller screens, also 16:9. If empty, the desktop image is used. Images are optimized and stored as WebP.",
-    "bannerExistingImageNote": "Previously uploaded images are not recropped automatically; replace an image to use the 16:9 frame.",
+    "bannerDesktopHelp": "JPG, PNG, or WebP, up to 10 MB (optimized in your browser before upload). Recommended 2688×840 (16:5); other ratios still display in full, with a soft blurred background on the sides.",
+    "bannerMobileHelp": "A separate crop for smaller screens, also 16:5. If empty, the desktop image is used.",
+    "bannerExistingImageNote": "Previously uploaded images are not recropped automatically; replace an image to use the 16:5 frame.",
+    "bannerCtaHint": "Don't put a button inside the image itself; use the CTA URL field so it's actually clickable.",
     "payments": "Payments",
     "paymentOperations": "Payment operations",
     "bankTransfer": "Bank transfer",
     "shipping": "Shipping",
+    "shippingEstimateDescription": "Each method sets a Ho Chi Minh City local base for the first 500 g; checkout adds the province and weight surcharges to estimate the fee. This is not an official carrier quote.",
+    "shippingBaseAmountLabel": "Base amount (VND)",
+    "shippingBaseAmountHint": "Ho Chi Minh City local base for the first 500 g. Other provinces add VND 20,000; each additional 500 g adds VND 10,000. Entering 0 removes only the base; surcharges still apply.",
     "commerce": "Commerce",
     "storefrontGroup": "Storefront",
     "checkoutGroup": "Checkout",

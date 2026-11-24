@@ -6,6 +6,7 @@ import { ProductMediaGallery } from './ProductMediaGallery';
 import { DescriptionEditor } from './DescriptionEditor';
 import { createProductAction } from './actions';
 import { PRODUCT_STATUSES } from './product-status';
+import { useDictionary } from '@/lib/i18n/use-dictionary';
 import {
   productInputClassName,
   productLabelClassName,
@@ -28,6 +29,7 @@ export function CreateProductForm({
   categories: { id: string; name: string }[];
 }) {
   const [uploading, setUploading] = useState(false);
+  const dict = useDictionary();
 
   return (
     <ActionForm
@@ -51,6 +53,18 @@ export function CreateProductForm({
         <label className={productLabelClassName}>
           Price (VND)
           <input name="price" inputMode="numeric" className={productInputClassName} />
+        </label>
+        <label className={productLabelClassName}>
+          {dict.products.weightInputLabel}
+          <input
+            name="weightGrams"
+            type="number"
+            min="1"
+            step="1"
+            required
+            className={productInputClassName}
+          />
+          <span className="text-xs text-muted-foreground">{dict.products.weightInputHint}</span>
         </label>
         <label className={productLabelClassName}>
           Category

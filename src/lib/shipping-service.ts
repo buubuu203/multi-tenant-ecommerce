@@ -3,6 +3,7 @@ import { getScopedDb } from "./db/tenant-db";
 export type ShippingMethodOption = {
   id: string;
   name: string;
+  /** Merchant-configured local first-500g base, in VND. */
   amount: number;
   isDefault: boolean;
 };
@@ -35,7 +36,7 @@ export type ResolvedShippingMethod = { name: string; amount: number };
 /**
  * Authoritative shipping-method resolution for order creation — the
  * server-side counterpart to the client's selection. Re-reads the CURRENT
- * amount from the database (never trusts whatever the client displayed)
+ * local first-500g base amount from the database (never trusts whatever the client displayed)
  * and confirms the method both belongs to this tenant and is still
  * enabled at this exact moment, closing the same "selected at page load,
  * changed before submit" race already accepted (and documented) for

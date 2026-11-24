@@ -53,6 +53,7 @@ export type TenantProductMedia = {
 export type TenantProduct = {
   id: string;
   name: string;
+  weightGrams: number;
   category: string | null;
   // Product Description Rich Text: Product.description is stored as plain
   // Markdown in the database (no schema change), but this purpose-built
@@ -133,7 +134,9 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
   const inventoryRows = await prisma.inventory.findMany({ where: { tenantId } });
   const availableByVariant = new Map(inventoryRows.map((inv) => [inv.productVariantId, inv.onHand - inv.reserved]));
 
-  return products.map((product) => mapTenantProduct(product, optionNameById, valueLabelById, availableByVariant));
+  return products.map((product) =>
+    mapTenantProduct(product, optionNameById, valueLabelById, availableByVariant, false),
+  );
 }
 
 // Raw shape shared by both getTenantProducts()'s and getTenantProduct()'s
@@ -143,6 +146,7 @@ export async function getTenantProducts(): Promise<TenantProduct[]> {
 type RawTenantProduct = {
   id: string;
   name: string;
+  weightGrams: number;
   category: { name: string } | null;
   description: string | null;
   media: { id: string; type: string; url: string; sortOrder: number }[];
@@ -162,14 +166,18 @@ function mapTenantProduct(
   optionNameById: Map<string, string>,
   valueLabelById: Map<string, string>,
   availableByVariant: Map<string, number>,
+  includeDescriptionHtml: boolean,
 ): TenantProduct {
+  const descriptionHtml = product.description ? renderDescriptionMarkdown(product.description) : null;
+
   return {
     id: product.id,
     name: product.name,
+    weightGrams: product.weightGrams,
     category: product.category?.name ?? null,
-    descriptionHtml: product.description ? renderDescriptionMarkdown(product.description) : null,
+    descriptionHtml: includeDescriptionHtml ? descriptionHtml : null,
     descriptionExcerpt: product.description
-      ? renderDescriptionMarkdown(product.description).replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
+      ? descriptionHtml?.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim() || null
       : null,
     media: product.media.map((m) => ({ id: m.id, type: m.type as "image" | "video", url: m.url, sortOrder: m.sortOrder })),
     variants: product.variants.map((variant) => {
@@ -308,5 +316,5 @@ export async function getTenantProductForTenant(
   const valueLabelById = new Map(variantOptionValues.map((v) => [v.id, v.value]));
   const availableByVariant = new Map(inventoryRows.map((inv) => [inv.productVariantId, inv.onHand - inv.reserved]));
 
-  return mapTenantProduct(product, optionNameById, valueLabelById, availableByVariant);
+  return mapTenantProduct(product, optionNameById, valueLabelById, availableByVariant, true);
 }

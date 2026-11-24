@@ -270,11 +270,11 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'them-san-pham',
     title: 'Thêm sản phẩm',
     route: '/tenant-admin/products/new',
-    purpose: 'Tạo nhanh một sản phẩm mới với tên và giá.',
-    canDo: ['Nhập tên, giá và trạng thái để tạo sản phẩm.'],
+    purpose: 'Tạo nhanh một sản phẩm mới với tên, giá và trọng lượng ước tính.',
+    canDo: ['Nhập tên, giá, trọng lượng ước tính theo gram và trạng thái để tạo sản phẩm.'],
     workflow: [
       'Bấm Add a product ở trang Sản phẩm.',
-      'Nhập tên và giá rồi tạo.',
+      'Nhập tên, giá và trọng lượng ước tính của một sản phẩm theo gram rồi tạo.',
       'Quay lại trang Sản phẩm để thêm ảnh, mẫu mã, tồn kho và giảm giá.',
     ],
     concepts: [
@@ -297,7 +297,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       'Thêm hoặc cập nhật nhiều sản phẩm cùng lúc bằng file CSV, và tải danh sách sản phẩm hiện có ra file.',
     canDo: [
       'Xem trước kết quả trước khi nhập thật.',
-      'Nhập file dạng đơn giản chỉ gồm tên và giá.',
+      'Nhập file dạng đơn giản gồm tên, giá và trọng lượng theo gram.',
       'Nhập file dạng mở rộng có SKU để cập nhật sản phẩm đã có.',
       'Đặt tồn kho theo số tuyệt đối hoặc tăng giảm tương đối.',
       'Gán phân loại (category) cho sản phẩm, tự tạo phân loại mới nếu tên đó chưa có.',
@@ -313,7 +313,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       {
         term: 'Hai dạng file',
         meaning:
-          'Dạng đơn giản gồm đúng các cột name,price và có thể thêm status, chỉ dùng để tạo mới. Dạng mở rộng dùng tên cột và bắt buộc có sku, name, price.',
+          'Dạng đơn giản gồm các cột name,price,weight_grams và có thể thêm status, chỉ dùng để tạo mới. Dạng mở rộng dùng tên cột và bắt buộc có sku, name, price; dòng SKU mới cần thêm weight_grams. Khi cập nhật SKU đã có, có thể bỏ cột này để giữ nguyên trọng lượng.',
       },
       {
         term: 'SKU là khoá đối chiếu',
@@ -398,7 +398,7 @@ export const HELP_SECTIONS: HelpSection[] = [
       'Trang này chỉ xem, không sửa được gì.',
       'Số sản phẩm, tồn kho và tổng số khách là số liệu hiện tại, không theo khoảng ngày.',
       'Không có doanh thu đã thu, tiền đã về ngân hàng, hay việc đã thu tiền COD.',
-      'Không có thông tin giao hàng, đơn vị vận chuyển, phí vận chuyển thực tế hay tình trạng giao.',
+      'Không có thông tin giao hàng, đơn vị vận chuyển, phí hãng vận chuyển thu thực tế hay tình trạng giao.',
       'Không có trả hàng, hoàn tiền, lợi nhuận, biên lợi nhuận, thuế hay VAT.',
       'Không có nguồn khách, tỉ lệ chuyển đổi hay thông tin đồng ý nhận quảng cáo.',
       'Đây không phải chứng từ kế toán, thuế hay ngân hàng.',
@@ -571,16 +571,17 @@ export const HELP_SECTIONS: HelpSection[] = [
     id: 'van-chuyen',
     title: 'Vận chuyển',
     route: '/tenant-admin/shipping',
-    purpose: 'Khai báo các phương thức giao hàng và mức phí mà khách thấy khi đặt đơn.',
+    purpose: 'Khai báo phương thức giao hàng và mức cơ bản để hệ thống ước tính phí theo tỉnh và trọng lượng.',
     canDo: [
-      'Thêm phương thức giao hàng với tên và mức phí.',
+      'Thêm phương thức giao hàng với tên và mức cơ bản nội thành TP. Hồ Chí Minh.',
+      'Xem phí ước tính được tính theo tỉnh nhận hàng và tổng trọng lượng sản phẩm.',
       'Bật hoặc tắt từng phương thức.',
       'Chọn một phương thức làm mặc định.',
       'Xoá phương thức không dùng nữa.',
     ],
     workflow: [
       'Thêm ít nhất một phương thức.',
-      'Bật phương thức đó lên.',
+      'Nhập mức cơ bản cho 500 g đầu trong TP. Hồ Chí Minh rồi bật phương thức.',
       'Chọn phương thức hay dùng nhất làm mặc định.',
     ],
     concepts: [
@@ -589,11 +590,21 @@ export const HELP_SECTIONS: HelpSection[] = [
         meaning:
           'Phương thức được chọn sẵn khi khách thanh toán. Chỉ một phương thức được làm mặc định.',
       },
-      { term: 'Phí bằng 0', meaning: 'Ghi số 0 nghĩa là miễn phí vận chuyển.' },
+      {
+        term: 'Phí ước tính',
+        meaning:
+          'Mức cơ bản áp dụng cho 500 g đầu trong TP. Hồ Chí Minh. Giao khác tỉnh cộng 20.000 ₫; mỗi 500 g tiếp theo, làm tròn lên, cộng 10.000 ₫. Tổng trọng lượng lấy từ trọng lượng ước tính của từng sản phẩm nhân với số lượng.',
+      },
+      {
+        term: 'Mức cơ bản bằng 0',
+        meaning:
+          'Số 0 chỉ bỏ mức cơ bản; phụ phí tỉnh và trọng lượng vẫn có thể áp dụng. Đây không phải lựa chọn miễn phí toàn tuyến.',
+      },
     ],
     limits: [
       'Nếu không có phương thức nào, hoặc tất cả đều đang tắt, khách sẽ không đặt hàng được. Hệ thống cảnh báo rõ trên trang này.',
-      'Hệ thống không kết nối với đơn vị vận chuyển nào: không có mã vận đơn, không có trạng thái giao hàng, không in được vận đơn, không có dự kiến thời gian giao.',
+      'Đây chỉ là ước tính nội bộ, không phải báo giá của hãng vận chuyển. Hệ thống không kết nối hãng, không có mã vận đơn hoặc trạng thái giao hàng.',
+      'Cân nặng được khai báo thủ công và có thể chưa chính xác; hãy cân lại sản phẩm. Đơn đã đặt giữ nguyên tên phương thức và phí ước tính lúc đặt.',
       'Xoá một phương thức không ảnh hưởng tới đơn cũ, vì đơn đã lưu lại tên và phí tại thời điểm đặt.',
     ],
   },

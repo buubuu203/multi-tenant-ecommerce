@@ -1,3 +1,4 @@
+import { cache } from "react";
 import { headers } from "next/headers";
 import { prisma } from "@/lib/prisma";
 
@@ -5,7 +6,7 @@ import { prisma } from "@/lib/prisma";
 // request hostname) and loads the tenant's own data. This header is
 // resolved server-side context, not an authorization token — see the
 // comment in src/proxy.ts for why that distinction matters.
-export async function getCurrentTenant() {
+export const getCurrentTenant = cache(async function getCurrentTenant() {
   const headerList = await headers();
   const tenantId = headerList.get("x-tenant-id");
 
@@ -17,4 +18,4 @@ export async function getCurrentTenant() {
     where: { id: tenantId },
     include: { branding: true },
   });
-}
+});

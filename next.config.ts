@@ -15,12 +15,20 @@ const nextConfig: NextConfig = {
   },
   experimental: {
     serverActions: {
-      // Step 50: uploadProductMediaAction sends the raw file straight
-      // through a Server Action, whose default body limit (1MB) is far
-      // below blob-storage.ts's own MAX_VIDEO_BYTES (100MB) — every real
-      // photo/video upload was silently 413ing. Set above the 100MB video
-      // ceiling with headroom for multipart boundary/field overhead.
-      bodySizeLimit: "110mb",
+      // Production incident (2026-11-19): this used to be "110mb", aimed
+      // at blob-storage.ts's old 100MB video ceiling — but on Vercel, this
+      // setting can never matter past 4.5MB. Vercel enforces a hard,
+      // non-configurable 4.5MB request body limit on every Function
+      // (Server Actions included, see
+      // https://vercel.com/docs/functions/limitations); anything larger
+      // is rejected by the platform itself with a bare 413 before Next.js
+      // or this config is ever consulted. "110mb" was therefore never
+      // actually in effect in production — every upload above 4.5MB was
+      // (and, for video, still is) silently failing regardless of this
+      // value. 4.3mb just clears our own 4MB app-level image/logo caps
+      // (blob-storage.ts's MAX_IMAGE_BYTES / MAX_LOGO_BYTES) plus small
+      // multipart overhead, while staying under Vercel's ceiling.
+      bodySizeLimit: "4.3mb",
     },
   },
 };

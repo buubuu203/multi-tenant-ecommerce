@@ -7,6 +7,25 @@ import {
   uploadBrandingLogoAction,
   uploadDesignTokensAction,
 } from './actions';
+import { compressImageInBrowser } from '@/lib/images/client-compress';
+
+// Raster logo SELECTION cap — the server (blob-storage.ts's
+// MAX_LOGO_BYTES) still caps at 4MB, a Vercel Functions platform limit
+// that cannot be raised. The gap is closed by compressImageInBrowser,
+// same as ProductMediaGallery/BannerImageUpload.
+const MAX_LOGO_RASTER_INPUT_BYTES = 10 * 1024 * 1024;
+// SVG is never compressed (it's mandated to stay vector — see
+// blob-storage.ts's uploadBrandingLogoFile comment), so there is no
+// compression step to close a gap with; this stays at the server's own
+// 4MB cap.
+const MAX_LOGO_SVG_INPUT_BYTES = 4 * 1024 * 1024;
+// Favicon is NOT included in the 10MB/compress policy: blob-storage.ts's
+// uploadBrandingFaviconFile explicitly stores favicons byte-for-byte
+// (ICO/PNG/SVG) and never converts to WebP — a browser tab icon has to
+// stay in a format the browser's own <link rel="icon"> will accept, and
+// compressing to WebP would silently break that contract. Favicons are
+// also tiny by nature, so the server's existing 1MB cap is left as-is.
+const MAX_FAVICON_INPUT_BYTES = 1 * 1024 * 1024;
 
 export function BrandingUploadControls({
   initialLogoUrl,
@@ -26,14 +45,38 @@ export function BrandingUploadControls({
   const [faviconError, setFaviconError] = useState<string | null>(null);
   const [tokenMessage, setTokenMessage] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [optimizing, setOptimizing] = useState(false);
   const router = useRouter();
 
   async function uploadLogo(file: File | undefined) {
     if (!file) return;
     setLogoError(null);
+    const isSvg = file.type === 'image/svg+xml';
+
+    let fileToUpload = file;
+    if (isSvg) {
+      if (file.size > MAX_LOGO_SVG_INPUT_BYTES) {
+        setLogoError('Logo vượt 4MB, vui lòng chọn ảnh nhỏ hơn.');
+        return;
+      }
+    } else {
+      if (file.size > MAX_LOGO_RASTER_INPUT_BYTES) {
+        setLogoError('Logo vượt 10MB, vui lòng chọn ảnh nhỏ hơn.');
+        return;
+      }
+      setOptimizing(true);
+      const compressed = await compressImageInBrowser(file);
+      setOptimizing(false);
+      if (!compressed.ok) {
+        setLogoError(compressed.error);
+        return;
+      }
+      fileToUpload = compressed.file;
+    }
+
     setUploading(true);
     const formData = new FormData();
-    formData.append('file', file);
+    formData.append('file', fileToUpload);
     const result = await uploadBrandingLogoAction(formData);
     setUploading(false);
     if (!result.success) {
@@ -61,6 +104,10 @@ export function BrandingUploadControls({
   async function uploadFavicon(file: File | undefined) {
     if (!file) return;
     setFaviconError(null);
+    if (file.size > MAX_FAVICON_INPUT_BYTES) {
+      setFaviconError('Favicon vượt 1MB, vui lòng chọn ảnh nhỏ hơn.');
+      return;
+    }
     setUploading(true);
     const formData = new FormData();
     formData.append('file', file);
@@ -96,17 +143,16 @@ export function BrandingUploadControls({
         </label>
         <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
-            Upload a JPG, PNG, WebP, or SVG logo (max 5MB). Raster images are optimized and stored
-            as WebP, which reduces object-storage size and image transfer size. SVG logos are
-            preserved as SVG for branding compatibility.
+            Upload a JPG, PNG, or WebP logo up to 10MB (optimized to WebP in your browser before
+            upload), or an SVG logo up to 4MB (kept as-is).
           </p>
           <button
             type="button"
             onClick={() => logoInputRef.current?.click()}
-            disabled={uploading}
+            disabled={uploading || optimizing}
             className="w-fit rounded-md border border-border px-2.5 py-1.5 text-xs transition-colors hover:bg-surface disabled:opacity-50"
           >
-            {uploading ? 'Uploading…' : 'Upload logo'}
+            {optimizing ? 'Đang tối ưu ảnh…' : uploading ? 'Đang tải lên…' : 'Upload logo'}
           </button>
           <input
             ref={logoInputRef}

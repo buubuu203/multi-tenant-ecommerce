@@ -7,6 +7,14 @@ import type { PaymentProviderType, PaymentStatus } from "@/generated/prisma/clie
 // is supplementary detail on the same action, not a separate rail).
 // Checkout components render off `type` alone and must never branch on
 // provider name.
+//
+// `title`/`nextAction` are STABLE CODES (see payment-instructions-i18n.ts's
+// PaymentTitleCode/PaymentNextActionCode), not display text — every
+// provider used to hand back a hardcoded English sentence here, which
+// reached the checkout UI with no chance to translate it. Kept typed as
+// `string` (not the literal unions) so a provider can still return an
+// unrecognized code without a type error; translatePaymentInstructions()
+// falls back to showing the code verbatim in that case.
 export type PaymentInstructions =
   | { type: "none"; nextAction: string }
   | {

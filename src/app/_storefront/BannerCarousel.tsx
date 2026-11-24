@@ -73,7 +73,12 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
       role="region"
       aria-roledescription="carousel"
       aria-label="Featured"
-      className="glass relative flex flex-col overflow-hidden"
+      // Full width again, matching every other section on this page
+      // (header, category pills, product grid) — an earlier attempt
+      // narrowed this to a centered column to shrink it, which instead
+      // made it look like a stray island against the rest of the
+      // full-bleed layout.
+      className="glass relative flex w-full flex-col overflow-hidden"
       style={{ borderRadius: "var(--radius-card)" }}
       onKeyDown={(e) => {
         if (!hasMultiple) return;
@@ -93,10 +98,29 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
       }}
     >
       <div
+        // Capped at a comfortable hero height, full width — the stored
+        // image is 16:9, which would otherwise force this frame very tall
+        // on a wide desktop viewport. Rather than crop (object-cover) or
+        // shrink the whole banner into an island (max-width), this uses
+        // the same "blurred backdrop + object-contain foreground" pattern
+        // already proven on the PDP gallery (ProductMediaCarousel.tsx):
+        // the real image is NEVER cropped, just letterboxed, with a
+        // blurred copy of itself filling the letterbox bars instead of a
+        // flat background color.
         className="relative w-full overflow-hidden"
-        style={{ aspectRatio: "16/9" }}
+        style={{ aspectRatio: "21/9", maxHeight: "420px" }}
         aria-live="polite"
       >
+        <Image
+          key={`${imageUrl}-backdrop`}
+          src={imageUrl}
+          alt=""
+          aria-hidden="true"
+          fill
+          sizes="(max-width: 1023px) 100vw, 1344px"
+          className="object-cover object-center"
+          style={{ filter: "blur(32px) saturate(1.15)", transform: "scale(1.15)" }}
+        />
         <Image
           key={imageUrl}
           src={imageUrl}
@@ -104,16 +128,34 @@ export function BannerCarousel({ banners }: { banners: StorefrontBanner[] }) {
           fill
           priority={index === 0}
           sizes="(max-width: 1023px) 100vw, 1344px"
-          className="object-cover object-center spring-fade"
+          className="object-contain object-center spring-fade"
         />
 
         {hasCta && (
           <>
+            {/* Whole-slide click target (QA round, 2026-11-23): a
+                decorative link covering the full frame, so a customer can
+                click/tap ANYWHERE on the image — including a button baked
+                into the photo itself — not just the small explicit CTA
+                button below. aria-hidden + tabIndex=-1 because the real,
+                accessible link for keyboard/screen-reader users is the
+                visible CTA button further down; having both focusable
+                would just be the same destination twice. Placed right
+                after the two <Image>s, BEFORE the scrim/button/arrows/
+                dots below — later siblings paint (and therefore receive
+                clicks) on top of this one with no z-index needed, so the
+                arrows and dots stay independently clickable. */}
+            <a
+              href={current.ctaUrl!}
+              aria-hidden="true"
+              tabIndex={-1}
+              className="absolute inset-0"
+            />
             {/* Scrim confined to the CTA's corner, not the whole image —
                 the photo itself is the content now, so this only exists
                 to keep the button legible against an arbitrary background. */}
             <div
-              className="absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent"
+              className="pointer-events-none absolute inset-x-0 bottom-0 h-24 bg-gradient-to-t from-black/50 to-transparent"
               aria-hidden="true"
             />
             <div className="absolute inset-x-0 flex justify-center" style={{ bottom: hasMultiple ? "44px" : "16px" }}>

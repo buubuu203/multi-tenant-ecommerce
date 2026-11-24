@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { PaymentProvider, CreatePaymentParams, CreatePaymentResult, WebhookResult } from "./provider";
+import type { PaymentNextActionCode } from "./payment-instructions-i18n";
 
 // Step 51: no external call, no gateway. Payment.status stays "pending"
 // indefinitely by design — per the approved correction, COD does not get
@@ -18,7 +19,7 @@ export class CodProvider implements PaymentProvider {
       metadata: null,
       instructions: {
         type: "none",
-        nextAction: "Pay in cash when your order arrives.",
+        nextAction: "PAY_COD_ON_DELIVERY" satisfies PaymentNextActionCode,
       },
     };
   }

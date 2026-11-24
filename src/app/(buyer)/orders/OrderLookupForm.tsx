@@ -9,6 +9,7 @@ import {
 } from './actions';
 import type { CustomerOrderView } from '@/lib/order-queries';
 import { useDictionary } from '@/lib/i18n/use-dictionary';
+import { translatePaymentInstructions } from '@/lib/payments/payment-instructions-i18n';
 
 function formatVnd(price: number): string {
   return `${price.toLocaleString('vi-VN')} ₫`;
@@ -44,6 +45,13 @@ const PAYMENT_STATUS_BADGE: Record<string, string> = {
 function OrderDetails({ order }: { order: CustomerOrderView }) {
   const dict = useDictionary();
   const paymentDict = dict.payment as Record<string, string>;
+  // Same stable-code -> locale translation CartWidget.tsx's checkout
+  // success panel uses — getStoredPaymentInstructions() (order-queries.ts)
+  // returns codes, never display text, so every reader translates them
+  // independently in their own locale.
+  const paymentInstructions = order.paymentInstructions
+    ? translatePaymentInstructions(order.paymentInstructions, dict)
+    : null;
   return (
     <div
       className="glass mt-6 overflow-hidden text-sm"
@@ -191,44 +199,44 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
           reconstructed read-only from the persisted Payment row (see
           payment-service.ts's getStoredPaymentInstructions). Never
           branches on provider name. */}
-      {order.paymentInstructions?.type === 'bank_transfer' && (
+      {paymentInstructions?.type === 'bank_transfer' && (
         <div className="border-t border-border bg-amber-50/60 p-4 text-sm sm:p-6">
-          <p className="font-medium">{order.paymentInstructions.title}</p>
-          {order.paymentInstructions.bankName && (
-            <p className="mt-1">{order.paymentInstructions.bankName}</p>
+          <p className="font-medium">{paymentInstructions.title}</p>
+          {paymentInstructions.bankName && (
+            <p className="mt-1">{paymentInstructions.bankName}</p>
           )}
-          {(order.paymentInstructions.accountNumber ||
-            order.paymentInstructions.virtualAccountNumber) && (
+          {(paymentInstructions.accountNumber ||
+            paymentInstructions.virtualAccountNumber) && (
             <p className="font-mono">
-              {order.paymentInstructions.virtualAccountNumber ??
-                order.paymentInstructions.accountNumber}
+              {paymentInstructions.virtualAccountNumber ??
+                paymentInstructions.accountNumber}
             </p>
           )}
-          {order.paymentInstructions.accountHolder && (
-            <p>{order.paymentInstructions.accountHolder}</p>
+          {paymentInstructions.accountHolder && (
+            <p>{paymentInstructions.accountHolder}</p>
           )}
-          {order.paymentInstructions.qrCodeUrl && (
+          {paymentInstructions.qrCodeUrl && (
             // eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset
             <img
-              src={order.paymentInstructions.qrCodeUrl}
+              src={paymentInstructions.qrCodeUrl}
               alt={dict.payment.paymentQrCode}
               className="mt-3 h-40 w-40 rounded-lg border border-border bg-white p-2"
             />
           )}
-          {order.paymentInstructions.expiresAt && (
+          {paymentInstructions.expiresAt && (
             <p className="mt-1 text-muted-foreground">
               {dict.payment.expires}{' '}
-              {new Date(order.paymentInstructions.expiresAt).toLocaleString('vi-VN', {
+              {new Date(paymentInstructions.expiresAt).toLocaleString('vi-VN', {
                 dateStyle: 'medium',
                 timeStyle: 'short',
               })}
             </p>
           )}
-          <p className="mt-2 text-muted-foreground">{order.paymentInstructions.nextAction}</p>
+          <p className="mt-2 text-muted-foreground">{paymentInstructions.nextAction}</p>
         </div>
       )}
-      {order.paymentInstructions?.type === 'none' && order.status !== 'cancelled' && (
-        <p className="mt-3 text-xs text-muted-foreground">{order.paymentInstructions.nextAction}</p>
+      {paymentInstructions?.type === 'none' && order.status !== 'cancelled' && (
+        <p className="mt-3 text-xs text-muted-foreground">{paymentInstructions.nextAction}</p>
       )}
     </div>
   );

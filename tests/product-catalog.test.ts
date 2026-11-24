@@ -37,7 +37,7 @@ test('storefront catalog pagination displays 20 items and clamps stale page numb
 });
 
 test('category selection ids are trimmed and blank values are stored as unset', () => {
-  const input = { name: 'Chair', price: '1000', status: 'draft' };
+  const input = { name: 'Chair', price: '1000', weightGrams: '100', status: 'draft' };
   const assigned = validateProductInput({ ...input, categoryId: '  category-id  ' });
   const unset = validateProductInput({ ...input, categoryId: '   ' });
 
@@ -46,4 +46,6 @@ test('category selection ids are trimmed and blank values are stored as unset', 
   if ('error' in assigned || 'error' in unset) return;
   assert.equal(assigned.categoryId, 'category-id');
   assert.equal(unset.categoryId, null);
+  assert.ok('error' in validateProductInput({ ...input, weightGrams: '' }));
+  assert.ok('error' in validateProductInput({ ...input, weightGrams: '0' }));
 });

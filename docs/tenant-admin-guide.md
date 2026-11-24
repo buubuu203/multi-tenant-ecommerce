@@ -65,7 +65,7 @@ Tests pin the wording for each area so it cannot quietly soften:
 | Overview, Customers | Order value is _không phải doanh thu đã thu_                                                                             |
 | Payment operations  | Not accounting, not bank reconciliation, never claims money arrived                                                      |
 | Payments            | Switching provider replaces the stored configuration                                                                     |
-| Shipping            | No carrier integration, tracking, label or delivery estimate                                                             |
+| Shipping            | No carrier integration, tracking, label, delivery confirmation or carrier quote; checkout shows only a rough rule-based fee estimate |
 | CSV import          | All-or-nothing; legacy products without a SKU cannot be updated                                                          |
 | Customers           | No edit, delete or merge                                                                                                 |
 | Catalog             | Existing images are **not** retroactively converted to WebP                                                              |

@@ -1,5 +1,6 @@
 import { randomUUID } from "crypto";
 import type { PaymentProvider, CreatePaymentParams, CreatePaymentResult, WebhookResult } from "./provider";
+import type { PaymentTitleCode, PaymentNextActionCode } from "./payment-instructions-i18n";
 
 type ManualBankTransferConfig = {
   bankName?: string;
@@ -52,15 +53,14 @@ export class ManualBankTransferProvider implements PaymentProvider {
       metadata: null,
       instructions: {
         type: "bank_transfer",
-        title: "Transfer to:",
+        title: "PAY_BANK_TRANSFER_TITLE" satisfies PaymentTitleCode,
         amount: params.amount,
         currency: "VND",
         bankName: config.bankName,
         accountNumber: config.accountNumber,
         accountHolder: config.accountHolder,
         qrCodeUrl: buildManualTransferQrUrl(config.bankName, config.accountNumber, config.accountHolder, params.amount, params.orderId),
-        nextAction:
-          "Please include your order ID as the transfer note, then wait for the merchant to confirm your order.",
+        nextAction: "PAY_BANK_TRANSFER_MANUAL_CREATED" satisfies PaymentNextActionCode,
       },
     };
   }

@@ -2,6 +2,7 @@ import { getScopedDb } from "./db/tenant-db";
 import type { ActionResult } from "./action-result";
 import { runVariantGeneration, VariantGenerationError } from "./variant-generation";
 import { MAX_MEDIA_ITEMS, MAX_IMAGES, MAX_VIDEOS, type MediaKind } from "./blob-storage";
+import { MAX_PRODUCT_WEIGHT_GRAMS } from "./product-weight";
 
 const VALID_STATUSES = ["draft", "active"] as const;
 type ProductStatusInput = (typeof VALID_STATUSES)[number];
@@ -9,6 +10,7 @@ type ProductStatusInput = (typeof VALID_STATUSES)[number];
 export type ProductInput = {
   name: string;
   price: string;
+  weightGrams: string;
   status: string;
   // Step 43: optional plain text — no Markdown, no HTML. Omitted or
   // whitespace-only becomes `null` (see validateDescription()), never an
@@ -90,6 +92,7 @@ export function validateProductInput(
 ): {
   name: string;
   price: number;
+  weightGrams: number;
   status: ProductStatusInput;
   description: string | null;
   categoryId: string | null;
@@ -107,6 +110,18 @@ export function validateProductInput(
     return { error: "Price must be a non-negative whole number." };
   }
 
+  if (!/^\d+$/.test(input.weightGrams.trim())) {
+    return { error: "Weight must be a whole number of grams." };
+  }
+  const weightGrams = Number(input.weightGrams.trim());
+  if (
+    !Number.isSafeInteger(weightGrams) ||
+    weightGrams <= 0 ||
+    weightGrams > MAX_PRODUCT_WEIGHT_GRAMS
+  ) {
+    return { error: "Weight must be a positive whole number of grams within the supported range." };
+  }
+
   if (!VALID_STATUSES.includes(input.status as ProductStatusInput)) {
     return { error: "Status must be draft or active." };
   }
@@ -119,7 +134,7 @@ export function validateProductInput(
     return { error: mediaError.error };
   }
 
-  return { name, price, status: input.status as ProductStatusInput, description, categoryId };
+  return { name, price, weightGrams, status: input.status as ProductStatusInput, description, categoryId };
 }
 
 class InvalidProductCategoryError extends Error {}
@@ -219,6 +234,7 @@ export async function createProduct(
           data: {
             name: validated.name,
             status: validated.status,
+            weightGrams: validated.weightGrams,
             description: validated.description,
             categoryId: validated.categoryId,
             tenantId,
@@ -265,6 +281,7 @@ export async function createProduct(
         data: {
           name: validated.name,
           status: validated.status,
+          weightGrams: validated.weightGrams,
           description: validated.description,
           categoryId: validated.categoryId,
           tenantId,
@@ -443,6 +460,7 @@ export async function updateProduct(
         data: {
           name: validated.name,
           status: validated.status,
+          weightGrams: validated.weightGrams,
           description: validated.description,
           categoryId: validated.categoryId,
         },

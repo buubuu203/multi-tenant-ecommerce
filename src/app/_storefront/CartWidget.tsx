@@ -11,7 +11,9 @@ import type { AutoPromotionResult } from "./checkout-actions";
 import { reconcileCartPrices, PRICE_CHANGE_NOTICE } from "@/lib/cart-reconcile";
 import { isValidVietnamesePhone } from "@/lib/validation/phone";
 import type { PaymentInstructions } from "@/lib/payments/provider";
+import { translatePaymentInstructions } from "@/lib/payments/payment-instructions-i18n";
 import type { ShippingMethodOption } from "@/lib/shipping-service";
+import { estimateShippingAmount } from "@/lib/shipping-estimate";
 import { useDictionary } from "@/lib/i18n/use-dictionary";
 
 function formatVnd(price: number): string {
@@ -112,6 +114,7 @@ function CopyButton({ value, label, copiedLabel = "Copied!" }: { value: string; 
 export function CartWidget({
   branding,
   availabilityByVariant,
+  weightGramsByVariant,
   enabledPaymentMethods,
   enabledShippingMethods,
   privacyNoticeVersionId,
@@ -123,6 +126,7 @@ export function CartWidget({
   // colors passed in explicitly rather than inheriting them.
   branding: ResolvedBranding;
   availabilityByVariant: Record<string, number>;
+  weightGramsByVariant: Record<string, number>;
   // Step 51: server-resolved from TenantPaymentMethod (see
   // payment-service.ts's getEnabledPaymentMethods) — UX only, so a
   // customer never sees a method the tenant hasn't configured; the real
@@ -251,7 +255,26 @@ export function CartWidget({
   // method that happens to cost 0" both collapse to 0 and must not be
   // shown the same way — see the summary row below.
   const selectedShippingMethod = enabledShippingMethods.find((m) => m.id === shippingMethodId);
-  const selectedShippingAmount = selectedShippingMethod?.amount ?? 0;
+  const canEstimateCartWeight =
+    items.length > 0 &&
+    items.every((item) => {
+      const weightGrams = weightGramsByVariant[item.productVariantId];
+      return Number.isSafeInteger(weightGrams) && weightGrams > 0;
+    });
+  const shippingAmountFor = (method: ShippingMethodOption) =>
+    city && canEstimateCartWeight
+      ? estimateShippingAmount(
+          method.amount,
+          city,
+          items.map((item) => ({
+            weightGrams: weightGramsByVariant[item.productVariantId],
+            quantity: item.quantity,
+          })),
+        )
+      : method.amount;
+  const selectedShippingAmount = selectedShippingMethod
+    ? shippingAmountFor(selectedShippingMethod)
+    : 0;
 
   useEffect(() => {
     if (voucherApplied || items.length === 0) {
@@ -562,6 +585,13 @@ export function CartWidget({
             <div className={checkoutSplit ? "checkout-split" : undefined}>
             <div className="min-w-0 flex-1 overflow-y-auto px-5 py-4">
               {checkout.status === "success" ? (
+                // Every provider hands back `title`/`nextAction` as a
+                // stable code (see payment-instructions-i18n.ts) — this is
+                // the one place this panel translates them into the
+                // viewer's own locale before anything below renders it.
+                (() => {
+                  const instructions = translatePaymentInstructions(checkout.instructions, dict);
+                  return (
                 <div className="flex flex-col gap-4">
                   <div className="flex items-start gap-3 p-4" style={{ borderRadius: "var(--radius-list)", background: "var(--ok-bg, #14803c1c)" }}>
                     <span
@@ -585,21 +615,21 @@ export function CartWidget({
                       VA (the presence of qrCodeUrl/virtualAccountNumber is
                       supplementary detail on the same action, not a separate
                       rail), "none" covers cod and any not-yet-actionable case. */}
-                  {checkout.instructions.type === "redirect" && (
-                    <a href={checkout.instructions.redirectUrl} className="btn-primary cta w-full">
-                      {checkout.instructions.nextAction}
+                  {instructions.type === "redirect" && (
+                    <a href={instructions.redirectUrl} className="btn-primary cta w-full">
+                      {instructions.nextAction}
                     </a>
                   )}
 
-                  {checkout.instructions.type === "bank_transfer" && (
+                  {instructions.type === "bank_transfer" && (
                     <div className="glass p-4" style={{ borderRadius: "var(--radius-list)" }}>
-                      <p className="ui-text" style={{ margin: 0 }}>{checkout.instructions.title}</p>
+                      <p className="ui-text" style={{ margin: 0 }}>{instructions.title}</p>
 
-                      {checkout.instructions.qrCodeUrl && (
+                      {instructions.qrCodeUrl && (
                         <div className="mt-3 flex justify-center">
                           {/* eslint-disable-next-line @next/next/no-img-element -- provider-hosted QR image, not a static asset */}
                           <img
-                            src={checkout.instructions.qrCodeUrl}
+                            src={instructions.qrCodeUrl}
                             alt={dict.payment.paymentQrCode}
                             className="h-48 w-48 rounded-md bg-white p-2"
                             style={{ border: "1px solid var(--divider)" }}
@@ -608,44 +638,44 @@ export function CartWidget({
                       )}
 
                       <div className="mt-3 flex flex-col gap-1.5 text-sm">
-                        {checkout.instructions.bankName && (
+                        {instructions.bankName && (
                           <div className="flex items-center justify-between">
                             <span style={{ color: "var(--ink-2)" }}>{dict.payment.bank}</span>
-                            <span className="font-medium">{checkout.instructions.bankName}</span>
+                            <span className="font-medium">{instructions.bankName}</span>
                           </div>
                         )}
-                        {(checkout.instructions.accountNumber || checkout.instructions.virtualAccountNumber) && (
+                        {(instructions.accountNumber || instructions.virtualAccountNumber) && (
                           <div className="flex items-center justify-between gap-2">
                             <span style={{ color: "var(--ink-2)" }}>
-                              {checkout.instructions.virtualAccountNumber ? dict.payment.virtualAccount : dict.payment.accountNumber}
+                              {instructions.virtualAccountNumber ? dict.payment.virtualAccount : dict.payment.accountNumber}
                             </span>
                             <div className="flex items-center gap-1.5">
                               <span className="font-mono">
-                                {checkout.instructions.virtualAccountNumber ?? checkout.instructions.accountNumber}
+                                {instructions.virtualAccountNumber ?? instructions.accountNumber}
                               </span>
                               <CopyButton
-                                value={(checkout.instructions.virtualAccountNumber ?? checkout.instructions.accountNumber)!}
+                                value={(instructions.virtualAccountNumber ?? instructions.accountNumber)!}
                                 label={dict.common.copy} copiedLabel={dict.common.copied}
                               />
                             </div>
                           </div>
                         )}
-                        {checkout.instructions.accountHolder && (
+                        {instructions.accountHolder && (
                           <div className="flex items-center justify-between">
                             <span style={{ color: "var(--ink-2)" }}>{dict.payment.accountHolder}</span>
-                            <span className="font-medium">{checkout.instructions.accountHolder}</span>
+                            <span className="font-medium">{instructions.accountHolder}</span>
                           </div>
                         )}
                         <div className="mt-1 flex items-center justify-between pt-1.5" style={{ borderTop: "1px solid var(--divider)" }}>
                           <span style={{ color: "var(--ink-2)" }}>{dict.payment.amount}</span>
                           <span className="money text-base font-semibold">
-                            {formatVnd(checkout.instructions.amount)}
+                            {formatVnd(instructions.amount)}
                           </span>
                         </div>
-                        {checkout.instructions.expiresAt && (
+                        {instructions.expiresAt && (
                           <p className="text-xs" style={{ color: "var(--ink-2)" }}>
                             {dict.payment.expires}{" "}
-                            {new Date(checkout.instructions.expiresAt).toLocaleString("en-US", {
+                            {new Date(instructions.expiresAt).toLocaleString("en-US", {
                               dateStyle: "medium",
                               timeStyle: "short",
                             })}
@@ -653,16 +683,18 @@ export function CartWidget({
                         )}
                       </div>
 
-                      <p className="mt-3 text-xs" style={{ color: "var(--ink-2)" }}>{checkout.instructions.nextAction}</p>
+                      <p className="mt-3 text-xs" style={{ color: "var(--ink-2)" }}>{instructions.nextAction}</p>
                     </div>
                   )}
 
-                  {checkout.instructions.type === "none" && (
+                  {instructions.type === "none" && (
                     <p className="glass p-4 text-sm" style={{ borderRadius: "var(--radius-list)", color: "var(--ink-2)" }}>
-                      {checkout.instructions.nextAction}
+                      {instructions.nextAction}
                     </p>
                   )}
                 </div>
+                  );
+                })()
               ) : items.length === 0 ? (
                 <div className="flex h-full flex-col items-center justify-center gap-2 py-16 text-center">
                   <p className="text-sm" style={{ color: "var(--ink-2)" }}>{dict.cart.cartEmpty}</p>
@@ -810,7 +842,7 @@ export function CartWidget({
                           event.target.checked ? privacyNoticeVersionId : null,
                         )
                       }
-                      className="mt-0.5"
+                      className="ctrl mt-0.5"
                     />
                     <span>
                       {dict.checkout.privacyConsentBeforeLink}
@@ -988,11 +1020,15 @@ export function CartWidget({
                               value={method.id}
                               checked={shippingMethodId === method.id}
                               onChange={() => setShippingMethodId(method.id)}
-                              className="flex-shrink-0"
+                              className="ctrl flex-shrink-0"
                             />
                             <span className="font-medium">{method.name}</span>
                           </span>
-                          <span className="money text-xs">{method.amount === 0 ? dict.common.free : formatVnd(method.amount)}</span>
+                          <span className="money text-xs">
+                            {shippingAmountFor(method) === 0
+                              ? dict.common.free
+                              : formatVnd(shippingAmountFor(method))}
+                          </span>
                         </label>
                       ))
                     )}
@@ -1027,7 +1063,7 @@ export function CartWidget({
                             value={method}
                             checked={paymentMethod === method}
                             onChange={() => setPaymentMethod(method)}
-                            className="sr-only"
+                            className="ctrl"
                           />
                           <span className="pay-icon">
                             <Icon name={method === "bank_transfer" ? "qrcode" : "wallet"} size={18} />
@@ -1062,12 +1098,71 @@ export function CartWidget({
 
             {checkout.status !== "success" && items.length > 0 && (
               <div className="px-5 py-4" style={{ borderTop: "1px solid var(--divider)" }}>
+                {/* "Đơn của bạn" (Board Buyer-Checkout): line-item recap
+                    for steps 2–3 only — step "cart" already shows every
+                    item directly in the main column above, so repeating
+                    it here would be redundant there. */}
+                {step !== "cart" && (
+                  <div
+                    className="mb-3 flex flex-col gap-2.5"
+                    style={{ borderBottom: "1px solid var(--divider)", paddingBottom: "14px" }}
+                  >
+                    <span className="section-heading">{dict.checkout.yourOrder}</span>
+                    {items.map((item) => (
+                      <div key={item.productVariantId} className="flex items-center gap-2.5 text-xs">
+                        <div
+                          style={{
+                            width: "44px",
+                            height: "44px",
+                            borderRadius: "10px",
+                            overflow: "hidden",
+                            flexShrink: 0,
+                            background: "var(--field-fill)",
+                          }}
+                        >
+                          {item.imageUrl && (
+                            // eslint-disable-next-line @next/next/no-img-element -- deliberate: no image-optimization infra, see ProductList.tsx
+                            <img
+                              src={item.imageUrl}
+                              alt=""
+                              style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                            />
+                          )}
+                        </div>
+                        <div className="flex min-w-0 flex-1 flex-col">
+                          <span className="truncate font-medium">
+                            {item.productName}
+                            {item.variantLabel ? ` · ${item.variantLabel}` : ""}
+                          </span>
+                          <span style={{ color: "var(--ink-2)" }}>× {item.quantity}</span>
+                        </div>
+                        <div className="flex flex-shrink-0 flex-col items-end">
+                          {item.originalPrice != null && item.originalPrice > item.price && (
+                            <span
+                              className="money"
+                              style={{
+                                color: "var(--ink-2)",
+                                textDecoration: "line-through",
+                                fontSize: "11px",
+                              }}
+                            >
+                              {formatVnd(item.originalPrice * item.quantity)}
+                            </span>
+                          )}
+                          <span className="money font-medium">
+                            {formatVnd(item.price * item.quantity)}
+                          </span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
                 <div className="mb-1 flex items-center justify-between text-xs" style={{ color: "var(--ink-2)" }}>
                   <span>{dict.cart.subtotal}</span>
                   <span className="money">{formatVnd(subtotal)}</span>
                 </div>
                 <div className="mb-3 flex items-center justify-between text-xs" style={{ color: "var(--ink-2)" }}>
-                  <span>{dict.cart.shipping}</span>
+                  <span>{dict.checkout.shippingEstimateLabel}</span>
                   {/* Only a chosen method can be "Free". With none chosen
                       — including a store that has enabled none at all,
                       where checkout is blocked entirely — this used to
@@ -1075,10 +1170,10 @@ export function CartWidget({
                       not actually offered. */}
                   <span className="money">
                     {selectedShippingMethod ? (
-                      selectedShippingMethod.amount === 0 ? (
+                      selectedShippingAmount === 0 ? (
                         dict.common.free
                       ) : (
-                        formatVnd(selectedShippingMethod.amount)
+                        formatVnd(selectedShippingAmount)
                       )
                     ) : (
                       <>
@@ -1088,6 +1183,15 @@ export function CartWidget({
                     )}
                   </span>
                 </div>
+                {selectedShippingMethod && (
+                  <p className="mb-3 text-xs" style={{ color: "var(--ink-2)" }}>
+                    {!city
+                      ? dict.checkout.shippingEstimateSelectProvince
+                      : canEstimateCartWeight
+                        ? dict.checkout.shippingEstimateNote
+                        : dict.checkout.shippingEstimateUnavailable}
+                  </p>
+                )}
                 {/* Auto-promotion banner */}
                 {autoPromo && !voucherApplied && (
                   <div

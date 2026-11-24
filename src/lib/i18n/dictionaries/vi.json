@@ -69,6 +69,8 @@
     "selectOptions": "Chọn tùy chọn",
     "select": "Chọn {option}",
     "unavailable": "(hết hàng)",
+    "viewAllValues": "Xem cả {count}",
+    "selectedLabel": "Đã chọn: {label}",
     "outOfStock": "Hết hàng",
     "maxInCart": "Đã đạt tối đa",
     "addToCart": "Thêm vào giỏ",
@@ -82,7 +84,12 @@
     "productNotFound": "Không tìm thấy sản phẩm",
     "productNotFoundBody": "Sản phẩm này không tồn tại hoặc không còn có sẵn.",
     "keepBrowsing": "Tiếp tục xem",
-    "youMightAlsoLike": "Có thể bạn cũng thích"
+    "youMightAlsoLike": "Có thể bạn cũng thích",
+    "weightLabel": "Trọng lượng:",
+    "autoVoucherHint": "{label} −{percent}%, tự áp dụng ở giỏ hàng",
+    "weightInputLabel": "Trọng lượng ước tính (g / sản phẩm)",
+    "weightInputHint": "Nhập cân nặng ước tính của một sản phẩm, tính bằng gram; chưa tính bao bì.",
+    "weightImportHint": "Sản phẩm mới cần cột weight_grams (gram). Khi cập nhật SKU đã có, có thể bỏ cột này để giữ nguyên trọng lượng."
   },
   "cart": {
     "checkout": "Thanh toán",
@@ -120,6 +127,7 @@
     "noEligibleItems": "Mã giảm giá này không áp dụng cho sản phẩm nào trong giỏ hàng."
   },
   "checkout": {
+    "yourOrder": "Đơn của bạn",
     "contactInfo": "Thông tin liên hệ",
     "fullName": "Họ và tên",
     "email": "Email",
@@ -134,6 +142,10 @@
     "deliveryNote": "Ghi chú giao hàng (tùy chọn)",
     "deliveryNotePlaceholder": "VD: Giao cho lễ tân",
     "shippingMethod": "Phương thức vận chuyển",
+    "shippingEstimateLabel": "Phí vận chuyển ước tính",
+    "shippingEstimateNote": "Phí vận chuyển chỉ là ước tính: mức cơ bản áp dụng cho 500 g đầu trong TP. Hồ Chí Minh; giao khác tỉnh cộng 20.000 ₫; mỗi 500 g tiếp theo cộng 10.000 ₫. Phí hãng vận chuyển thực tế có thể khác.",
+    "shippingEstimateSelectProvince": "Chọn tỉnh/thành để cập nhật ước tính; trước đó đang hiển thị mức cơ bản.",
+    "shippingEstimateUnavailable": "Chưa đủ dữ liệu trọng lượng trong giỏ để ước tính phí. Hãy tải lại trang và kiểm tra sản phẩm.",
     "noShippingMethod": "Cửa hàng chưa bật phương thức vận chuyển nào.",
     "paymentMethod": "Phương thức thanh toán",
     "noPaymentMethod": "Cửa hàng chưa bật phương thức thanh toán nào.",
@@ -270,7 +282,16 @@
     "amount": "Số tiền",
     "expires": "Hết hạn:",
     "paymentQrCode": "Mã QR thanh toán",
-    "orderPlaced": "Đơn hàng đã được đặt"
+    "orderPlaced": "Đơn hàng đã được đặt",
+    "transferToTitle": "Chuyển khoản đến:",
+    "manualTransferCreatedHint": "Vui lòng ghi mã đơn hàng vào nội dung chuyển khoản, sau đó chờ shop xác nhận đơn.",
+    "manualTransferNoteHint": "Vui lòng ghi mã đơn hàng vào nội dung chuyển khoản.",
+    "contactStoreHint": "Vui lòng liên hệ trực tiếp cửa hàng để được hướng dẫn thanh toán.",
+    "scanQrHint": "Quét mã QR hoặc chuyển đúng số tiền vào tài khoản ảo ở trên.",
+    "momoRedirectHint": "Hoàn tất thanh toán qua MoMo, sau đó quay lại đây.",
+    "momoSucceededHint": "Đã nhận thanh toán qua MoMo.",
+    "momoPendingRetryHint": "Nếu bạn chưa thanh toán, vui lòng đặt lại đơn để lấy liên kết thanh toán MoMo mới.",
+    "momoNotCompletedHint": "Thanh toán MoMo chưa hoàn tất."
   },
   "validation": {
     "nameRequired": "Vui lòng nhập họ và tên.",
@@ -283,11 +304,10 @@
   },
   "pdpTrust": {
     "shippingTitle": "Giao hàng",
-    "shippingHint": "Giao toàn quốc, 2–4 ngày làm việc",
+    "shippingFromHint": "Giao toàn quốc, phí từ {amount}",
     "policyTitle": "Chính sách",
     "policyLink": "Không hỗ trợ đổi trả, vui lòng kiểm tra kỹ trước khi đặt",
-    "paymentTitle": "Thanh toán",
-    "paymentHint": "COD hoặc chuyển khoản QR"
+    "paymentTitle": "Thanh toán"
   },
   "trustStrip": {
     "shippingTitle": "Giao toàn quốc",
@@ -357,13 +377,17 @@
     "branding": "Thương hiệu",
     "privacy": "Quyền riêng tư",
     "banners": "Banner",
-    "bannerDesktopHelp": "JPG, PNG hoặc WebP, tối đa 8 MB. Khuyên dùng 1920×1080 (16:9), tối thiểu 1280×720. Giữ nội dung chính trong vùng giữa ~80% bề rộng. Ảnh được tối ưu và lưu dưới dạng WebP.",
-    "bannerMobileHelp": "Ảnh cắt riêng cho màn hình nhỏ, cùng tỉ lệ 16:9. Nếu bỏ trống, ảnh chính sẽ được dùng. Ảnh được tối ưu và lưu dưới dạng WebP.",
-    "bannerExistingImageNote": "Ảnh đã tải lên trước đây không tự cắt lại theo tỉ lệ mới; hãy thay ảnh nếu muốn khung 16:9.",
+    "bannerDesktopHelp": "JPG, PNG hoặc WebP, tối đa 10 MB (ảnh được tối ưu ngay trên trình duyệt trước khi tải lên). Khuyên dùng 2688×840 (16:5); ảnh tỉ lệ khác vẫn hiển thị đầy đủ, hai bên là nền mờ.",
+    "bannerMobileHelp": "Ảnh cắt riêng cho màn hình nhỏ, cùng tỉ lệ 16:5. Nếu bỏ trống, ảnh chính sẽ được dùng.",
+    "bannerExistingImageNote": "Ảnh đã tải lên trước đây không tự cắt lại theo tỉ lệ mới; hãy thay ảnh nếu muốn khung 16:5.",
+    "bannerCtaHint": "Đừng đưa nút bấm vào trong ảnh; dùng ô CTA URL để nút bấm được.",
     "payments": "Thanh toán",
     "paymentOperations": "Giao dịch thanh toán",
     "bankTransfer": "Chuyển khoản",
     "shipping": "Vận chuyển",
+    "shippingEstimateDescription": "Mỗi phương thức đặt một mức cơ bản nội thành TP. Hồ Chí Minh cho 500 g đầu; hệ thống cộng phụ phí tỉnh và trọng lượng khi ước tính ở bước đặt hàng. Đây không phải báo giá chính thức từ hãng vận chuyển.",
+    "shippingBaseAmountLabel": "Mức cơ bản (VND)",
+    "shippingBaseAmountHint": "Mức cơ bản nội thành TP. Hồ Chí Minh cho 500 g đầu. Khác tỉnh +20.000 ₫; mỗi 500 g tiếp theo +10.000 ₫. Nhập 0 chỉ bỏ mức cơ bản, phụ phí vẫn áp dụng.",
     "commerce": "Kinh doanh",
     "storefrontGroup": "Cửa hàng",
     "checkoutGroup": "Thanh toán",

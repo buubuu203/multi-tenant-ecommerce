@@ -19,6 +19,7 @@ export function ImageCropModal({
   outputWidth,
   onCancel,
   onConfirm,
+  onSkip,
 }: {
   file: File;
   // Width / height, e.g. 16/9 for banners.
@@ -27,6 +28,15 @@ export function ImageCropModal({
   outputWidth: number;
   onCancel: () => void;
   onConfirm: (blob: Blob) => void;
+  // QA round (2026-11-23): cropping is OPTIONAL — this modal used to be
+  // the only path from "file selected" to "uploaded," forcing every
+  // banner through a crop to a fixed ratio even when the merchant's
+  // original (e.g. a 16:9 photo with text already composed in it) would
+  // lose content being forced into 16:5. Passing onSkip hands the
+  // ORIGINAL file straight back, unmodified — the caller still runs it
+  // through the normal compress/resize pipeline, it just skips this
+  // crop entirely.
+  onSkip?: (file: File) => void;
 }) {
   const [viewportWidth, setViewportWidth] = useState(MAX_VIEWPORT_WIDTH);
   const viewportHeight = viewportWidth / aspectRatio;
@@ -262,7 +272,13 @@ export function ImageCropModal({
           />
         </label>
 
-        <div className="flex justify-end gap-2">
+        {onSkip && (
+          <p className="text-xs text-muted-foreground">
+            Cắt ảnh là tuỳ chọn — bỏ qua để giữ nguyên ảnh gốc, chỉ cắt nếu bạn muốn khung vừa khít tỉ lệ khuyến nghị.
+          </p>
+        )}
+
+        <div className="flex flex-wrap justify-end gap-2">
           <button
             type="button"
             onClick={onCancel}
@@ -274,10 +290,20 @@ export function ImageCropModal({
             type="button"
             onClick={handleConfirm}
             disabled={!naturalSize || confirming}
-            className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+            className="rounded-md border border-border px-3.5 py-1.5 text-sm font-medium transition-colors hover:bg-surface-muted disabled:opacity-40 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
           >
-            {confirming ? 'Cropping…' : 'Confirm crop'}
+            {confirming ? 'Cropping…' : 'Cắt theo tỉ lệ khuyến nghị'}
           </button>
+          {onSkip && (
+            <button
+              type="button"
+              autoFocus
+              onClick={() => onSkip(file)}
+              className="rounded-md bg-foreground px-3.5 py-1.5 text-sm font-medium text-background transition-opacity hover:opacity-90 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-foreground"
+            >
+              Giữ nguyên ảnh gốc
+            </button>
+          )}
         </div>
       </div>
     </div>

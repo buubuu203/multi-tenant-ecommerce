@@ -24,8 +24,8 @@ migration history.
 
 | Capability                  | Existing source                            | Exact semantics?  | Durable?        | Tenant-safe? | Safe now?  | Reason                                                                                                                          |
 | --------------------------- | ------------------------------------------ | ----------------- | --------------- | ------------ | ---------- | ------------------------------------------------------------------------------------------------------------------------------- |
-| Shipping method selection   | `TenantShippingMethod`, chosen at checkout | Yes               | Yes             | Yes          | **Yes**    | A merchant-authored flat-rate list. It is the merchant's own offer, not any carrier's acceptance.                               |
-| Shipping price snapshot     | `Order.shippingAmount`                     | Yes               | Yes             | Yes          | **Yes**    | Copied once at order creation, never re-read from the method. It is what the customer was charged, not a carrier's fee.         |
+| Shipping method selection   | `TenantShippingMethod`, chosen at checkout | Yes               | Yes             | Yes          | **Yes**    | A merchant-authored list with a local base amount. It is the merchant's own offer, not any carrier's acceptance.               |
+| Shipping price snapshot     | `Order.shippingAmount`                     | Yes               | Yes             | Yes          | **Yes**    | Estimated once at order creation from the method's local first-500g base, destination province and product weights. It is what the customer was charged, not a carrier's fee. |
 | Shipping destination        | `Order.shippingAddress/Ward/District/City` | Yes, as free text | Yes             | Yes          | **Yes**    | A snapshot of what the customer typed. Never validated, geocoded, or normalised against any address authority.                  |
 | Shipment record             | none                                       | No                | No              | —            | **No**     | No model. A shipment cannot be distinguished from the order it would belong to.                                                 |
 | Carrier assignment          | none                                       | No                | No              | —            | **No**     | No carrier identity exists anywhere. `shippingMethodName` is merchant free text, not a carrier key.                             |
@@ -44,6 +44,17 @@ migration history.
 | Carrier fee reconciliation  | none                                       | No                | No              | —            | **No**     | Only the customer-facing charge is stored. No cost side exists, so no margin can be computed.                                   |
 | Shipment audit history      | `OrderEvent`                               | No                | Yes             | Yes          | **No**     | Four event types, none about shipping. The table is sound infrastructure, but its vocabulary cannot express a shipment.         |
 
+## Checkout estimate assumptions
+
+The checkout estimate is a lightweight rule, not a carrier quote. The
+merchant-configured method amount is the base for the first 500 g within
+Ho Chi Minh City. A destination outside that province adds VND 20,000;
+each additional 500 g, rounded up, adds VND 10,000. Cart weight is the sum
+of each product's estimated grams multiplied by its quantity. Product
+weights backfilled from descriptions or the 100 g default are provisional
+and should be checked by the merchant before relying on the estimate.
+Packaging weight is not included.
+
 ## Distinctions this audit refuses to collapse
 
 Each of these is a pair the codebase keeps separate, and a carrier
@@ -60,8 +71,10 @@ feature would be tempted to merge:
 4. **A shipping address is not a validated delivery address.** Plain
    text, as typed, never checked for deliverability.
 5. **A shipping amount is not a carrier fee.** `Order.shippingAmount` is
-   revenue collected from the customer. What a carrier would charge is
-   not stored and is frequently different.
+   the estimated amount charged to the customer, calculated from the
+   method's configured first-500g local base plus the current destination
+   and product-weight surcharges. It is not a carrier quote; what a carrier
+   charges is not stored and is frequently different.
 6. **COD payment intent is not COD cash collection.** `paymentMethod =
 cod` records what the customer chose. No part of this system learns
    whether money changed hands.

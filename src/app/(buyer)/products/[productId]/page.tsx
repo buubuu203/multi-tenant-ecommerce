@@ -11,6 +11,7 @@ import { CartWidget } from '../../../_storefront/CartWidget';
 import { getEnabledPaymentMethods } from '@/lib/payments/payment-service';
 import { getEnabledShippingMethods } from '@/lib/shipping-service';
 import { getCurrentPrivacyNotice } from '@/lib/privacy-mutations';
+import { getActiveAutoOrderVoucher } from '@/lib/vouchers';
 import type { ResolvedBranding } from '../../../_storefront/resolve-branding';
 import type { Metadata } from 'next';
 import { getLocale, getDictionary } from '@/lib/i18n';
@@ -142,10 +143,6 @@ export default async function ProductDetailPage({
   // Same "flat id -> available map, built once from already-fetched data"
   // pattern as src/app/page.tsx — CartWidget has no other access to
   // inventory data.
-  const availabilityByVariant = Object.fromEntries(
-    product.variants.map((variant) => [variant.id, variant.available]),
-  );
-
   // Phase 4 (storefront discovery): "you might also like" — this store has
   // no category/tagging data (schema-free by design for this MVP), so
   // "related" honestly means "other active products from the same store,"
@@ -153,14 +150,24 @@ export default async function ProductDetailPage({
   // homepage already calls — no new query — filtered to exclude the
   // current product and capped at 4 so the rail never dwarfs the product
   // itself.
-  const relatedProducts = (await getTenantProducts())
+  const allProducts = await getTenantProducts();
+  const relatedProducts = allProducts
     .filter((p) => p.id !== product.id)
     .slice(0, 4);
+  const availabilityByVariant = Object.fromEntries(
+    product.variants.map((variant) => [variant.id, variant.available]),
+  );
+  const weightGramsByVariant = Object.fromEntries(
+    [...allProducts, product].flatMap((item) =>
+      item.variants.map((variant) => [variant.id, item.weightGrams]),
+    ),
+  );
   const headerList = await headers();
   const tenantId = headerList.get('x-tenant-id') ?? '';
   const enabledPaymentMethods = tenantId ? await getEnabledPaymentMethods(tenantId) : [];
   const enabledShippingMethods = tenantId ? await getEnabledShippingMethods(tenantId) : [];
   const privacyNotice = tenantId ? await getCurrentPrivacyNotice(tenantId) : null;
+  const activeOrderVoucher = tenantId ? await getActiveAutoOrderVoucher(tenantId) : null;
   // Same branded header as the homepage (see StorefrontHeader's doc
   // comment) — previously this page showed no store name/logo at all, so
   // a customer arriving here directly (a shared product link, a search
@@ -201,6 +208,7 @@ export default async function ProductDetailPage({
             <CartWidget
               branding={branding}
               availabilityByVariant={availabilityByVariant}
+              weightGramsByVariant={weightGramsByVariant}
               enabledPaymentMethods={enabledPaymentMethods}
               enabledShippingMethods={enabledShippingMethods}
               privacyNoticeVersionId={privacyNotice?.id ?? null}
@@ -224,7 +232,13 @@ export default async function ProductDetailPage({
       </div>
       <main className="flex flex-col gap-10">
         <ul>
-          <ProductRow product={product} linkToDetail={false} />
+          <ProductRow
+            product={product}
+            linkToDetail={false}
+            activeOrderVoucher={activeOrderVoucher}
+            enabledShippingMethods={enabledShippingMethods}
+            enabledPaymentMethods={enabledPaymentMethods}
+          />
         </ul>
 
         {relatedProducts.length > 0 && (

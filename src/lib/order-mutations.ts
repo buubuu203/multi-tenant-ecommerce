@@ -3,6 +3,7 @@ import { reserveInventoryInTx, releaseInventoryInTx, consumeReservedInventoryInT
 import { recordOrderEventInTx, SYSTEM_ACTOR, type OrderEventActor } from "./order-events";
 import { isValidVietnamesePhone } from "./validation/phone";
 import { resolveShippingMethod } from "./shipping-service";
+import { estimateShippingAmount } from "./shipping-estimate";
 import { applyDiscount } from "./discounts";
 import { validateVoucher, isVoucherActive, calculateVoucherDiscount, calculatePerItemDiscounts, toVoucherInfo, type VoucherInfo, type CartItemForVoucher } from "./vouchers";
 import type { ActionResult } from "./action-result";
@@ -341,6 +342,7 @@ export async function createOrder(
 
       const createdItems: CreatedOrderItem[] = [];
       const variantProductMap = new Map<string, string>();
+      const shippingItems: { weightGrams: number; quantity: number }[] = [];
       for (const item of merged) {
         // Authoritative lookup — the client never supplies price, name,
         // SKU, or anything else about this variant. Also re-verifies
@@ -372,6 +374,10 @@ export async function createOrder(
         }
 
         variantProductMap.set(item.productVariantId, variant.productId);
+        shippingItems.push({
+          weightGrams: variant.product.weightGrams,
+          quantity: item.quantity,
+        });
         await reserveInventoryInTx(tx, tenantId, item.productVariantId, item.quantity);
 
         // Product Discount (V1): computed HERE, server-side, from the
@@ -397,6 +403,16 @@ export async function createOrder(
         });
         createdItems.push({ productVariantId: orderItem.productVariantId, quantity: orderItem.quantity, price: orderItem.price });
       }
+
+      const shippingAmount = estimateShippingAmount(
+        resolvedShipping.amount,
+        shippingInput.city,
+        shippingItems,
+      );
+      await tx.order.update({
+        where: { id: order.id },
+        data: { shippingAmount },
+      });
 
       // Voucher application: re-read the voucher INSIDE the transaction so
       // the usedCount check + increment is atomic — the preflight outside
@@ -478,7 +494,7 @@ export async function createOrder(
         actor: SYSTEM_ACTOR,
       });
 
-      return { orderId: order.id, items: createdItems, shippingAmount: resolvedShipping.amount, voucherDiscount };
+      return { orderId: order.id, items: createdItems, shippingAmount, voucherDiscount };
     });
 
     return { success: true, data: result };

@@ -1,27 +1,25 @@
-sku,name,price,status,description,category,on_hand,inventory_mode
-PEN-HOLDER-F1,Hộp đựng bút F1 Pole Position 10 ngăn,229000,active,"Hộp đựng bút 10 ngăn F1 Pole Position - giải pháp tổ chức bàn làm việc hoàn hảo. Thiết kế two-tone đỏ × đen, 10 ngăn riêng biệt. 16×7×7cm, 221g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-SPIDERMAN-STRING,Spider-Man String Art Logo,79000,active,"Logo Spider-Man qua kỹ thuật string art tinh xảo. Sợi dây tạo độ sâu 3D, sinh động dưới ánh sáng. Gỗ cứng + dây cao cấp, 74g.",Mô Hình & Decor,100,set_on_hand
-F1-LOGO-3D,F1 Logo 3D Figure,69000,active,"Logo F1 huyền thoại dạng mô hình 3D, hai màu đỏ × đen. Acrylic/nhựa cao cấp, 62g.",Mô Hình & Decor,100,set_on_hand
-GT3RS-HANGER,GT3 RS Key Hanger,319000,active,"Mô hình Porsche GT3 RS chi tiết với wing lớn, 5 móc treo chìa khóa tích hợp. Bạc × đen, nhựa cao cấp, 320g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-STAR-SPOOLER,Five-Pointed Star Wired Headphone Spooler,49000,active,"Cuốn tai nghe hình ngôi sao năm cánh, bạc × xanh dương. Quấn dây gọn gàng không bị xoắn. 12g.",Phụ Kiện Công Nghệ,100,set_on_hand
-RATATOUILLE-LIGHT,Ratatouille Night Light,119000,active,"Đèn ngủ Remy shadow lamp, ánh sáng vàng ấm áp qua màn hình trắng. USB sạc, cao 16cm, 90g.",Đèn & Ánh Sáng,100,set_on_hand
-RACKET-HOOK,Móc Treo Vợt Cầu Lông Victor/Yonex/Lining,39000,active,"Móc treo vợt cầu lông thiết kế chuyên dụng, logo Victor/Yonex/Lining. Nhẹ, gắn đơn giản. 12g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-PEN-HOLDER-MOTUL,Hộp Đựng Bút Motul,99000,active,"Hộp đựng bút Motul cao 10cm, đường kính 7cm, nhựa, thiết kế chuẩn brand đỏ đen. 100g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-JEWELRY-HEART,Hộp Đựng Trang Sức Hình Trái Tim Silk,79000,active,"Hộp trang sức hình trái tim silk mềm mại, nắp đậy. Màu trắng tinh khôi, đựng nhẫn, hoa tai, dây chuyền. 80g.",Trang Sức & Phụ Kiện Cá Nhân,100,set_on_hand
-JEWELRY-BOW,Hộp Đựng Trang Sức Hình Nơ,69000,active,"Hộp trang sức silk mềm mại thiết kế nơ bướm nữ tính, không nắp. Trắng minimal. 59g.",Trang Sức & Phụ Kiện Cá Nhân,100,set_on_hand
-LADY-REAPER,Tượng Lady Reaper – Death in Elegance,59000,active,"Tượng Lady Reaper dark elegance. Áo dài trắng, mặt nạ đen, lưỡi liềm chi tiết. 57g.",Mô Hình & Decor,100,set_on_hand
-PS5-ONI-STAND,Giá Đỡ Tay Cầm PS5 Oni Mask,149000,active,Giá đỡ tay cầm PS5 thiết kế mặt nạ Oni (quỷ Nhật Bản) chi tiết. Nhựa chất lượng. 144g.,Phụ Kiện Công Nghệ,100,set_on_hand
-WARRIOR-CAT,Tượng Mèo Chiến Binh Warrior Cat Knight,59000,active,"Mô hình mèo chiến binh áo giáp chi tiết. Nhựa chất lượng, cute và cool. 24g.",Mô Hình & Decor,100,set_on_hand
-MATCHA-CLICKER,Matcha Clicker – Cute Matcha Cat Figure,39000,active,Mô hình mèo matcha siêu cute dạng clicker. Nhỏ gọn 26g.,Mô Hình & Decor,100,set_on_hand
-ANGEL-WINDER,Angel Winder – Organizer Cuốn Cáp,59000,active,"Cuốn cáp thiết kế angel cute, kèm đá đính rhinestones. Cuốn gọn tai nghe, sạc, USB cable.",Phụ Kiện Công Nghệ,100,set_on_hand
-BATMAN-PEN,Batman Pen Holder,69000,active,"Giá để bút Batman, nhựa chất lượng màu đen chuẩn. Giữ bút, bút chì, marker gọn gàng. 64g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-F1-RB20,Formula One Red Bull Racing RB20,129000,active,Mô hình F1 Red Bull Racing RB20 chi tiết aerodynamics và livery đỏ đen chuẩn. 106g.,Mô Hình & Decor,100,set_on_hand
-BUTTERFLY-STAND,Giá Đỡ Điện Thoại Hình Bướm Đính Đá,79000,active,"Popsocket bướm hai mặt, kèm charm đá hồng. 8×6cm, 32g.",Phụ Kiện Công Nghệ,100,set_on_hand
-SPIDERMAN-AIRPODS,Spider-Man AirPods Case,59000,active,"Bao AirPods Pro 1/2/3 thiết kế mặt nạ Spider-Man. Nhựa, snug fit. 49g.",Phụ Kiện Công Nghệ,100,set_on_hand
-LUDO-MINI,Cờ Ludo Mini 3D,79000,active,"Bộ cờ Ludo mini in 3D, 4 màu, đủ cho 4 người chơi. 80g, tặng kèm xúc xắc.",Đồ Chơi & Board Game,100,set_on_hand
-MUSHROOM-LAMP,Đèn Nấm Xoắn 3D,499000,active,"Đèn nấm xoắn 3D, ánh sáng ấm dịu, nón và thân tách rời. 482g, nguồn cắm điện.",Đèn & Ánh Sáng,100,set_on_hand
-SUSHI-KEYCHAIN,Móc Khóa Sushi Nigiri Cá Hồi,29000,active,"Móc khóa sushi cá hồi, chi tiết giống thật, vừa là charm vừa là fidget. 10g.",Móc Khóa & Quà Tặng Nhỏ,100,set_on_hand
-BRUSH-HOLDER-BOW,Giá Đựng Cọ Trang Điểm Nơ Lụa,119000,active,"Giá đựng cọ/bút thiết kế nơ lụa trắng, bề mặt bóng mịn satin. 9×9.5cm, 120g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-FAT-CHICKEN,Fat Chicken – Tượng Gà Béo Dễ Thương,79000,active,"Mô hình gà béo tròn biểu cảm giận dỗi đáng yêu. Trắng, mào đỏ, chân cam. 94g.",Mô Hình & Decor,100,set_on_hand
-OWL-GLASSES,Giá Để Kính Hình Cú Mèo,199000,active,"Giá để kính hình cú mèo xanh lá, mắt to tròn. Đặt kính lên đầu cú, 198g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
-CAT-BOOKMARK,Kẹp Góc Sách Meme Chú Mèo Hoang Mang,29000,active,"Kẹp góc sách 3D hình mèo meme hoang mang. Dạng slip-on, ôm trọn góc trang sách, nhựa in 3D. 5g.",Móc Khóa & Quà Tặng Nhỏ,100,set_on_hand
+sku,name,price,weight_grams,status,description,category,on_hand,inventory_mode
+PEN-HOLDER-F1,Hộp đựng bút F1 Pole Position 10 ngăn,229000,221,active,"Hộp đựng bút 10 ngăn F1 Pole Position - giải pháp tổ chức bàn làm việc hoàn hảo. Thiết kế two-tone đỏ × đen, 10 ngăn riêng biệt. 16×7×7cm, 221g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+SPIDERMAN-STRING,Spider-Man String Art Logo,79000,74,active,"Logo Spider-Man qua kỹ thuật string art tinh xảo. Sợi dây tạo độ sâu 3D, sinh động dưới ánh sáng. Gỗ cứng + dây cao cấp, 74g.",Mô Hình & Decor,100,set_on_hand
+F1-LOGO-3D,F1 Logo 3D Figure,69000,62,active,"Logo F1 huyền thoại dạng mô hình 3D, hai màu đỏ × đen. Acrylic/nhựa cao cấp, 62g.",Mô Hình & Decor,100,set_on_hand
+GT3RS-HANGER,GT3 RS Key Hanger,319000,320,active,"Mô hình Porsche GT3 RS chi tiết với wing lớn, 5 móc treo chìa khóa tích hợp. Bạc × đen, nhựa cao cấp, 320g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+STAR-SPOOLER,Five-Pointed Star Wired Headphone Spooler,49000,12,active,"Cuốn tai nghe hình ngôi sao năm cánh, bạc × xanh dương. Quấn dây gọn gàng không bị xoắn. 12g.",Phụ Kiện Công Nghệ,100,set_on_hand
+RATATOUILLE-LIGHT,Ratatouille Night Light,119000,90,active,"Đèn ngủ Remy shadow lamp, ánh sáng vàng ấm áp qua màn hình trắng. USB sạc, cao 16cm, 90g.",Đèn & Ánh Sáng,100,set_on_hand
+RACKET-HOOK,Móc Treo Vợt Cầu Lông Victor/Yonex/Lining,39000,12,active,"Móc treo vợt cầu lông thiết kế chuyên dụng, logo Victor/Yonex/Lining. Nhẹ, gắn đơn giản. 12g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+PEN-HOLDER-MOTUL,Hộp Đựng Bút Motul,99000,100,active,"Hộp đựng bút Motul cao 10cm, đường kính 7cm, nhựa, thiết kế chuẩn brand đỏ đen. 100g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+JEWELRY-HEART,Hộp Đựng Trang Sức Hình Trái Tim Silk,79000,80,active,"Hộp trang sức hình trái tim silk mềm mại, nắp đậy. Màu trắng tinh khôi, đựng nhẫn, hoa tai, dây chuyền. 80g.",Trang Sức & Phụ Kiện Cá Nhân,100,set_on_hand
+JEWELRY-BOW,Hộp Đựng Trang Sức Hình Nơ,69000,59,active,"Hộp trang sức silk mềm mại thiết kế nơ bướm nữ tính, không nắp. Trắng minimal. 59g.",Trang Sức & Phụ Kiện Cá Nhân,100,set_on_hand
+LADY-REAPER,Tượng Lady Reaper – Death in Elegance,59000,57,active,"Tượng Lady Reaper dark elegance. Áo dài trắng, mặt nạ đen, lưỡi liềm chi tiết. 57g.",Mô Hình & Decor,100,set_on_hand
+PS5-ONI-STAND,Giá Đỡ Tay Cầm PS5 Oni Mask,149000,144,active,Giá đỡ tay cầm PS5 thiết kế mặt nạ Oni (quỷ Nhật Bản) chi tiết. Nhựa chất lượng. 144g.,Phụ Kiện Công Nghệ,100,set_on_hand
+MATCHA-CLICKER,Matcha Clicker – Cute Matcha Cat Figure,39000,26,active,Mô hình mèo matcha siêu cute dạng clicker. Nhỏ gọn 26g.,Mô Hình & Decor,100,set_on_hand
+ANGEL-WINDER,Angel Winder – Organizer Cuốn Cáp,59000,100,active,"Cuốn cáp thiết kế angel cute, kèm đá đính rhinestones. Cuốn gọn tai nghe, sạc, USB cable.",Phụ Kiện Công Nghệ,100,set_on_hand
+F1-RB20,Formula One Red Bull Racing RB20,129000,106,active,Mô hình F1 Red Bull Racing RB20 chi tiết aerodynamics và livery đỏ đen chuẩn. 106g.,Mô Hình & Decor,100,set_on_hand
+BUTTERFLY-STAND,Giá Đỡ Điện Thoại Hình Bướm Đính Đá,79000,32,active,"Popsocket bướm hai mặt, kèm charm đá hồng. 8×6cm, 32g.",Phụ Kiện Công Nghệ,100,set_on_hand
+SPIDERMAN-AIRPODS,Spider-Man AirPods Case,59000,49,active,"Bao AirPods Pro 1/2/3 thiết kế mặt nạ Spider-Man. Nhựa, snug fit. 49g.",Phụ Kiện Công Nghệ,100,set_on_hand
+LUDO-MINI,Cờ Ludo Mini 3D,79000,80,active,"Bộ cờ Ludo mini in 3D, 4 màu, đủ cho 4 người chơi. 80g, tặng kèm xúc xắc.",Đồ Chơi & Board Game,100,set_on_hand
+MUSHROOM-LAMP,Đèn Nấm Xoắn 3D,499000,482,active,"Đèn nấm xoắn 3D, ánh sáng ấm dịu, nón và thân tách rời. 482g, nguồn cắm điện.",Đèn & Ánh Sáng,100,set_on_hand
+SUSHI-KEYCHAIN,Móc Khóa Sushi Nigiri Cá Hồi,29000,10,active,"Móc khóa sushi cá hồi, chi tiết giống thật, vừa là charm vừa là fidget. 10g.",Móc Khóa & Quà Tặng Nhỏ,100,set_on_hand
+BRUSH-HOLDER-BOW,Giá Đựng Cọ Trang Điểm Nơ Lụa,119000,120,active,"Giá đựng cọ/bút thiết kế nơ lụa trắng, bề mặt bóng mịn satin. 9×9.5cm, 120g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+FAT-CHICKEN,Fat Chicken – Tượng Gà Béo Dễ Thương,79000,94,active,"Mô hình gà béo tròn biểu cảm giận dỗi đáng yêu. Trắng, mào đỏ, chân cam. 94g.",Mô Hình & Decor,100,set_on_hand
+OWL-GLASSES,Giá Để Kính Hình Cú Mèo,199000,198,active,"Giá để kính hình cú mèo xanh lá, mắt to tròn. Đặt kính lên đầu cú, 198g.",Phụ Kiện Bàn Làm Việc,100,set_on_hand
+CAT-BOOKMARK,Kẹp Góc Sách Meme Chú Mèo Hoang Mang,29000,5,active,"Kẹp góc sách 3D hình mèo meme hoang mang. Dạng slip-on, ôm trọn góc trang sách, nhựa in 3D. 5g.",Móc Khóa & Quà Tặng Nhỏ,100,set_on_hand

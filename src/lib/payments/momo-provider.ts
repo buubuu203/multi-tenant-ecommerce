@@ -1,5 +1,6 @@
 import { initiateMomoPayment, verifyMomoIpnSignature, type MomoIpnPayload } from "@/lib/momo";
 import type { PaymentProvider, CreatePaymentParams, CreatePaymentResult, WebhookResult } from "./provider";
+import type { PaymentNextActionCode } from "./payment-instructions-i18n";
 
 // Step 51: thin wrapper only — momo.ts's request/signature logic is
 // UNCHANGED (the audit confirmed it already matches MoMo's current
@@ -27,7 +28,7 @@ export class MomoProvider implements PaymentProvider {
       instructions: {
         type: "redirect",
         redirectUrl: result.payUrl,
-        nextAction: "Complete your payment with MoMo, then return here.",
+        nextAction: "PAY_MOMO_REDIRECT" satisfies PaymentNextActionCode,
       },
     };
   }

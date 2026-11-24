@@ -4,6 +4,7 @@ import { useId, useRef, useState } from 'react';
 import type { ActionResult } from '@/lib/action-result';
 import type { ImportOutcomeView, ImportPreview, PreviewRow } from '@/lib/product-csv-preview-types';
 import { PREVIEW_DISPLAY_LIMIT } from '@/lib/product-csv-preview-types';
+import { useDictionary } from '@/lib/i18n/use-dictionary';
 
 /**
  * Two-step CSV import: validate first, then confirm.
@@ -75,6 +76,7 @@ export function ImportProductsForm({
 }) {
   const [phase, setPhase] = useState<Phase>({ kind: 'idle' });
   const [file, setFile] = useState<File | null>(null);
+  const dict = useDictionary();
   const inputRef = useRef<HTMLInputElement>(null);
   const summaryId = useId();
   const tableId = useId();
@@ -167,6 +169,7 @@ export function ImportProductsForm({
           <p className="text-xs text-muted-foreground">
             Nothing is written until you confirm. Previewing only validates the file.
           </p>
+          <p className="text-xs text-muted-foreground">{dict.products.weightImportHint}</p>
         </div>
       )}
 
@@ -220,7 +223,7 @@ export function ImportProductsForm({
               rendering two permanently-zero counters. */}
           <p className="text-xs text-muted-foreground">
             {preview.format === 'v1-minimal'
-              ? 'This file uses the simple name,price format, which has no SKU and can only create products.'
+              ? 'This file uses the simple name,price,weight_grams format, which has no SKU and can only create products.'
               : 'Rows are matched to existing products by SKU. A new SKU creates; a known SKU updates.'}
             {preview.inventoryChanges > 0
               ? ` ${preview.inventoryChanges} stock change${preview.inventoryChanges === 1 ? '' : 's'} included.`

@@ -215,6 +215,50 @@ export async function validateVoucher(
   return { valid: true, voucher: info, discountAmount, perItemDiscounts: [] };
 }
 
+export type ActiveOrderVoucherSummary = {
+  label: string | null;
+  code: string | null;
+  discountValue: number;
+};
+
+/**
+ * The PDP's "Black Friday −20%, tự áp dụng ở giỏ hàng" line (QA round,
+ * 2026-11-23) reads from here — the best currently-ACTIVE, AUTOMATIC,
+ * order-scope voucher, independent of any particular cart. Deliberately
+ * percentage-only: a fixed-amount order voucher has no clean "−X%" to
+ * show in that exact copy, so it's skipped rather than rendered oddly.
+ * This does NOT check minOrderAmount (no cart exists yet on a PDP) — the
+ * line is informational ("this may apply"), not a promise of the final
+ * checkout discount, which findBestAutoPromotion() still computes
+ * authoritatively against the real cart.
+ */
+export async function getActiveAutoOrderVoucher(
+  tenantId: string,
+): Promise<ActiveOrderVoucherSummary | null> {
+  const db = getScopedDb(tenantId);
+  const now = new Date();
+  const vouchers = await db.voucher.findMany({
+    where: {
+      tenantId,
+      triggerType: "automatic",
+      enabled: true,
+      scope: "order",
+      discountType: "percentage",
+      OR: [{ startsAt: null }, { startsAt: { lte: now } }],
+    },
+  });
+
+  let best: ActiveOrderVoucherSummary | null = null;
+  for (const voucher of vouchers) {
+    const info = toVoucherInfo(voucher);
+    if (!isVoucherActive(info, now)) continue;
+    if (!best || info.discountValue > best.discountValue) {
+      best = { label: info.label, code: info.code, discountValue: info.discountValue };
+    }
+  }
+  return best;
+}
+
 export async function findBestAutoPromotion(
   tenantId: string,
   cartItems: CartItemForVoucher[],

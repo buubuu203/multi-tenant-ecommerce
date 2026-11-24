@@ -46,6 +46,7 @@ test('categories are tenant-scoped, assignable, removable, and unassign products
   const createdProduct = await createProduct(tenantId, {
     name: `Chair ${suffix}`,
     price: '1000',
+    weightGrams: '100',
     status: 'active',
     categoryId: createdCategory.data.categoryId,
   });
@@ -73,6 +74,7 @@ test('categories are tenant-scoped, assignable, removable, and unassign products
   const updated = await updateProduct(tenantId, createdProduct.data.productId, {
     name: `Chair ${suffix}`,
     price: '1000',
+    weightGrams: '100',
     status: 'active',
     categoryId: 'missing-category',
   });

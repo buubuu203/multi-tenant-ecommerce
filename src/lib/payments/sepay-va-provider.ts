@@ -1,5 +1,6 @@
 import { createHmac, timingSafeEqual } from "crypto";
 import type { PaymentProvider, CreatePaymentParams, CreatePaymentResult, WebhookResult } from "./provider";
+import type { PaymentTitleCode, PaymentNextActionCode } from "./payment-instructions-i18n";
 
 // Step 51: SePay Order VA v2 (developer.sepay.vn/en/sepay-api/v2/don-hang/bat-dau-nhanh).
 // Platform-level credentials — one SePay account, many tenants' own bank
@@ -208,7 +209,7 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
         },
         instructions: {
           type: "bank_transfer",
-          title: "Transfer to:",
+          title: "PAY_BANK_TRANSFER_TITLE" satisfies PaymentTitleCode,
           amount: params.amount,
           currency: "VND",
           bankName: order.bank_name,
@@ -217,7 +218,7 @@ export class SePayVirtualAccountProvider implements PaymentProvider {
           virtualAccountNumber: order.va_number,
           qrCodeUrl: order.qr_code_url,
           expiresAt: expiresAt ? expiresAt.toISOString() : undefined,
-          nextAction: "Scan the QR code or transfer the exact amount to the virtual account number above.",
+          nextAction: "PAY_BANK_TRANSFER_SCAN_QR" satisfies PaymentNextActionCode,
         },
       };
     } catch {
