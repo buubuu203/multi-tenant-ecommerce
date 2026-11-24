@@ -236,7 +236,14 @@ function OrderDetails({ order }: { order: CustomerOrderView }) {
         </div>
       )}
       {paymentInstructions?.type === 'none' && order.status !== 'cancelled' && (
-        <p className="mt-3 text-xs text-muted-foreground">{paymentInstructions.nextAction}</p>
+        // No padding here collided with the card's own border-radius +
+        // overflow-hidden: flush against the rounded bottom-left corner,
+        // the first couple characters of this text were clipped off by
+        // the corner's own curve. Matches the px-4/sm:px-6 + bottom
+        // padding every other block in this card already uses.
+        <p className="px-4 pt-3 pb-4 text-xs text-muted-foreground sm:px-6 sm:pb-6">
+          {paymentInstructions.nextAction}
+        </p>
       )}
     </div>
   );
