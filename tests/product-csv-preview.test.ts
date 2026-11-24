@@ -8,7 +8,7 @@ import { randomUUID } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { prisma } from '../src/lib/prisma';
 import { parseProductCsv, stripBom } from '../src/lib/product-csv-contract';
-import { buildImportPlan, planIsImportable } from '../src/lib/product-csv-plan';
+import { buildImportPlan, planIsImportable, type ExistingVariant } from '../src/lib/product-csv-plan';
 import {
   planProductCsv,
   applyProductCsv,
@@ -279,6 +279,54 @@ test('a duplicate SKU inside one file is a conflict, not a last-one-wins', () =>
   assert.equal(p.counts.conflict, 1);
   assert.match(p.rows[1].message ?? '', /also appears on row 2/);
   assert.equal(planIsImportable(p), false, 'a conflict blocks the whole import');
+});
+
+function existingVariant(overrides: Partial<ExistingVariant> = {}): ExistingVariant {
+  return {
+    variantId: 'variant-1',
+    productId: 'product-1',
+    productName: 'Alpha',
+    price: 1000,
+    weightGrams: 100,
+    status: 'active' as const,
+    description: null,
+    category: null,
+    onHand: 0,
+    reserved: 0,
+    ...overrides,
+  };
+}
+
+test('a new row whose name matches an EXISTING product (different SKU) is rejected as a duplicate', () => {
+  const existing = new Map([['EXIST-1', existingVariant({ productName: 'Alpha' })]]);
+  // Same name, different case and surrounding whitespace — still the same product to a merchant.
+  const p = buildImportPlan(parsed(`${EXT}\nNEW-1,  alpha  ,1000,100,active\n`), existing);
+  assert.equal(p.counts.create, 0);
+  assert.equal(p.counts.duplicate, 1);
+  assert.equal(p.rows[0].action, 'duplicate');
+  assert.match(p.rows[0].message ?? '', /already exists/);
+  assert.match(p.rows[0].message ?? '', /EXIST-1/);
+  assert.equal(planIsImportable(p), false, 'a duplicate blocks the whole import');
+});
+
+test('a product whose SKU already matches is an update, never a duplicate, even with the same name', () => {
+  const existing = new Map([['EXIST-1', existingVariant({ productName: 'Alpha', price: 1000 })]]);
+  const p = buildImportPlan(parsed(`${EXT}\nEXIST-1,Alpha,2000,100,active\n`), existing);
+  assert.equal(p.counts.duplicate, 0);
+  assert.equal(p.rows[0].action, 'update');
+});
+
+test('two new rows in the same file sharing a name: the first creates, the second is a duplicate', () => {
+  const p = buildImportPlan(
+    parsed(`${EXT}\nNEW-1,Gamma,1000,100,active\nNEW-2,Gamma,2000,100,active\n`),
+    new Map(),
+  );
+  assert.equal(p.counts.create, 1);
+  assert.equal(p.counts.duplicate, 1);
+  assert.equal(p.rows[0].action, 'create');
+  assert.equal(p.rows[1].action, 'duplicate');
+  assert.match(p.rows[1].message ?? '', /also appears on row 2/);
+  assert.equal(planIsImportable(p), false);
 });
 
 test('an invalid row blocks the import rather than being skipped', () => {

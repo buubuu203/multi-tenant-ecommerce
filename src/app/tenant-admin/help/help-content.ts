@@ -338,6 +338,7 @@ export const HELP_SECTIONS: HelpSection[] = [
     limits: [
       'Toàn bộ file được nhập trong một lần duy nhất: nếu có một dòng lỗi thì không dòng nào được ghi vào hệ thống.',
       'Dòng sai hoặc trùng SKU sẽ chặn cả lần nhập, hệ thống không tự bỏ qua dòng sai.',
+      'Dòng tạo mới có tên trùng với sản phẩm đã có (hoặc trùng với dòng khác trong cùng file) cũng bị chặn, để tránh tạo nhầm sản phẩm thứ hai cùng tên.',
       'Mỗi file tối đa 1 MB và 500 dòng.',
       'Không nhập được giảm giá, hình ảnh, thuộc tính hay mẫu mã qua CSV. Các cột đó sẽ bị báo lỗi kèm lý do.',
       'Sản phẩm cũ chưa có SKU thì không cập nhật được bằng CSV. Hãy đặt SKU cho sản phẩm đó trước.',

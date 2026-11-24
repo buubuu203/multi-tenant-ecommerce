@@ -10,7 +10,7 @@
 /** How many rows the UI renders. Counts are always complete. */
 export const PREVIEW_DISPLAY_LIMIT = 50;
 
-export type PreviewAction = 'create' | 'update' | 'unchanged' | 'conflict' | 'invalid';
+export type PreviewAction = 'create' | 'update' | 'unchanged' | 'conflict' | 'duplicate' | 'invalid';
 
 export type PreviewChange = { field: string; from: string; to: string };
 

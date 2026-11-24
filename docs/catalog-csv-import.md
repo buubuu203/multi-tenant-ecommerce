@@ -53,17 +53,29 @@ field it does not carry.
 user-facing identifier in the schema — `ProductVariant @@unique([tenantId,
 sku])`. `Product` has no slug or external key, only a UUID.
 
-**Name is never an update key.** Names are neither unique nor stable.
+**Name is never an update key.** Names are neither unique nor stable — a
+row is never matched to an existing product by name, only by `sku`.
 
-| Situation                        | Result                               |
-| -------------------------------- | ------------------------------------ |
-| SKU not in this tenant           | `create`                             |
-| SKU exists, some field differs   | `update`                             |
-| SKU exists, nothing differs      | `unchanged`                          |
-| Same SKU twice in one file       | `conflict` — blocks the import       |
-| Row fails validation             | `invalid` — blocks the import        |
-| SKU exists in **another** tenant | Invisible. Treated as `create` here. |
-| V1 row (no SKU)                  | Always `create`                      |
+**Name IS checked before a create, to catch an accidental duplicate
+product.** A row with no SKU match is about to create a brand-new
+product; if its name (trimmed, case-insensitive) already belongs to an
+existing product in this tenant, or to an earlier row in the same file
+that is itself about to create, the row is rejected as `duplicate` rather
+than silently creating a second product under that name. This is a
+safety net, not a rename detector: an `update` row (matched by `sku`)
+changing its own name is never flagged, no matter what name it picks.
+
+| Situation                                           | Result                                |
+| ---------------------------------------------------- | ------------------------------------- |
+| SKU not in this tenant                               | `create`                              |
+| SKU exists, some field differs                       | `update`                              |
+| SKU exists, nothing differs                          | `unchanged`                           |
+| Same SKU twice in one file                           | `conflict` — blocks the import        |
+| New row's name matches an existing product           | `duplicate` — blocks the import       |
+| Two new rows in one file share a name                | `duplicate` on the later row           |
+| Row fails validation                                 | `invalid` — blocks the import         |
+| SKU exists in **another** tenant                     | Invisible. Treated as `create` here.  |
+| V1 row (no SKU)                                      | Always `create` (name-duplicate check applies the same way) |
 
 Products created by V1 have a NULL SKU. PostgreSQL permits many NULLs
 under a unique constraint, so those rows match nothing and can only ever
@@ -83,8 +95,8 @@ transaction, so a failure left earlier rows imported. V1 files now get the
 same all-or-nothing treatment — the format is untouched, the failure
 behaviour is strictly safer.
 
-**Invalid and conflicting rows block the entire import.** Nothing is
-skipped silently. Fix the file and preview again.
+**Invalid, conflicting and duplicate rows block the entire import.**
+Nothing is skipped silently. Fix the file and preview again.
 
 Rollback is automatic and total. There is no partial-import state to undo.
 

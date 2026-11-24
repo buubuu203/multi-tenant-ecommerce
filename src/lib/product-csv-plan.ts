@@ -24,7 +24,7 @@ export type ExistingVariant = {
 /** Keyed by SKU — the only stable tenant-scoped identifier in the schema. */
 export type ExistingIndex = ReadonlyMap<string, ExistingVariant>;
 
-export type RowAction = 'create' | 'update' | 'unchanged' | 'conflict' | 'invalid';
+export type RowAction = 'create' | 'update' | 'unchanged' | 'conflict' | 'duplicate' | 'invalid';
 
 export type FieldChange = { field: string; from: string; to: string };
 
@@ -52,6 +52,11 @@ export type ImportPlan = {
   inventoryChanges: number;
 };
 
+/** Trims and case-folds a product name for duplicate comparison — "Áo Thun" and "áo thun " are the same product name to a merchant, even though they are different strings. */
+function normalizeName(name: string): string {
+  return name.trim().toLowerCase();
+}
+
 function describeInventory(row: ParsedRow, existing: ExistingVariant | null): FieldChange | null {
   if (row.onHand === null || row.inventoryMode === null) return null;
 
@@ -73,10 +78,23 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
     update: 0,
     unchanged: 0,
     conflict: 0,
+    duplicate: 0,
     invalid: 0,
   };
   const planned: PlannedRow[] = [];
   let inventoryChanges = 0;
+
+  // One entry per distinct existing product name (case/whitespace-folded),
+  // built once from the existing-variants snapshot — several SKUs can
+  // belong to the same product, but a name only needs to be flagged once.
+  // ExistingVariant carries no sku field of its own (it IS the value for
+  // a given sku key in `existing`), so the key is captured alongside it
+  // here for the duplicate message below.
+  const existingNames = new Map<string, { sku: string; variant: ExistingVariant }>();
+  for (const [sku, variant] of existing.entries()) {
+    const key = normalizeName(variant.productName);
+    if (!existingNames.has(key)) existingNames.set(key, { sku, variant });
+  }
 
   // Invalid rows first, so the plan lists every row in file order.
   const byRow = new Map<number, PlannedRow>();
@@ -97,6 +115,11 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
   }
 
   const seenSku = new Map<string, number>();
+  // Only names destined to CREATE a product are tracked here — an update
+  // row (matched by SKU) renaming itself to something another row also
+  // uses is a legitimate rename, not a duplicate-product risk, and is
+  // already fully visible in that row's own 'name' field change.
+  const seenNewName = new Map<string, number>();
 
   for (const row of parsed.rows) {
     // A SKU repeated inside one file is ambiguous: two rows claim the same
@@ -123,6 +146,46 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
     const match = row.sku === null ? undefined : existing.get(row.sku);
 
     if (!match) {
+      // A row with no SKU match is about to CREATE a new product — reject
+      // it as a duplicate if its name already belongs to an existing
+      // product, or to another row earlier in this same file, rather than
+      // silently creating a second product sharing that name.
+      const nameKey = normalizeName(row.name);
+      const existingByName = existingNames.get(nameKey);
+      if (existingByName) {
+        counts.duplicate += 1;
+        byRow.set(row.rowNumber, {
+          rowNumber: row.rowNumber,
+          action: 'duplicate',
+          sku: row.sku,
+          name: row.name,
+          changes: [],
+          message:
+            `A product named "${existingByName.variant.productName}" already exists ` +
+            `(SKU "${existingByName.sku}"). Set sku to that SKU to update it, ` +
+            `or give this row a different name to create a genuinely new product.`,
+          target: null,
+          row: null,
+        });
+        continue;
+      }
+      const firstNewNameRow = seenNewName.get(nameKey);
+      if (firstNewNameRow !== undefined) {
+        counts.duplicate += 1;
+        byRow.set(row.rowNumber, {
+          rowNumber: row.rowNumber,
+          action: 'duplicate',
+          sku: row.sku,
+          name: row.name,
+          changes: [],
+          message: `Name "${row.name}" also appears on row ${firstNewNameRow}. Each new product needs a distinct name.`,
+          target: null,
+          row: null,
+        });
+        continue;
+      }
+      seenNewName.set(nameKey, row.rowNumber);
+
       if (row.weightGrams === null) {
         counts.invalid += 1;
         byRow.set(row.rowNumber, {
@@ -243,7 +306,12 @@ export function buildImportPlan(parsed: ParsedCsv, existing: ExistingIndex): Imp
 
 /** Row-level failures that must block the whole import, not just a row. */
 export function planIsImportable(plan: ImportPlan): boolean {
-  return plan.counts.invalid === 0 && plan.counts.conflict === 0 && plan.mutatingRows > 0;
+  return (
+    plan.counts.invalid === 0 &&
+    plan.counts.conflict === 0 &&
+    plan.counts.duplicate === 0 &&
+    plan.mutatingRows > 0
+  );
 }
 
 export type { ParsedRow, RowError };

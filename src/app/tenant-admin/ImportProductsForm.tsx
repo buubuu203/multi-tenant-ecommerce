@@ -36,6 +36,7 @@ const ACTION_LABEL: Record<PreviewRow['action'], string> = {
   update: 'Update',
   unchanged: 'No change',
   conflict: 'Conflict — blocks import',
+  duplicate: 'Duplicate product — blocks import',
   invalid: 'Invalid — blocks import',
 };
 
@@ -47,6 +48,8 @@ const ACTION_STYLE: Record<PreviewRow['action'], string> = {
     'border-blue-300 bg-blue-50 text-blue-800 dark:border-blue-900 dark:bg-blue-950 dark:text-blue-300',
   unchanged: 'border-border bg-surface-muted text-muted-foreground',
   conflict:
+    'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
+  duplicate:
     'border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-400',
   invalid:
     'border-red-300 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950 dark:text-red-400',
@@ -214,7 +217,7 @@ export function ImportProductsForm({
             <div>
               <dt className="text-muted-foreground">Blocking</dt>
               <dd className="font-medium tabular-nums">
-                {preview.counts.invalid + preview.counts.conflict}
+                {preview.counts.invalid + preview.counts.conflict + preview.counts.duplicate}
               </dd>
             </div>
           </dl>
@@ -234,11 +237,15 @@ export function ImportProductsForm({
             The whole file is imported in one transaction: if any row fails, nothing is saved.
           </p>
 
-          {preview.counts.invalid + preview.counts.conflict > 0 && (
+          {preview.counts.invalid + preview.counts.conflict + preview.counts.duplicate > 0 && (
             <p role="alert" className="text-xs text-red-700 dark:text-red-400">
-              {preview.counts.invalid} invalid and {preview.counts.conflict} conflicting row
-              {preview.counts.invalid + preview.counts.conflict === 1 ? '' : 's'} block this import.
-              Nothing is imported until every row is valid — rows are never skipped silently.
+              {preview.counts.invalid} invalid, {preview.counts.conflict} conflicting and{' '}
+              {preview.counts.duplicate} duplicate row
+              {preview.counts.invalid + preview.counts.conflict + preview.counts.duplicate === 1
+                ? ''
+                : 's'}{' '}
+              block this import. Nothing is imported until every row is valid — rows are never
+              skipped silently.
             </p>
           )}
 
