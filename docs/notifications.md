@@ -140,3 +140,34 @@ used about a message.
 
 This is not a notification system, a CRM, or a consent-management
 platform, and no claim is made about legal or privacy compliance.
+
+## 2026-11-24 addendum: a merchant-facing ops alert, not a notification system
+
+A single, narrow exception now exists: `src/lib/notifications/` sends a
+best-effort Telegram message to the MERCHANT when their own tenant
+receives a new order (hooked in from `checkout-actions.ts`, fire-and-
+forget, after the order has already committed). It does not change
+Outcome A above, because every distinction that audit protects is about
+messaging a **customer**, and this feature never does:
+
+- **No customer is contacted.** The recipient is a Telegram chat the
+  merchant configures themselves (their own bot, their own chat id,
+  stored on their own `Branding` row) — there is no customer contact
+  list, consent field, or preference model involved, and none was added.
+- **No delivery is claimed.** `sendTelegramMessage()` reports success only
+  as "the HTTP call to Telegram's API succeeded, or didn't" — never
+  "arrived" or "read". A failure is logged and swallowed; it never
+  throws, never blocks, and never appears anywhere as a fact about the
+  order itself.
+- **Nothing durable was added.** No `Notification`/`Message`/`Outbox`
+  model, no `sentAt`/`deliveredAt`/`retryCount` column, no queue. If the
+  process crashes mid-send, the alert is simply lost — there is no retry,
+  by design, matching this audit's prerequisite list (item 3: a durable
+  outbox) which still does not exist.
+- **It is off by default and entirely merchant-controlled.** A tenant
+  with no `telegramBotToken`/`telegramChatId` saved in Branding gets no
+  behavior change whatsoever.
+
+If a real customer-facing notification system is ever built, everything
+above this addendum still applies unchanged, and the prerequisites list
+(consent model first) still has to be satisfied in order.

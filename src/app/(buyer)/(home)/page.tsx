@@ -105,6 +105,16 @@ export default async function StorefrontHomePage() {
           }}
         />
       )}
+      {/* A banner-having store renders BannerCarousel below instead of
+          StorefrontHero, which is the page's only other <h1> — leaving the
+          home page with zero level-1 headings whenever banners are
+          configured (PoPrint's case). Search engines weight a page's h1
+          heavily for ranking; this sr-only one guarantees exactly one
+          keyword-bearing h1 is always server-rendered, independent of
+          which hero variant shows visually. */}
+      <h1 className="sr-only">
+        {contact.tagline ? `${branding.storeName} — ${contact.tagline}` : branding.storeName}
+      </h1>
       <StorefrontHeader
         branding={branding}
         searchPlaceholder={dict.products.searchPlaceholder}

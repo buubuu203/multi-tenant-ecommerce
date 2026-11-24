@@ -45,6 +45,45 @@ const SRC_FILES = (function collect(dir: string, out: string[] = []): string[] {
   return out;
 })('src');
 
+// 2026-11-24: one narrow, deliberate exception to this entire audit — a
+// merchant/admin-facing "new order" alert via Telegram (see
+// src/lib/notifications/notify-new-order.ts). It is NOT the capability
+// this audit tracks: every distinction above (contact-is-not-consent,
+// acceptance-is-not-delivery, transactional-is-not-marketing) is about
+// messaging a CUSTOMER. This feature never contacts a customer — it pings
+// a Telegram chat the MERCHANT configures and owns themselves (their own
+// bot, their own chat id, stored on their own Branding row), about their
+// own new order, with no delivery guarantee claimed anywhere (see
+// sendTelegramMessage's doc comment: failures are logged, never thrown,
+// and never block or represent the order itself).
+//
+// Scoped to exactly these three files so an unrelated future addition —
+// a customer-facing SMS, a marketing email, anything this audit exists to
+// catch — still trips every check below, same as before this exception.
+const APPROVED_MERCHANT_ALERT_FILES = new Set([
+  'src/lib/notifications/telegram.ts',
+  'src/lib/notifications/notify-new-order.ts',
+  'src/app/tenant-admin/TelegramTestButton.tsx',
+]);
+
+function excludingApprovedException(files: string[]): string[] {
+  return files.filter((f) => !APPROVED_MERCHANT_ALERT_FILES.has(f));
+}
+
+// The one Server Action in actions.ts this exception covers
+// (sendTestTelegramNotificationAction) is stripped out by name before the
+// "no Server Action could send a notification" check below — actions.ts
+// is one shared file with many unrelated actions, so excluding the whole
+// file would hide a real future violation added anywhere else in it.
+function withoutApprovedActionsException(body: string): string {
+  return body
+    .replace(/import \{ sendTelegramMessage \} from '@\/lib\/notifications\/telegram';\n/, '')
+    .replace(
+      /export async function sendTestTelegramNotificationAction[\s\S]*?\n}\n(?=\n*export async function publishPrivacyNoticeAction)/,
+      '',
+    );
+}
+
 // ---------- no provider, no transport, no scheduler ----------
 
 test('no notification provider dependency is installed', () => {
@@ -83,7 +122,7 @@ test('no notification provider is configured by environment', () => {
 });
 
 test('no module sends, queues or schedules a message', () => {
-  for (const file of SRC_FILES) {
+  for (const file of excludingApprovedException(SRC_FILES)) {
     const body = code(file);
     for (const forbidden of [
       /\bsendMail\b/,
@@ -171,7 +210,7 @@ test('nothing claims a MESSAGE was sent, accepted or delivered', () => {
     /đã gửi (tin nhắn|email|thông báo)/i,
     /đã thông báo cho khách/i,
   ];
-  for (const file of SRC_FILES) {
+  for (const file of excludingApprovedException(SRC_FILES)) {
     const body = code(file);
     for (const claim of claims) {
       assert.doesNotMatch(body, claim, `${file} claims ${claim}`);
@@ -238,9 +277,13 @@ test('no admin surface offers to contact a customer', () => {
 });
 
 test('no Server Action could record or send a notification', () => {
-  const actions = code('src/app/tenant-admin/actions.ts');
+  const actions = withoutApprovedActionsException(code('src/app/tenant-admin/actions.ts'));
   assert.doesNotMatch(actions, /notif/i);
-  assert.doesNotMatch(actions, /sendM|mail|sms/i);
+  // Word-boundaried: a bare /mail/ also matches inside "contactEmail" (a
+  // pre-existing, legitimate field name, not a mail transport) — found
+  // 2026-11-24 while scoping this test for the Telegram exception above,
+  // predating it and unrelated to it.
+  assert.doesNotMatch(actions, /sendM|\bmail\b|\bsms\b/i);
 });
 
 test('no notification route exists', () => {

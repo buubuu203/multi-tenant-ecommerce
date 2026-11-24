@@ -15,6 +15,8 @@ import {
   getCurrentPrivacyNotice,
   isCurrentPrivacyNoticeVersion,
 } from "@/lib/privacy-mutations";
+import { getRequestOrigin } from "@/lib/seo/request-origin";
+import { notifyNewOrder } from "@/lib/notifications/notify-new-order";
 
 // Only the two identity fields this checkout flow is allowed to trust from
 // the client cart — see cart-context.tsx's own doc comment for why price/
@@ -198,6 +200,22 @@ export async function checkoutAction(
     result.data.items.reduce((sum, item) => sum + item.price * item.quantity, 0)
     + result.data.shippingAmount
     - result.data.voucherDiscount;
+
+  // Fire-and-forget: notifyNewOrder() never throws (see its own doc
+  // comment) and a Telegram outage must never block or fail a checkout
+  // that's already committed. Deliberately not awaited.
+  void getRequestOrigin().then((origin) =>
+    notifyNewOrder({
+      tenantId,
+      orderId: result.data.orderId,
+      customerName: sanitizedCustomer.name,
+      paymentMethod,
+      itemCount: sanitizedItems.reduce((sum, item) => sum + item.quantity, 0),
+      totalAmount: total,
+      origin,
+    }),
+  );
+
   const paymentResult = await createPaymentForOrder(
     tenantId,
     result.data.orderId,

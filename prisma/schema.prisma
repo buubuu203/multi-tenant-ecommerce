@@ -160,6 +160,13 @@ model Branding {
   // (answers the "does Branding have a short-description field yet"
   // question raised when the footer was first built).
   tagline           String?
+  // New-order alerts via Telegram (admin sets these up themselves: create
+  // a bot via @BotFather for the token, then message the bot once and
+  // read back the chat id from the Bot API). Both null = feature off for
+  // this tenant; plain text, no format validation beyond trimming, same
+  // posture as every other optional Branding field.
+  telegramBotToken  String?
+  telegramChatId    String?
   updatedAt         DateTime @updatedAt
 
   tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)

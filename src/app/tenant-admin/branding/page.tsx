@@ -3,6 +3,7 @@ import { getScopedDb } from '@/lib/db/tenant-db';
 import { ActionForm } from '@/components/ActionForm';
 import { updateBrandingAction } from '../actions';
 import { BrandingUploadControls } from '../BrandingUploadControls';
+import { TelegramTestButton } from '../TelegramTestButton';
 import {
   adminInputClassName,
   adminLabelClassName,
@@ -117,6 +118,46 @@ export default async function BrandingPage() {
             Zalo URL
             <input name="zaloUrl" defaultValue={branding?.zaloUrl ?? ''} className={adminInputClassName} />
           </label>
+        </section>
+        <section aria-labelledby="brand-telegram" className={adminPanelClassName}>
+          <h3 id="brand-telegram" className={adminPanelTitleClassName}>
+            Thông báo đơn hàng mới (Telegram)
+          </h3>
+          <p className="text-xs text-muted-foreground">
+            Nhận tin nhắn Telegram ngay khi có đơn hàng mới. Để trống cả hai ô để tắt tính năng này.
+            Cách lấy thông tin: nhắn <code>/newbot</code> cho{' '}
+            <a
+              href="https://t.me/BotFather"
+              target="_blank"
+              rel="noreferrer"
+              className="underline"
+            >
+              @BotFather
+            </a>{' '}
+            trên Telegram để tạo bot và lấy Bot Token, sau đó nhắn bất kỳ tin nào cho bot của bạn rồi mở{' '}
+            <code>https://api.telegram.org/bot&lt;TOKEN&gt;/getUpdates</code> để lấy Chat ID.
+          </p>
+          <label className={adminLabelClassName}>
+            Bot Token
+            <input
+              name="telegramBotToken"
+              defaultValue={branding?.telegramBotToken ?? ''}
+              placeholder="123456789:AAExampleTokenFromBotFather"
+              autoComplete="off"
+              className={adminInputClassName}
+            />
+          </label>
+          <label className={adminLabelClassName}>
+            Chat ID
+            <input
+              name="telegramChatId"
+              defaultValue={branding?.telegramChatId ?? ''}
+              placeholder="123456789"
+              autoComplete="off"
+              className={adminInputClassName}
+            />
+          </label>
+          {branding?.telegramBotToken && branding?.telegramChatId && <TelegramTestButton />}
         </section>
       </ActionForm>
     </div>

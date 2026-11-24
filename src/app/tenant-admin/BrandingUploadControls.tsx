@@ -141,6 +141,14 @@ export function BrandingUploadControls({
             className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           />
         </label>
+        {logoUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- external blob-storage URL, not an optimizable local asset
+          <img
+            src={logoUrl}
+            alt="Logo preview"
+            className="h-16 w-16 rounded-md border border-border object-contain bg-background p-1.5"
+          />
+        )}
         <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
             Upload a JPG, PNG, or WebP logo up to 10MB (optimized to WebP in your browser before
@@ -180,6 +188,14 @@ export function BrandingUploadControls({
             className="w-full rounded-md border border-border bg-background px-3 py-2.5 text-sm focus:outline-none focus-visible:ring-2 focus-visible:ring-foreground/20"
           />
         </label>
+        {faviconUrl && (
+          // eslint-disable-next-line @next/next/no-img-element -- external blob-storage URL, not an optimizable local asset
+          <img
+            src={faviconUrl}
+            alt="Favicon preview"
+            className="h-8 w-8 rounded border border-border object-contain bg-background p-1"
+          />
+        )}
         <div className="flex flex-col gap-2 rounded-xl bg-surface-muted p-3">
           <p className="text-xs text-muted-foreground">
             Upload an ICO, PNG, or SVG favicon (max 1MB). Favicons are stored in the format you

@@ -10,7 +10,9 @@ import {
 import { planProductCsv, applyProductCsv } from '@/lib/product-csv-apply';
 import { redirect } from 'next/navigation';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
+import { getScopedDb } from '@/lib/db/tenant-db';
 import { getDictionary, getLocale } from '@/lib/i18n';
+import { sendTelegramMessage } from '@/lib/notifications/telegram';
 import {
   updateBranding,
   updateBrandingLogoUrl,
@@ -109,12 +111,44 @@ export async function updateBrandingAction(
     tiktokUrl: String(formData.get('tiktokUrl') ?? ''),
     zaloUrl: String(formData.get('zaloUrl') ?? ''),
     instagramUrl: String(formData.get('instagramUrl') ?? ''),
+    telegramBotToken: String(formData.get('telegramBotToken') ?? ''),
+    telegramChatId: String(formData.get('telegramChatId') ?? ''),
   });
 
   if (result.success) {
     revalidatePath('/tenant-admin', 'layout');
   }
   return result;
+}
+
+/**
+ * Sends a one-off test message to whatever Telegram bot token + chat id
+ * is CURRENTLY SAVED for this tenant (never values straight off the
+ * form — an admin must Save first, then Test, so this always verifies
+ * what's actually live rather than an unsaved draft). Lets an admin
+ * confirm their bot/chat id setup works without waiting for a real order.
+ */
+export async function sendTestTelegramNotificationAction(): Promise<ActionResult> {
+  const { tenantId } = await requireTenantAdmin();
+  const branding = await getScopedDb(tenantId).branding.findUnique({
+    where: { tenantId },
+    select: { storeName: true, telegramBotToken: true, telegramChatId: true },
+  });
+  if (!branding?.telegramBotToken || !branding?.telegramChatId) {
+    return {
+      success: false,
+      error: 'Vui lòng lưu Bot Token và Chat ID trước khi gửi thử.',
+    };
+  }
+  const result = await sendTelegramMessage(
+    branding.telegramBotToken,
+    branding.telegramChatId,
+    `✅ Kết nối Telegram thành công cho <b>${branding.storeName ?? 'cửa hàng'}</b>. Bạn sẽ nhận được thông báo ở đây mỗi khi có đơn hàng mới.`,
+  );
+  if (!result.success) {
+    return { success: false, error: result.error };
+  }
+  return { success: true, data: undefined };
 }
 
 export async function publishPrivacyNoticeAction(

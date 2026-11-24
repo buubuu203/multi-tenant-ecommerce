@@ -14,7 +14,7 @@ import { Icon } from "./Icon";
 // model (TenantProductMedia has no posterUrl field) — the blurred
 // backdrop reuses the video itself (muted, no controls, paused on frame
 // 1) rather than inventing a poster that doesn't exist.
-function MediaStage({ item }: { item: TenantProductMedia }) {
+function MediaStage({ item, productName }: { item: TenantProductMedia; productName: string }) {
   if (item.type === "image") {
     return (
       <>
@@ -25,7 +25,11 @@ function MediaStage({ item }: { item: TenantProductMedia }) {
           className="absolute inset-0 h-full w-full object-cover"
           style={{ filter: "blur(26px) saturate(1.15)", transform: "scale(1.25)" }}
         />
-        <img src={item.url} alt="" className="relative z-[1] h-full w-full object-contain" />
+        <img
+          src={item.url}
+          alt={productName}
+          className="relative z-[1] h-full w-full object-contain"
+        />
       </>
     );
   }
@@ -134,7 +138,7 @@ export function ProductMediaCarousel({ media, productName }: { media: TenantProd
           style={{ opacity: fading ? 0 : 1, transition: "opacity 240ms ease" }}
           aria-label={`${productName} — ${index + 1}/${media.length}`}
         >
-          <MediaStage key={current.id} item={current} />
+          <MediaStage key={current.id} item={current} productName={productName} />
         </div>
 
         {media.length > 1 && (
