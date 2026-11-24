@@ -48,14 +48,30 @@ export async function sendTelegramMessage(
   }
 }
 
+export type OrderItemLine = {
+  productName: string;
+  /** e.g. "Đỏ, L" built from the variant's option values, or null for a simple (single-variant) product. */
+  variantLabel: string | null;
+  quantity: number;
+  /** Already-formatted display line total (price × quantity), e.g. "200.000 ₫". */
+  lineTotalDisplay: string;
+};
+
 export type OrderNotificationInput = {
   storeName: string;
   orderReference: string;
   /** Already-formatted display total, e.g. "123.000 ₫" — this module does no currency formatting of its own. */
   totalDisplay: string;
   customerName: string;
+  /** Phone collected at checkout — included so the merchant can call back without opening tenant-admin first. */
+  customerPhone: string;
   paymentMethodLabel: string;
-  itemCount: number;
+  /** Every line item on the order, in order. */
+  items: OrderItemLine[];
+  /** Snapshot shipping method name, or null for a historical order that predates the field — see Order.shippingMethodName's own doc comment. */
+  shippingMethodLabel: string | null;
+  /** Full delivery address, already joined (street, ward, district, city) — this module does no address formatting of its own. */
+  shippingAddressLine: string;
   /** Absolute URL to the order in tenant-admin, or null if it can't be resolved for this request. */
   adminOrderUrl: string | null;
   /**
@@ -87,18 +103,28 @@ function escapeHtml(value: string): string {
  * unit-testable without a request context or a real Telegram call.
  */
 export function buildOrderNotificationMessage(input: OrderNotificationInput): string {
+  const itemLines = input.items.map((item) => {
+    const variantSuffix = item.variantLabel ? ` (${escapeHtml(item.variantLabel)})` : "";
+    return `• ${escapeHtml(item.productName)}${variantSuffix} ×${item.quantity} — ${escapeHtml(item.lineTotalDisplay)}`;
+  });
+
   const lines = [
     input.isTestEnvironment
       ? `🧪 <b>ĐƠN TEST (không phải đơn thật) — ${escapeHtml(input.storeName)}</b>`
       : `🛎️ <b>Đơn hàng mới — ${escapeHtml(input.storeName)}</b>`,
     `Mã đơn: <b>${escapeHtml(input.orderReference)}</b>`,
-    `Khách hàng: ${escapeHtml(input.customerName)}`,
-    `Số lượng: ${input.itemCount} sản phẩm`,
+    "",
+    "Sản phẩm:",
+    ...itemLines,
+    "",
+    `Khách hàng: ${escapeHtml(input.customerName)} — ${escapeHtml(input.customerPhone)}`,
+    `Giao tới: ${escapeHtml(input.shippingAddressLine)}`,
+    ...(input.shippingMethodLabel ? [`Vận chuyển: ${escapeHtml(input.shippingMethodLabel)}`] : []),
     `Thanh toán: ${escapeHtml(input.paymentMethodLabel)}`,
     `Tổng tiền: <b>${escapeHtml(input.totalDisplay)}</b>`,
   ];
   if (input.adminOrderUrl) {
-    lines.push(`\n<a href="${escapeHtml(input.adminOrderUrl)}">Xem đơn hàng</a>`);
+    lines.push("", `<a href="${escapeHtml(input.adminOrderUrl)}">Xem đơn hàng</a>`);
   }
   return lines.join("\n");
 }

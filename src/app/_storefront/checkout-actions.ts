@@ -203,17 +203,11 @@ export async function checkoutAction(
 
   // Fire-and-forget: notifyNewOrder() never throws (see its own doc
   // comment) and a Telegram outage must never block or fail a checkout
-  // that's already committed. Deliberately not awaited.
+  // that's already committed. Deliberately not awaited. It re-reads the
+  // order's own committed rows rather than taking details as params here
+  // — see its doc comment.
   void getRequestOrigin().then((origin) =>
-    notifyNewOrder({
-      tenantId,
-      orderId: result.data.orderId,
-      customerName: sanitizedCustomer.name,
-      paymentMethod,
-      itemCount: sanitizedItems.reduce((sum, item) => sum + item.quantity, 0),
-      totalAmount: total,
-      origin,
-    }),
+    notifyNewOrder({ tenantId, orderId: result.data.orderId, origin }),
   );
 
   const paymentResult = await createPaymentForOrder(
