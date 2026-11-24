@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -28,6 +29,7 @@ import {
 } from '../styles';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Giao dịch thanh toán' };
 
 const CATEGORY_LABEL: Record<ReconciliationCategory, string> = {
   awaiting_payment: 'Awaiting payment',

@@ -46,6 +46,15 @@ export async function buildSitemapEntries(tenantId: string, origin: string): Pro
       changeFrequency: "daily",
       priority: 1,
     },
+    {
+      // Static but tenant-scoped (contact details, store name) content —
+      // see src/app/(buyer)/dich-vu/page.tsx. Not DB-backed, so its
+      // freshness just tracks "now" rather than a row's updatedAt.
+      url: `${origin}/dich-vu`,
+      lastModified: now,
+      changeFrequency: "monthly" as const,
+      priority: 0.6,
+    },
     ...products.map((product) => ({
       url: `${origin}/products/${product.id}`,
       lastModified: product.updatedAt,

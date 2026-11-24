@@ -32,6 +32,8 @@ export type BrandingInput = {
   // Short line shown under the store name in the footer — plain text,
   // same "trim to null" posture as storeName.
   tagline?: string;
+  // Longer, separate SEO/Open Graph description — see store-seo.ts.
+  ogDescription?: string;
   // New-order Telegram alert — plain text, trim to null, no format
   // validation (a bot token and a chat id have no fixed, checkable shape
   // worth enforcing here; a wrong value just fails at send time, same as
@@ -133,6 +135,7 @@ export async function updateBranding(
     ...(input.zaloUrl !== undefined ? { zaloUrl: trimToNull(input.zaloUrl) } : {}),
     ...(instagramUrl.value !== undefined ? { instagramUrl: instagramUrl.value } : {}),
     ...(input.tagline !== undefined ? { tagline: trimToNull(input.tagline) } : {}),
+    ...(input.ogDescription !== undefined ? { ogDescription: trimToNull(input.ogDescription) } : {}),
     ...(input.telegramBotToken !== undefined
       ? { telegramBotToken: trimToNull(input.telegramBotToken) }
       : {}),

@@ -160,6 +160,11 @@ model Branding {
   // (answers the "does Branding have a short-description field yet"
   // question raised when the footer was first built).
   tagline           String?
+  // Longer, separate line for the meta/Open Graph description and the
+  // Organization JSON-LD — distinct from the short `tagline` above
+  // (footer line + social-share title). Falls back to tagline, then a
+  // generic line, when unset — see store-seo.ts's buildStoreDescription.
+  ogDescription     String?
   // New-order alerts via Telegram (admin sets these up themselves: create
   // a bot via @BotFather for the token, then message the bot once and
   // read back the chat id from the Bot API). Both null = feature off for

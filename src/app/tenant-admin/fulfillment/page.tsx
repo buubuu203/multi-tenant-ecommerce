@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -27,6 +28,7 @@ import {
 
 // Customer names, phones and destinations: never cached.
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Vận hành' };
 export const revalidate = 0;
 
 const CATEGORY_TONE: Record<FulfillmentCategory, BadgeTone> = {

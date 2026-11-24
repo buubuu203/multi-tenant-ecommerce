@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
 import { isProviderConfigured } from '@/lib/payments/payment-service';
@@ -17,6 +18,7 @@ import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge } from '../StatusBadge';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Thanh toán' };
 
 type BankConfig = {
   bankName?: string;

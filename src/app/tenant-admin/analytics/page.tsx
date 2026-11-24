@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -27,6 +28,7 @@ import {
 } from '../styles';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Phân tích' };
 
 /**
  * Operational analytics: the facts this application stores, counted.

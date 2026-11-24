@@ -30,6 +30,7 @@ export type FooterContact = {
   zaloUrl: string | null;
   instagramUrl: string | null;
   tagline: string | null;
+  ogDescription: string | null;
 };
 
 export function resolveBranding(
@@ -63,5 +64,6 @@ export function resolveFooterContact(branding: Branding | null): FooterContact {
     zaloUrl: branding?.zaloUrl || null,
     instagramUrl: branding?.instagramUrl || null,
     tagline: branding?.tagline || null,
+    ogDescription: branding?.ogDescription || null,
   };
 }

@@ -101,6 +101,7 @@ export async function updateBrandingAction(
   const result = await updateBranding(tenantId, {
     storeName: String(formData.get('storeName') ?? ''),
     tagline: String(formData.get('tagline') ?? ''),
+    ogDescription: String(formData.get('ogDescription') ?? ''),
     logoUrl: String(formData.get('logoUrl') ?? ''),
     faviconUrl: String(formData.get('faviconUrl') ?? ''),
     address: String(formData.get('address') ?? ''),

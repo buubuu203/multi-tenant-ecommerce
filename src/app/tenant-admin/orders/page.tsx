@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { bulkUpdateOrderStatusAction } from '../actions';
 import { BulkOrderStatusForm } from '../BulkOrderStatusForm';
@@ -23,6 +24,7 @@ import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge, toneForStatus } from '../StatusBadge';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Đơn hàng' };
 
 const PAGE_SIZE = 20;
 const ORDER_STATUSES = ['pending', 'fulfilled', 'cancelled'] as const;

@@ -1,3 +1,4 @@
+import type { Metadata } from "next";
 import { requireTenantAdmin } from "@/lib/auth/require-tenant-admin";
 import { listVouchers } from "@/lib/voucher-mutations";
 import { getScopedDb } from "@/lib/db/tenant-db";
@@ -12,6 +13,7 @@ import {
 import { VoucherForm, VoucherRow } from "./VoucherClient";
 
 export const dynamic = "force-dynamic";
+export const metadata: Metadata = { title: "Khuyến mãi" };
 
 export default async function VouchersPage() {
   const { tenantId } = await requireTenantAdmin();

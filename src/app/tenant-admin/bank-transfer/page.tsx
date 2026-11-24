@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
@@ -12,6 +13,7 @@ import { AdminPageHeader } from '../AdminPageHeader';
 import { StatusBadge } from '../StatusBadge';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Chuyển khoản' };
 
 /**
  * This route used to be a second, competing bank-details form.

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getTenantKpis } from '@/lib/tenant-kpis';
@@ -17,6 +18,7 @@ import { resolvePeriod, PERIODS, PERIOD_LABEL } from '@/lib/analytics/periods';
 import { ANALYTICS_TIMEZONE_LABEL, RANGE_ADJUSTMENT_MESSAGE } from '@/lib/analytics/date-range';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Tổng quan' };
 
 // Phase 1 of the admin route split left this route as a bare redirect to
 // Branding, because every section had become its own route and there was

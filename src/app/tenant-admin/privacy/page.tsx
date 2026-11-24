@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { ActionForm } from '@/components/ActionForm';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getCurrentPrivacyNotice, listPrivacyNoticeVersions } from '@/lib/privacy-mutations';
@@ -13,6 +14,7 @@ import {
 import { publishPrivacyNoticeAction } from '../actions';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Quyền riêng tư' };
 
 export default async function TenantPrivacyPage() {
   const { tenantId } = await requireTenantAdmin();

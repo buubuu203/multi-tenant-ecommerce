@@ -69,6 +69,7 @@ export default async function StorefrontHomePage() {
     ? buildStoreJsonLd({
         storeName: branding.storeName,
         tagline: contact.tagline,
+        ogDescription: contact.ogDescription,
         origin,
         logoUrl: branding.logoUrl,
         socialUrls: [contact.facebookUrl, contact.tiktokUrl, contact.zaloUrl, contact.instagramUrl],

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { AdminPageHeader } from '../AdminPageHeader';
@@ -23,7 +24,7 @@ import {
 export const dynamic = 'force-dynamic';
 
 // Never indexed: it sits behind authorization and describes internal tools.
-export const metadata = {
+export const metadata: Metadata = {
   title: 'Hướng dẫn sử dụng',
   robots: { index: false, follow: false },
 };

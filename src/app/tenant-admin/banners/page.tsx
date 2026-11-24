@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { listBanners } from '@/lib/banner-mutations';
 import { ActionForm } from '@/components/ActionForm';
@@ -22,6 +23,7 @@ import { AdminPageHeader } from '../AdminPageHeader';
 import { getDictionary, getLocale } from '@/lib/i18n';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Banner' };
 
 // QA round (2026-11-23): recommended ratio moved to 16:5 — this is still
 // the ratio ImageCropModal forces on upload (canvas.height = outputWidth /

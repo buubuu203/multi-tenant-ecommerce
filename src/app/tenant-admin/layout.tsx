@@ -37,7 +37,15 @@ export async function generateMetadata(): Promise<Metadata> {
   const tenant = await getCurrentTenant();
   const storeName = tenant?.branding?.storeName || tenant?.name || 'Store';
   return {
-    title: `${storeName} – Quản trị`,
+    // A template, not a fixed string: every /tenant-admin/* page below
+    // exports its own one-line `title` (e.g. "Catalog"), which Next slots
+    // into "%s" here — so every admin tab reads "<Page> – <Store> Quản
+    // trị" instead of all fifteen of them sharing this exact same title,
+    // which made them indistinguishable with several open at once (the
+    // same problem this file's favicon override already solved once for
+    // "admin tab vs buyer tab"). A page with no title of its own falls
+    // back to `default`.
+    title: { template: `%s – ${storeName} Quản trị`, default: `${storeName} – Quản trị` },
     description: `${storeName} tenant admin`,
     icons: { icon: ADMIN_FAVICON },
   };

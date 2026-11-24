@@ -7,7 +7,7 @@ import { getLocale, getDictionary } from '@/lib/i18n';
 import { LocaleProvider } from '@/lib/i18n/locale-context';
 import { DictionaryProvider } from '@/lib/i18n/use-dictionary';
 import { getRequestOrigin } from '@/lib/seo/request-origin';
-import { buildStoreDescription } from '@/lib/seo/store-seo';
+import { buildStoreDescription, buildStoreOgTitle } from '@/lib/seo/store-seo';
 import './globals.css';
 
 // Be Vietnam Pro is the storefront and admin typeface: a Vietnamese-first
@@ -48,7 +48,15 @@ export async function generateMetadata(): Promise<Metadata> {
   }
 
   const storeName = tenant.branding?.storeName || tenant.name;
-  const description = buildStoreDescription({ storeName, tagline: tenant.branding?.tagline ?? null });
+  const tagline = tenant.branding?.tagline ?? null;
+  const description = buildStoreDescription({
+    storeName,
+    tagline,
+    ogDescription: tenant.branding?.ogDescription ?? null,
+  });
+  // The social-share title is deliberately distinct from the browser-tab
+  // `title` below — see buildStoreOgTitle's own doc comment.
+  const ogTitle = buildStoreOgTitle({ storeName, tagline });
   const logoUrl = tenant.branding?.logoUrl || undefined;
 
   return {
@@ -63,7 +71,7 @@ export async function generateMetadata(): Promise<Metadata> {
     ...(origin ? { alternates: { canonical: origin } } : {}),
     icons: tenant.branding?.faviconUrl ? { icon: tenant.branding.faviconUrl } : undefined,
     openGraph: {
-      title: storeName,
+      title: ogTitle,
       description,
       ...(origin ? { url: origin } : {}),
       siteName: storeName,
@@ -73,7 +81,7 @@ export async function generateMetadata(): Promise<Metadata> {
     },
     twitter: {
       card: logoUrl ? 'summary_large_image' : 'summary',
-      title: storeName,
+      title: ogTitle,
       description,
       ...(logoUrl ? { images: [logoUrl] } : {}),
     },

@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import Link from 'next/link';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import {
@@ -28,6 +29,7 @@ import {
 
 // Renders names, phone numbers and email addresses: never cached.
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Khách hàng' };
 export const revalidate = 0;
 
 function formatDate(value: Date | null): string {

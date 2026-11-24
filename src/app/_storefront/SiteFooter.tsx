@@ -93,6 +93,9 @@ export function SiteFooter({
         <Link href="/orders" className="small" style={{ minHeight: "36px", display: "inline-flex", alignItems: "center" }}>
           {dict.footer.trackOrder}
         </Link>
+        <Link href="/dich-vu" className="small" style={{ minHeight: "36px", display: "inline-flex", alignItems: "center" }}>
+          In theo yêu cầu &amp; Nhận sỉ
+        </Link>
       </div>
 
       <div className="flex flex-col gap-2.5">

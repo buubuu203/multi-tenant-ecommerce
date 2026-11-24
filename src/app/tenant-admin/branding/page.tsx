@@ -1,3 +1,4 @@
+import type { Metadata } from 'next';
 import { requireTenantAdmin } from '@/lib/auth/require-tenant-admin';
 import { getScopedDb } from '@/lib/db/tenant-db';
 import { ActionForm } from '@/components/ActionForm';
@@ -14,6 +15,7 @@ import {
 import { AdminPageHeader } from '../AdminPageHeader';
 
 export const dynamic = 'force-dynamic';
+export const metadata: Metadata = { title: 'Thương hiệu' };
 
 export default async function BrandingPage() {
   const { tenantId } = await requireTenantAdmin();
@@ -56,6 +58,20 @@ export default async function BrandingPage() {
               placeholder="A short line shown under your store name in the footer"
               className={adminInputClassName}
             />
+          </label>
+          <label className={adminLabelClassName}>
+            SEO / social share description (optional)
+            <textarea
+              name="ogDescription"
+              defaultValue={branding?.ogDescription ?? ''}
+              placeholder="A longer sentence for Google search results and Facebook/Zalo link previews — falls back to the tagline above if left blank"
+              rows={2}
+              className={adminInputClassName}
+            />
+            <span className="text-xs text-muted-foreground">
+              Shown on Google and on link previews (Facebook, Zalo, Messenger). The tagline above
+              stays short for the footer and share-card title; this can be a full sentence.
+            </span>
           </label>
         </section>
         <section aria-labelledby="brand-assets" className={adminPanelClassName}>
